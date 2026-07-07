@@ -58,7 +58,7 @@
   --color-loss: #D64545;
 }
 
-/* ─── Semantic vars ──────────────────────────────────────────────────────── */
+/* ─── Semantic vars — Light (default) ───────────────────────────────────── */
 
 :root {
   --bg: #FFFCF7;
@@ -74,6 +74,79 @@
   --border-strong: #D8CDB2;
 }
 
+/* ─── Dark mode ──────────────────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D0D0D;
+    --surface: #141414;
+    --surface-raised: #1E1E1E;
+    --surface-sunken: #080808;
+    --primary: #3A5244;
+    --primary-fg: #FFFCF7;
+    --text-primary: #FFFCF7;
+    --text-secondary: #C8C8C8;
+    --text-tertiary: #909090;
+    --border: #2B2B2B;
+    --border-strong: #444444;
+    --color-clay: #D98B6E;
+    --color-success: #52B788;
+    --color-success-bg: #0E1F14;
+    --color-warning: #E9C84A;
+    --color-warning-bg: #1F1800;
+    --color-error: #E87171;
+    --color-error-bg: #1F0A0A;
+    --color-info: #7AA8D0;
+    --color-info-bg: #0A1220;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0D0D0D;
+  --surface: #141414;
+  --surface-raised: #1E1E1E;
+  --surface-sunken: #080808;
+  --primary: #3A5244;
+  --primary-fg: #FFFCF7;
+  --text-primary: #FFFCF7;
+  --text-secondary: #BFB392;
+  --text-tertiary: #6B6B6B;
+  --border: #2B2B2B;
+  --border-strong: #404040;
+  --color-clay: #D98B6E;
+  --color-success: #52B788;
+  --color-success-bg: #0E1F14;
+  --color-warning: #E9C84A;
+  --color-warning-bg: #1F1800;
+  --color-error: #E87171;
+  --color-error-bg: #1F0A0A;
+  --color-info: #7AA8D0;
+  --color-info-bg: #0A1220;
+}
+
+:root[data-theme="light"] {
+  --bg: #FFFCF7;
+  --surface: #FFFFFF;
+  --surface-raised: #FAF6EC;
+  --surface-sunken: #F5EFE0;
+  --primary: #3A5244;
+  --primary-fg: #FFFFFF;
+  --text-primary: #1A1A1A;
+  --text-secondary: #6B6B6B;
+  --text-tertiary: #9F9F9F;
+  --border: #EAE2CE;
+  --border-strong: #D8CDB2;
+  --color-clay: #C56B4A;
+  --color-success: #2E8B57;
+  --color-success-bg: #E6F2EC;
+  --color-warning: #E9B949;
+  --color-warning-bg: #FBF2DC;
+  --color-error: #D64545;
+  --color-error-bg: #F8E4E4;
+  --color-info: #4A6FA5;
+  --color-info-bg: #E5EBF3;
+}
+
 /* ─── Base ───────────────────────────────────────────────────────────────── */
 
 html {
@@ -81,6 +154,7 @@ html {
   color: var(--text-primary);
   font-family: "DM Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -92,8 +166,43 @@ h1, h2, h3 {
   letter-spacing: -0.02em;
 }
 
+/* ─── Animations ─────────────────────────────────────────────────────────── */
+
+@keyframes pulse-ring {
+  0%   { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.35s ease both;
+}
+
+.live-dot {
+  position: relative;
+  display: inline-block;
+}
+
+.live-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
 /* ─── Scrollbar (webkit) ─────────────────────────────────────────────────── */
 
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }

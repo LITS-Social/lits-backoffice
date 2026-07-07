@@ -9,7 +9,9 @@ export default function DashboardLayout({
     <div className="flex min-h-screen">
       <Sidebar />
       <main className="ml-60 flex-1 min-h-screen bg-[var(--bg)]">
-        {children}
+        <div className="animate-fade-in-up">
+          {children}
+        </div>
       </main>
     </div>
   );
