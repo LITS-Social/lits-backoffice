@@ -1,26 +1,99 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ─── LITS Design Tokens ─────────────────────────────────────────────────── */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Fonts */
+  --font-display: "DM Serif Display", serif;
+  --font-sans: "DM Sans", sans-serif;
+
+  /* Court green scale */
+  --color-court-50: #E8EFEB;
+  --color-court-100: #D1DFD8;
+  --color-court-200: #A8C2B4;
+  --color-court-300: #7FA590;
+  --color-court-400: #5C8470;
+  --color-court-500: #3A5244;
+  --color-court-600: #2E4137;
+  --color-court-700: #233129;
+  --color-court-800: #1A2620;
+  --color-court-900: #0F1611;
+
+  /* Paper scale */
+  --color-paper-50: #FFFCF7;
+  --color-paper-100: #FAF6EC;
+  --color-paper-200: #F5EFE0;
+  --color-paper-300: #EAE2CE;
+  --color-paper-400: #D8CDB2;
+  --color-paper-500: #BFB392;
+  --color-paper-600: #9C8F6E;
+  --color-paper-700: #6E6450;
+  --color-paper-800: #4A4337;
+  --color-paper-900: #2A2620;
+
+  /* Ink scale */
+  --color-ink-50: #F2F2F2;
+  --color-ink-100: #D9D9D9;
+  --color-ink-200: #BFBFBF;
+  --color-ink-300: #9F9F9F;
+  --color-ink-400: #6B6B6B;
+  --color-ink-500: #404040;
+  --color-ink-600: #2B2B2B;
+  --color-ink-700: #1A1A1A;
+  --color-ink-800: #0D0D0D;
+
+  /* Feedback */
+  --color-success: #2E8B57;
+  --color-success-bg: #E6F2EC;
+  --color-warning: #E9B949;
+  --color-warning-bg: #FBF2DC;
+  --color-error: #D64545;
+  --color-error-bg: #F8E4E4;
+  --color-info: #4A6FA5;
+  --color-info-bg: #E5EBF3;
+
+  /* Accent */
+  --color-clay: #C56B4A;
+  --color-win: #2E8B57;
+  --color-loss: #D64545;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─── Semantic vars ──────────────────────────────────────────────────────── */
+
+:root {
+  --bg: #FFFCF7;
+  --surface: #FFFFFF;
+  --surface-raised: #FAF6EC;
+  --surface-sunken: #F5EFE0;
+  --primary: #3A5244;
+  --primary-fg: #FFFFFF;
+  --text-primary: #1A1A1A;
+  --text-secondary: #6B6B6B;
+  --text-tertiary: #9F9F9F;
+  --border: #EAE2CE;
+  --border-strong: #D8CDB2;
+}
+
+/* ─── Base ───────────────────────────────────────────────────────────────── */
+
+html {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: "DM Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
 }
+
+h1, h2, h3 {
+  font-family: "DM Serif Display", serif;
+  letter-spacing: -0.02em;
+}
+
+/* ─── Scrollbar (webkit) ─────────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
