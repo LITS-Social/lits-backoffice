@@ -4,22 +4,30 @@ import { Badge } from "@/components/ui/badge";
 import { playerRatings } from "@/lib/mock";
 import { formatRelative } from "@/lib/utils";
 
-function StarRating({ rating }: { rating: number }) {
+function StarScore({ score }: { score: number }) {
   return (
-    <div className="flex items-center gap-0.5">
+    <span className="inline-flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map((i) => (
         <Star
           key={i}
-          size={12}
+          size={11}
           className={
-            i <= rating
+            i <= score
               ? "fill-[var(--color-warning)] text-[var(--color-warning)]"
               : "text-[var(--border-strong)]"
           }
         />
       ))}
-      <span className="ml-1 text-[12px] font-sans font-600 text-[var(--text-primary)]">
-        {rating.toFixed(1)}
+    </span>
+  );
+}
+
+function AvgStars({ avg }: { avg: number }) {
+  return (
+    <div className="flex items-center gap-1">
+      <StarScore score={Math.round(avg)} />
+      <span className="text-[12px] font-sans font-600 text-[var(--text-primary)]">
+        {avg.toFixed(1)}
       </span>
     </div>
   );
@@ -33,7 +41,7 @@ export default function AvaliacoesPage() {
       <PageHeader
         eyebrow="#08"
         title="Avaliações Entre Jogadores"
-        description="Notas recebidas por adversários. Avaliações consistentemente negativas indicam comportamento inadequado ou nível incorreto."
+        description="Notas recebidas por adversários e quem foram os jogadores que avaliaram cada um. Avaliações consistentemente negativas indicam comportamento inadequado ou nível incorreto."
         action={
           flagged.length > 0 ? (
             <Badge variant="error">
@@ -43,75 +51,28 @@ export default function AvaliacoesPage() {
         }
       />
 
-      <div className="px-8 py-6">
-        <div className="rounded-xl border border-[var(--border)] overflow-hidden">
-          <table className="w-full text-[13px] font-sans">
-            <thead>
-              <tr className="border-b border-[var(--border)] bg-[var(--surface-raised)]">
-                <th className="text-left px-5 py-3 text-[10px] font-600 uppercase tracking-widest text-[var(--text-tertiary)]">
-                  Jogador
-                </th>
-                <th className="text-left px-5 py-3 text-[10px] font-600 uppercase tracking-widest text-[var(--text-tertiary)]">
-                  Nível
-                </th>
-                <th className="text-left px-5 py-3 text-[10px] font-600 uppercase tracking-widest text-[var(--text-tertiary)]">
-                  Média geral
-                </th>
-                <th className="text-left px-5 py-3 text-[10px] font-600 uppercase tracking-widest text-[var(--text-tertiary)]">
-                  Avaliações
-                </th>
-                <th className="text-left px-5 py-3 text-[10px] font-600 uppercase tracking-widest text-[var(--text-tertiary)]">
-                  Última avaliação
-                </th>
-                <th className="text-left px-5 py-3 text-[10px] font-600 uppercase tracking-widest text-[var(--text-tertiary)]">
-                  Avaliado por
-                </th>
-                <th className="text-left px-5 py-3 text-[10px] font-600 uppercase tracking-widest text-[var(--text-tertiary)]">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {playerRatings.map((player, i) => (
-                <tr
-                  key={player.id}
-                  className={`border-b border-[var(--border)] last:border-0 ${
-                    player.flag === "negative"
-                      ? "bg-[var(--color-error-bg)]"
-                      : i % 2 === 0
-                      ? "bg-[var(--surface)]"
-                      : "bg-[var(--surface-raised)]/40"
-                  }`}
-                >
-                  <td className="px-5 py-3.5">
-                    <span className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[var(--primary)] flex items-center justify-center text-[10px] text-white font-700 shrink-0">
-                        {player.player[0]}
-                      </div>
-                      <span className="font-500 text-[var(--text-primary)]">
-                        {player.player}
-                      </span>
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
+      <div className="px-8 py-6 space-y-3">
+        {playerRatings.map((player) => (
+          <div
+            key={player.id}
+            className={`rounded-xl border p-5 ${
+              player.flag === "negative"
+                ? "bg-[var(--color-error-bg)] border-[var(--color-error)]/25"
+                : "bg-[var(--surface)] border-[var(--border)]"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-6">
+              {/* Player identity + avg */}
+              <div className="flex items-center gap-3 w-56 shrink-0">
+                <div className="w-8 h-8 rounded-full bg-[var(--primary)] flex items-center justify-center text-[11px] text-white font-700 shrink-0">
+                  {player.player[0]}
+                </div>
+                <div>
+                  <p className="text-[14px] font-sans font-600 text-[var(--text-primary)] leading-tight">
+                    {player.player}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
                     <Badge variant="muted">{player.category}</Badge>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <StarRating rating={player.avgRating} />
-                  </td>
-                  <td className="px-5 py-3.5 text-[var(--text-secondary)]">
-                    {player.ratingsCount}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <StarRating rating={player.lastRating} />
-                  </td>
-                  <td className="px-5 py-3.5 text-[var(--text-secondary)]">
-                    {player.lastRatedBy}
-                    <span className="block text-[10px] text-[var(--text-tertiary)]">
-                      {formatRelative(player.lastRatedAt)}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
                     <Badge
                       variant={
                         player.flag === "positive"
@@ -127,12 +88,43 @@ export default function AvaliacoesPage() {
                         ? "Atenção"
                         : "Neutro"}
                     </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Avg rating */}
+              <div className="shrink-0 pt-0.5">
+                <p className="text-[10px] font-sans font-600 uppercase tracking-widest text-[var(--text-tertiary)] mb-1">
+                  Média
+                </p>
+                <AvgStars avg={player.avgRating} />
+              </div>
+
+              {/* All raters */}
+              <div className="flex-1">
+                <p className="text-[10px] font-sans font-600 uppercase tracking-widest text-[var(--text-tertiary)] mb-2">
+                  Avaliado por ({player.ratings.length})
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {player.ratings.map((r, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 text-[12px] font-sans"
+                    >
+                      <StarScore score={r.score} />
+                      <span className="text-[var(--text-primary)] font-500">
+                        {r.ratedBy}
+                      </span>
+                      <span className="text-[var(--text-tertiary)]">
+                        {formatRelative(r.at)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

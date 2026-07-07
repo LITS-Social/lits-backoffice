@@ -9,7 +9,7 @@ export default function SemRecomendacaoPage() {
     <div>
       <PageHeader
         eyebrow="#04"
-        title="Jogadores Sem Recomendação"
+        title="Jogadores Sem Recomendação Compatível"
         description="Jogadores para quem o app não encontrou adversário compatível. Indica gaps de densidade no beta — níveis, bairros ou horários sem massa crítica."
       />
 
@@ -48,7 +48,7 @@ export default function SemRecomendacaoPage() {
                 >
                   <td className="px-5 py-3.5">
                     <span className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[var(--court-500)] bg-[var(--primary)] flex items-center justify-center text-[10px] text-white font-700">
+                      <div className="w-7 h-7 rounded-full bg-[var(--primary)] flex items-center justify-center text-[10px] text-white font-700">
                         {player.name[0]}
                       </div>
                       <span className="font-500 text-[var(--text-primary)]">{player.name}</span>

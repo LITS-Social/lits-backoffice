@@ -425,16 +425,19 @@ export const courtIssues: CourtIssue[] = [
 
 // ─── #08 Avaliações ───────────────────────────────────────────────────────────
 
+export interface PlayerRatingEntry {
+  ratedBy: string;
+  score: number;
+  at: Date;
+}
+
 export interface PlayerRating {
   id: string;
   player: string;
   category: string;
-  ratingsCount: number;
   avgRating: number;
-  lastRating: number;
-  lastRatedBy: string;
-  lastRatedAt: Date;
   flag: "positive" | "neutral" | "negative";
+  ratings: PlayerRatingEntry[];
 }
 
 export const playerRatings: PlayerRating[] = [
@@ -442,78 +445,83 @@ export const playerRatings: PlayerRating[] = [
     id: "r1",
     player: "Rafael Monteiro",
     category: "B2",
-    ratingsCount: 8,
     avgRating: 4.9,
-    lastRating: 5,
-    lastRatedBy: "Bruno Carvalho",
-    lastRatedAt: past(2),
     flag: "positive",
+    ratings: [
+      { ratedBy: "Bruno Carvalho", score: 5, at: past(2) },
+      { ratedBy: "Thiago Almeida", score: 5, at: past(10) },
+      { ratedBy: "Eduardo Pires", score: 4, at: past(24) },
+    ],
   },
   {
     id: "r2",
     player: "Pedro Maia",
     category: "C1",
-    ratingsCount: 6,
     avgRating: 2.1,
-    lastRating: 2,
-    lastRatedBy: "Sérgio Fonseca",
-    lastRatedAt: past(5),
     flag: "negative",
+    ratings: [
+      { ratedBy: "Sérgio Fonseca", score: 2, at: past(5) },
+      { ratedBy: "Felipe Ramos", score: 1, at: past(20) },
+      { ratedBy: "Lucas Fernandes", score: 3, at: past(48) },
+    ],
   },
   {
     id: "r3",
     player: "Thiago Almeida",
     category: "C1",
-    ratingsCount: 4,
     avgRating: 4.5,
-    lastRating: 4,
-    lastRatedBy: "Lucas Fernandes",
-    lastRatedAt: past(3),
     flag: "positive",
+    ratings: [
+      { ratedBy: "Lucas Fernandes", score: 4, at: past(3) },
+      { ratedBy: "André Lemos", score: 5, at: past(36) },
+    ],
   },
   {
     id: "r4",
     player: "Fábio Nascimento",
     category: "B1",
-    ratingsCount: 10,
     avgRating: 4.7,
-    lastRating: 5,
-    lastRatedBy: "Diego Ribeiro",
-    lastRatedAt: past(8),
     flag: "positive",
+    ratings: [
+      { ratedBy: "Diego Ribeiro", score: 5, at: past(8) },
+      { ratedBy: "Marcos Vieira", score: 4, at: past(32) },
+      { ratedBy: "Rodrigo Nunes", score: 5, at: past(72) },
+    ],
   },
   {
     id: "r5",
     player: "Marcos Vieira",
     category: "B1",
-    ratingsCount: 5,
     avgRating: 2.8,
-    lastRating: 2,
-    lastRatedBy: "Felipe Ramos",
-    lastRatedAt: past(4.5),
     flag: "negative",
+    ratings: [
+      { ratedBy: "Felipe Ramos", score: 2, at: past(4.5) },
+      { ratedBy: "Bruno Carvalho", score: 3, at: past(18) },
+      { ratedBy: "Rodrigo Nunes", score: 3, at: past(60) },
+    ],
   },
   {
     id: "r6",
     player: "Eduardo Pires",
     category: "A1",
-    ratingsCount: 12,
     avgRating: 4.8,
-    lastRating: 5,
-    lastRatedBy: "Gustavo Saad",
-    lastRatedAt: past(3),
     flag: "positive",
+    ratings: [
+      { ratedBy: "Gustavo Saad", score: 5, at: past(3) },
+      { ratedBy: "Rafael Monteiro", score: 5, at: past(12) },
+      { ratedBy: "Leonardo Batista", score: 4, at: past(30) },
+    ],
   },
   {
     id: "r7",
     player: "Leonardo Batista",
     category: "A1",
-    ratingsCount: 9,
     avgRating: 3.6,
-    lastRating: 3,
-    lastRatedBy: "Mateus Costa",
-    lastRatedAt: past(3),
     flag: "neutral",
+    ratings: [
+      { ratedBy: "Mateus Costa", score: 3, at: past(3) },
+      { ratedBy: "Gustavo Saad", score: 4, at: past(15) },
+    ],
   },
 ];
 
