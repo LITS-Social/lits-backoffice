@@ -1,0 +1,47 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lits-backoffice",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-05-01",
+
+  // nodejs_compat is required by OpenNext: the Next server it bundles reaches for
+  // node:buffer, node:async_hooks and friends. Without the flag the Worker throws
+  // on the first request, not at deploy time.
+  // global_fetch_strictly_public makes a fetch() to our own hostname leave the
+  // Worker and go back through Cloudflare — which is what we want, because that is
+  // where Access lives. Without it the request would loop back inside the Worker
+  // and skip the gate entirely.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  // ── Non-secret config ────────────────────────────────────────────────────
+  // Public values only. `aud` is an identifier, not a credential — what protects
+  // the JWT is its signature.
+  "vars": {
+    // The BFF in GKE, reached through the Cloudflare Tunnel. This hostname sits
+    // behind a service-token Access app: only this Worker gets through it.
+    "API_URL": "https://backoffice-api.internal.lits.social",
+    "CF_ACCESS_TEAM_DOMAIN": "lits.cloudflareaccess.com"
+  }
+
+  // ── Secrets — NEVER in this file ─────────────────────────────────────────
+  // CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET are the service-token pair
+  // that authenticates this Worker to the BFF's Access app. They are the one
+  // thing standing between the public internet and every booking, payment and
+  // report in the beta, so they are set out of band and live nowhere in git:
+  //
+  //   wrangler secret put CF_ACCESS_CLIENT_ID
+  //   wrangler secret put CF_ACCESS_CLIENT_SECRET
+  //
+  // Their values come from `terragrunt output` on the lits-infra unit
+  // live/prd/sao-paulo/cloudflare-access-backoffice-api. See
+  // lits-backend/deploy/RUNBOOK-bff-backoffice.md.
+}

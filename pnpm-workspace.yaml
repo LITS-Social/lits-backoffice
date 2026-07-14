@@ -1,6 +1,16 @@
+# pnpm 10 makes every postinstall script opt-in. These four are not optional here:
+#
+#   workerd / esbuild — wrangler runs the Worker locally and OpenNext bundles it for
+#     Cloudflare; both ship a platform binary that the postinstall fetches. Skipped,
+#     they fail at RUN time, not install time, which is a miserable way to find out.
+#   sharp — Next's image optimiser.
+#   unrs-resolver — the resolver behind eslint-plugin-import.
+#
+# While unapproved, `pnpm build` aborted with ERR_PNPM_IGNORED_BUILDS before Next
+# even started — which is why the build was being invoked as ./node_modules/.bin/next
+# to sidestep the check. It no longer has to be.
 allowBuilds:
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+  workerd: true
