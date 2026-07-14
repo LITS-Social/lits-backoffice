@@ -4,6 +4,13 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-05-01",
 
+  // Pinned on purpose. This wrangler login can see three Cloudflare accounts, and
+  // the one holding lits.social is not the one whose name says so — it is still
+  // called "Gymatch" from an earlier life. Leaving the account implicit means a
+  // deploy silently lands in whichever account wrangler picks. This is the same id
+  // as CLOUDFLARE_ACCOUNT_ID in lits-infra/.env.
+  "account_id": "a839fc5803dddbc5942c114f6d874c1b",
+
   // nodejs_compat is required by OpenNext: the Next server it bundles reaches for
   // node:buffer, node:async_hooks and friends. Without the flag the Worker throws
   // on the first request, not at deploy time.
@@ -12,6 +19,24 @@
   // where Access lives. Without it the request would loop back inside the Worker
   // and skip the gate entirely.
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  // OFF, and this is a security control, not a preference.
+  //
+  // A Worker is published to <name>.<subdomain>.workers.dev by default, and that
+  // hostname is NOT covered by the Access app — Access guards backoffice.lits.social,
+  // not workers.dev. Left on, the entire ops panel (every booking, payment and report
+  // in the beta) answers to anyone who guesses that URL, with no login at all. The
+  // door would be locked and the window left open.
+  "workers_dev": false,
+
+  // The hostname the Cloudflare Access SSO app already guards. custom_domain makes
+  // wrangler create the DNS record and bind the Worker to it.
+  "routes": [
+    {
+      "pattern": "backoffice.lits.social",
+      "custom_domain": true
+    }
+  ],
 
   "assets": {
     "directory": ".open-next/assets",
@@ -29,7 +54,7 @@
     // The BFF in GKE, reached through the Cloudflare Tunnel. This hostname sits
     // behind a service-token Access app: only this Worker gets through it.
     "API_URL": "https://backoffice-api.internal.lits.social",
-    "CF_ACCESS_TEAM_DOMAIN": "lits.cloudflareaccess.com"
+    "CF_ACCESS_TEAM_DOMAIN": "gymatch.cloudflareaccess.com"
   }
 
   // ── Secrets — NEVER in this file ─────────────────────────────────────────

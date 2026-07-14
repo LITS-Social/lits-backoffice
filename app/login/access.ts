@@ -20,11 +20,22 @@
  */
 
 /**
- * Cloudflare team domain. Default mirrors the BFF's own
- * `CF_ACCESS_TEAM_DOMAIN` default (cmd/main.go).
+ * Cloudflare Zero Trust team domain.
+ *
+ * `gymatch`, not `lits` — and the discrepancy is not a typo to tidy up. The
+ * Cloudflare account that holds lits.social is still named "Gymatch" from an
+ * earlier life, and a Zero Trust team domain follows the ACCOUNT name, not the
+ * domain it happens to serve.
+ *
+ * Getting this wrong fails quietly, which is why it is spelled out here. Both
+ * hostnames resolve and both return a valid JWKS — different teams, different
+ * signing keys. Point the BFF at `lits` and it starts up perfectly healthy and
+ * then rejects every single login with 401, because it is checking signatures
+ * against the wrong keyring. The Access app really does sign with a gymatch key
+ * (kid 120e13c3…); that was confirmed against a live redirect, not inferred.
  */
 export const TEAM_DOMAIN =
-  process.env.CF_ACCESS_TEAM_DOMAIN || "lits.cloudflareaccess.com"
+  process.env.CF_ACCESS_TEAM_DOMAIN || "gymatch.cloudflareaccess.com"
 
 /**
  * The hostname the *SSO* Access app protects — the one a human logs in to.
