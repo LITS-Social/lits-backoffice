@@ -1,85 +1,78 @@
-import { XCircle, CheckCircle2, AlertTriangle, MapPin, Clock } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { Badge } from "@/components/ui/badge";
-import { cancellations } from "@/lib/mock";
-import { formatDate, formatRelative } from "@/lib/utils";
+import { getApi } from "@/lib/api";
+import { StatRail } from "../_components/stat-rail";
+import { PanelError, PanelNote, TruncationNote } from "../_components/notes";
+import { CancellationsTable } from "./table";
 
-export default function CancelamentosPage() {
-  const outOfPolicy = cancellations.filter((c) => !c.withinPolicy);
+const LIMIT = 500;
+
+export default async function CancelamentosPage() {
+  const api = await getApi();
+  const { data, error } = await api.GET("/v1/ops/cancellations", {
+    params: { query: { limit: LIMIT, offset: 0 } },
+  });
+
+  if (error) {
+    return (
+      <PanelError
+        eyebrow="#05"
+        title="Cancelamentos e Desistências"
+        detail={error.detail || error.title}
+      />
+    );
+  }
+
+  const cancellations = data.cancellations ?? [];
+  const total = data.total ?? cancellations.length;
+
+  // Three states, not two. `within_policy` is a POINTER on the wire precisely
+  // because a row cancelled before cancelled_at was persisted has no knowable
+  // answer — so "fora do prazo" and "não sabemos" are counted apart, and neither
+  // is quietly folded into the other.
+  const outside = cancellations.filter((c) => c.within_policy === false).length;
+  const within = cancellations.filter((c) => c.within_policy === true).length;
+  const unknown = cancellations.filter((c) => c.within_policy == null).length;
 
   return (
     <div>
       <PageHeader
         eyebrow="#05"
         title="Cancelamentos e Desistências"
-        description="Cancelamentos em tempo real. Desistências fora do prazo de 48h devem acionar Jogo Rápido imediatamente."
-        action={
-          outOfPolicy.length > 0 ? (
-            <Badge variant="error">
-              <AlertTriangle size={10} /> {outOfPolicy.length} fora do prazo
-            </Badge>
-          ) : null
-        }
+        description="Quem caiu, quando, e com quanta antecedência. Ordenado pelo mais brutal primeiro."
       />
 
-      <div className="px-8 py-6 space-y-3">
-        {cancellations.map((c) => (
-          <div
-            key={c.id}
-            className={`rounded-xl border p-5 ${
-              !c.withinPolicy
-                ? "bg-[var(--color-error-bg)] border-[var(--color-error)]/25"
-                : "bg-[var(--surface)] border-[var(--border)]"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <Badge
-                    variant={c.type === "withdrawal" ? "error" : "warning"}
-                  >
-                    {c.type === "withdrawal" ? (
-                      <><XCircle size={10} /> Desistência</>
-                    ) : (
-                      <><XCircle size={10} /> Cancelamento</>
-                    )}
-                  </Badge>
-                  <span className="text-[14px] font-sans font-600 text-[var(--text-primary)]">
-                    {c.player}
-                  </span>
-                  <span className="text-[11px] text-[var(--text-tertiary)]">vs</span>
-                  <span className="text-[14px] font-sans text-[var(--text-primary)]">
-                    {c.opponent}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 text-[12px] font-sans text-[var(--text-secondary)] mb-2">
-                  <span className="flex items-center gap-1">
-                    <MapPin size={11} /> {c.club}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock size={11} /> Partida: {formatDate(c.matchDatetime)}
-                  </span>
-                  <span>Cancelado {formatRelative(c.cancelledAt)}</span>
-                </div>
-                {c.reason && (
-                  <p className="text-[12px] font-sans text-[var(--text-secondary)] italic">
-                    &ldquo;{c.reason}&rdquo;
-                  </p>
-                )}
-                {c.quickMatchTriggered && (
-                  <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--color-success-bg)] border border-[var(--color-success)]/20 text-[11px] font-sans font-600 text-[var(--color-success)]">
-                    <CheckCircle2 size={10} /> Jogo Rápido acionado
-                  </div>
-                )}
-              </div>
-              <div className="shrink-0">
-                <Badge variant={c.withinPolicy ? "success" : "error"}>
-                  {c.withinPolicy ? "Dentro do prazo" : "Fora do prazo"}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        ))}
+      <StatRail
+        stats={[
+          { label: "Cancelamentos", value: total },
+          {
+            label: "Fora do prazo",
+            value: outside,
+            tone: "attention",
+            hint: "menos de 48h de antecedência — candidatos a Jogo Rápido",
+          },
+          { label: "Dentro do prazo", value: within, tone: "calm", hint: "48h ou mais de aviso" },
+          {
+            // Note this is a plain count, NOT `unknown: true`. How many rows lack a
+            // cancelled_at is something we know exactly; what is unknowable is the
+            // 48h verdict *inside* those rows, and that is rendered as "—" per row.
+            label: "Sem registro",
+            value: unknown,
+            hint: "sem cancelled_at — a antecedência não é calculável",
+          },
+        ]}
+      />
+
+      <div className="space-y-3 px-8 py-6">
+        <TruncationNote shown={cancellations.length} total={total} noun="cancelamentos" />
+        <PanelNote>
+          O motivo distingue uma desistência de verdade de um cancelamento automático do
+          sistema (<span className="font-mono text-[10.5px]">payment_rejected:*</span>,{" "}
+          <span className="font-mono text-[10.5px]">unpaid_host_timeout</span>,{" "}
+          <span className="font-mono text-[10.5px]">guest_no_show_refund</span>). O banco não
+          guarda <span className="font-mono text-[10.5px]">cancelled_by</span>, então o painel
+          não afirma qual dos dois jogadores desistiu — só o que a reserva registrou.
+        </PanelNote>
+        <CancellationsTable cancellations={cancellations} />
       </div>
     </div>
   );

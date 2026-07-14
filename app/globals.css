@@ -1,150 +1,270 @@
 @import "tailwindcss";
 
-/* ─── LITS Design Tokens ─────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   LITS — Painel Operacional
+   Design foundation on the real brand system (LitsLandingPage).
+
+   Two faces, no substitutes:
+     PP Nikkei Maru  variable 300–700 — body AND headings. One face, one voice.
+     Colus           400, UPPERCASE ONLY — eyebrows, labels, the lockup.
+                     Never body text. It has no lowercase worth reading and
+                     no italic; do not ask it for either.
+
+   Colour law of this console:
+     court green  = selection, navigation, focus. Calm. Never alarms.
+     clay/orange  = attention. Something needs a look.
+     RED          = money or moderation. Nothing else. An alert colour that
+                    fires on healthy rows is an alert nobody reads.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Brand faces (self-hosted, copied from LitsLandingPage) ──────────────── */
+
+@font-face {
+  font-family: "PP Nikkei Maru";
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/PPNikkeiMaru-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Colus";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/Colus.woff2") format("woff2");
+}
+
+/* ─── Theme tokens ───────────────────────────────────────────────────────── */
 
 @theme inline {
-  /* Fonts */
-  --font-display: "DM Serif Display", serif;
-  --font-sans: "DM Sans", sans-serif;
+  /* Fonts. --font-display is the SAME face as --font-sans: in this brand the
+     display voice is size, weight and italic — not a second family. */
+  --font-sans: "PP Nikkei Maru", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "PP Nikkei Maru", ui-serif, Georgia, serif;
+  --font-colus: "Colus", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
-  /* Court green scale */
-  --color-court-50: #E8EFEB;
-  --color-court-100: #D1DFD8;
-  --color-court-200: #A8C2B4;
-  --color-court-300: #7FA590;
-  --color-court-400: #5C8470;
-  --color-court-500: #3A5244;
-  --color-court-600: #2E4137;
-  --color-court-700: #233129;
-  --color-court-800: #1A2620;
-  --color-court-900: #0F1611;
+  /* Court green — the brand's calm. Selection, nav, focus. */
+  --color-court-50: #E4EAE6;
+  --color-court-100: #C8D4CD;
+  --color-court-200: #9DB3A7;
+  --color-court-300: #74907F;
+  --color-court-400: #52705E;
+  --color-court-500: #3A5244; /* brand --color-court */
+  --color-court-600: #2F4438;
+  --color-court-700: #253830; /* brand --color-court-deep */
+  --color-court-800: #1A2721;
+  --color-court-900: #101A15;
+  --color-court-bright: #2F7A4A;
 
-  /* Paper scale */
-  --color-paper-50: #FFFCF7;
-  --color-paper-100: #FAF6EC;
-  --color-paper-200: #F5EFE0;
-  --color-paper-300: #EAE2CE;
-  --color-paper-400: #D8CDB2;
-  --color-paper-500: #BFB392;
-  --color-paper-600: #9C8F6E;
-  --color-paper-700: #6E6450;
-  --color-paper-800: #4A4337;
-  --color-paper-900: #2A2620;
+  /* Paper — warm greige. The light theme lives here. */
+  --color-paper-50: #F5F2E7;
+  --color-paper-100: #EDE9DA;
+  --color-paper-200: #E2DECC; /* brand --off */
+  --color-paper-300: #D5CFBE;
+  --color-paper-400: #C4BCA6;
+  --color-paper-500: #A99F86;
+  --color-paper-600: #8A8069;
+  --color-paper-700: #635B49;
+  --color-paper-800: #423C30;
+  --color-paper-900: #26221B;
 
-  /* Ink scale */
-  --color-ink-50: #F2F2F2;
-  --color-ink-100: #D9D9D9;
-  --color-ink-200: #BFBFBF;
-  --color-ink-300: #9F9F9F;
-  --color-ink-400: #6B6B6B;
-  --color-ink-500: #404040;
-  --color-ink-600: #2B2B2B;
-  --color-ink-700: #1A1A1A;
-  --color-ink-800: #0D0D0D;
+  /* Ink — warm brown to black. The dark theme lives here. */
+  --color-ink-50: #EBE5D4;
+  --color-ink-100: #C9C2AE;
+  --color-ink-200: #9E9583;
+  --color-ink-300: #6F675A;
+  --color-ink-400: #4A4239;
+  --color-ink-500: #37241D; /* brand --brown */
+  --color-ink-600: #2A1A12; /* brand --brown-d */
+  --color-ink-700: #1A1410;
+  --color-ink-800: #0C0C0C; /* brand --black */
 
-  /* Feedback */
-  --color-success: #2E8B57;
-  --color-success-bg: #E6F2EC;
-  --color-warning: #E9B949;
-  --color-warning-bg: #FBF2DC;
-  --color-error: #D64545;
-  --color-error-bg: #F8E4E4;
-  --color-info: #4A6FA5;
-  --color-info-bg: #E5EBF3;
+  /* Brand accents */
+  --color-orange: #B54A29;
+  --color-orange-bright: #C85A36;
+  --color-orange-text: #8A381F;
+  --color-gold: #A39175;
 
-  /* Accent */
-  --color-clay: #C56B4A;
-  --color-win: #2E8B57;
-  --color-loss: #D64545;
+  /* Feedback — values are re-declared per theme below; these are the light
+     defaults and the keys Tailwind compiles utilities against. */
+  --color-success: #2C6B45;
+  --color-success-bg: #D6E1D4;
+  --color-warning: #B54A29;
+  --color-warning-bg: #EFDFCC;
+  --color-error: #A82A20;
+  --color-error-bg: #F0D9D4;
+  --color-info: #6B5B3E;
+  --color-info-bg: #E3DCC6;
+
+  --color-clay: #8A381F;
+  --color-win: #2C6B45;
+  --color-loss: #A82A20;
+
+  /* Motion */
+  --ease-brand: cubic-bezier(0.2, 0.65, 0.25, 1);
 }
 
-/* ─── Semantic vars — Light (default) ───────────────────────────────────── */
+/* ─── Numeric font weights ───────────────────────────────────────────────────
+   Tailwind v4 has no bare-numeric font-weight utility: `font-600` compiles to
+   NOTHING. The codebase leans on font-500/600/700 in 51 places, so its entire
+   type hierarchy was silently rendering at 400 — invisible in review, obvious
+   the moment a variable face with a real 300–700 axis is loaded.
+
+   Declaring them here repairs every call site at once, including the panel
+   files other agents are writing right now, without editing a single one.
+   PP Nikkei Maru is variable, so these interpolate for real.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+@utility font-300 { font-weight: 300; }
+@utility font-400 { font-weight: 400; }
+@utility font-500 { font-weight: 500; }
+@utility font-600 { font-weight: 600; }
+@utility font-700 { font-weight: 700; }
+@utility font-800 { font-weight: 700; } /* the face stops at 700; do not fake 800 */
+
+/* ─── Semantic surface — LIGHT (warm greige paper, the brand's daylight) ──── */
 
 :root {
-  --bg: #FFFCF7;
-  --surface: #FFFFFF;
-  --surface-raised: #FAF6EC;
-  --surface-sunken: #F5EFE0;
-  --primary: #3A5244;
-  --primary-fg: #FFFFFF;
-  --text-primary: #1A1A1A;
-  --text-secondary: #6B6B6B;
-  --text-tertiary: #9F9F9F;
-  --border: #EAE2CE;
-  --border-strong: #D8CDB2;
+  color-scheme: light;
+
+  --bg: #D5CFBE;             /* page — greige */
+  --surface: #EAE5D6;        /* the data plane, lifted off the page */
+  --surface-raised: #DFD9C7; /* hover, muted chips */
+  --surface-sunken: #D2CBB7; /* expanded detail — recessed below the plane */
+
+  --border: #C4BCA6;
+  --border-strong: #A99F86;
+
+  --primary: #3A5244;        /* court green */
+  --primary-fg: #EDE9DA;
+
+  --text-primary: #1A140F;
+  --text-secondary: #4E4840;
+  /* WCAG AA, verified against every surface it lands on — this token paints the
+     truncation disclaimers ("só 50 carregadas"), the timestamps, the booking IDs,
+     the Colus column heads and the search placeholder. It was #6F6A5E, which
+     scored 3.33:1 on the table header and 3.46:1 on the page: the most important
+     honest sentence in the product was its least legible text. #565249 clears 4.5
+     on all four surfaces (worst = 4.80 on --surface-sunken), same warm hue. Do not
+     lighten it without re-checking contrast against --surface-sunken. */
+  --text-tertiary: #565249;
+
+  --color-success: #2C6B45;
+  --color-success-bg: #D6E1D4;
+  --color-warning: #B54A29;
+  --color-warning-bg: #EFDFCC;
+  --color-error: #A82A20;
+  --color-error-bg: #F0D9D4;
+  --color-info: #6B5B3E;
+  --color-info-bg: #E3DCC6;
+  --color-clay: #8A381F;
+
+  --grain-opacity: 0.34;
+  --grain-blend: multiply;
 }
 
-/* ─── Dark mode ──────────────────────────────────────────────────────────── */
+/* ─── Semantic surface — DARK (brand brown over black; an 8pm console) ────── */
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0D0D0D;
-    --surface: #141414;
-    --surface-raised: #1E1E1E;
-    --surface-sunken: #080808;
-    --primary: #3A5244;
-    --primary-fg: #FFFCF7;
-    --text-primary: #FFFCF7;
-    --text-secondary: #C8C8C8;
-    --text-tertiary: #909090;
-    --border: #2B2B2B;
-    --border-strong: #444444;
-    --color-clay: #D98B6E;
-    --color-success: #52B788;
-    --color-success-bg: #0E1F14;
-    --color-warning: #E9C84A;
-    --color-warning-bg: #1F1800;
-    --color-error: #E87171;
-    --color-error-bg: #1F0A0A;
-    --color-info: #7AA8D0;
-    --color-info-bg: #0A1220;
+    color-scheme: dark;
+
+    --bg: #0C0A08;
+    --surface: #1C1410;
+    --surface-raised: #2A1A12;
+    --surface-sunken: #070605;
+
+    --border: #35271F;
+    --border-strong: #4C3A2E;
+
+    --primary: #58A97C;
+    --primary-fg: #0C0A08;
+
+    --text-primary: #EBE5D4;
+    --text-secondary: #A79F8E;
+    --text-tertiary: #91897B;
+
+    --color-success: #6FBF8E;
+    --color-success-bg: #10241A;
+    --color-warning: #E08A5B;
+    --color-warning-bg: #2E1A0F;
+    --color-error: #E8776B;
+    --color-error-bg: #2E120E;
+    --color-info: #C4B08A;
+    --color-info-bg: #241E14;
+    --color-clay: #D9834F;
+
+    --grain-opacity: 0.05;
+    --grain-blend: overlay;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0D0D0D;
-  --surface: #141414;
-  --surface-raised: #1E1E1E;
-  --surface-sunken: #080808;
-  --primary: #3A5244;
-  --primary-fg: #FFFCF7;
-  --text-primary: #FFFCF7;
-  --text-secondary: #BFB392;
-  --text-tertiary: #6B6B6B;
-  --border: #2B2B2B;
-  --border-strong: #404040;
-  --color-clay: #D98B6E;
-  --color-success: #52B788;
-  --color-success-bg: #0E1F14;
-  --color-warning: #E9C84A;
-  --color-warning-bg: #1F1800;
-  --color-error: #E87171;
-  --color-error-bg: #1F0A0A;
-  --color-info: #7AA8D0;
-  --color-info-bg: #0A1220;
+  color-scheme: dark;
+
+  --bg: #0C0A08;
+  --surface: #1C1410;
+  --surface-raised: #2A1A12;
+  --surface-sunken: #070605;
+
+  --border: #35271F;
+  --border-strong: #4C3A2E;
+
+  --primary: #58A97C;
+  --primary-fg: #0C0A08;
+
+  --text-primary: #EBE5D4;
+  --text-secondary: #A79F8E;
+  /* WCAG AA — see the light-theme note. Was #857D6F: 4.11:1 on --surface-raised.
+     #91897B clears 4.5 on all four (worst = 4.84 on --surface-raised). */
+  --text-tertiary: #91897B;
+
+  --color-success: #6FBF8E;
+  --color-success-bg: #10241A;
+  --color-warning: #E08A5B;
+  --color-warning-bg: #2E1A0F;
+  --color-error: #E8776B;
+  --color-error-bg: #2E120E;
+  --color-info: #C4B08A;
+  --color-info-bg: #241E14;
+  --color-clay: #D9834F;
+
+  --grain-opacity: 0.05;
+  --grain-blend: overlay;
 }
 
 :root[data-theme="light"] {
-  --bg: #FFFCF7;
-  --surface: #FFFFFF;
-  --surface-raised: #FAF6EC;
-  --surface-sunken: #F5EFE0;
+  color-scheme: light;
+
+  --bg: #D5CFBE;
+  --surface: #EAE5D6;
+  --surface-raised: #DFD9C7;
+  --surface-sunken: #D2CBB7;
+
+  --border: #C4BCA6;
+  --border-strong: #A99F86;
+
   --primary: #3A5244;
-  --primary-fg: #FFFFFF;
-  --text-primary: #1A1A1A;
-  --text-secondary: #6B6B6B;
-  --text-tertiary: #9F9F9F;
-  --border: #EAE2CE;
-  --border-strong: #D8CDB2;
-  --color-clay: #C56B4A;
-  --color-success: #2E8B57;
-  --color-success-bg: #E6F2EC;
-  --color-warning: #E9B949;
-  --color-warning-bg: #FBF2DC;
-  --color-error: #D64545;
-  --color-error-bg: #F8E4E4;
-  --color-info: #4A6FA5;
-  --color-info-bg: #E5EBF3;
+  --primary-fg: #EDE9DA;
+
+  --text-primary: #1A140F;
+  --text-secondary: #4E4840;
+  --text-tertiary: #565249;
+
+  --color-success: #2C6B45;
+  --color-success-bg: #D6E1D4;
+  --color-warning: #B54A29;
+  --color-warning-bg: #EFDFCC;
+  --color-error: #A82A20;
+  --color-error-bg: #F0D9D4;
+  --color-info: #6B5B3E;
+  --color-info-bg: #E3DCC6;
+  --color-clay: #8A381F;
+
+  --grain-opacity: 0.34;
+  --grain-blend: multiply;
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
@@ -152,18 +272,124 @@
 html {
   background: var(--bg);
   color: var(--text-primary);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-sans);
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   scroll-behavior: smooth;
 }
 
 body {
   background: var(--bg);
+  transition: background 400ms var(--ease-brand), color 400ms var(--ease-brand);
 }
 
-h1, h2, h3 {
-  font-family: "DM Serif Display", serif;
-  letter-spacing: -0.02em;
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Grain — the brand's signature paper texture ────────────────────────────
+   Fixed, non-interactive, GPU-composited. On light it multiplies into the
+   greige like ink on stock; on dark it barely whispers (overlay at 0.05) —
+   enough to kill the flatness of a black panel without costing legibility.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 200px 200px;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: var(--grain-blend);
+}
+
+/* Local grain, for a panel that wants its own tooth (the landing's `.grain`). */
+.grain {
+  position: relative;
+}
+.grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Tennis-court line texture, masked to fade out. Atmosphere for a hero band. */
+.court-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--text-primary) 1px, transparent 1px),
+    linear-gradient(90deg, var(--text-primary) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(100% 100% at 50% 30%, #000, transparent 76%);
+  mask-image: radial-gradient(100% 100% at 50% 30%, #000, transparent 76%);
+  opacity: 0.05;
+}
+
+/* ─── Editorial devices ──────────────────────────────────────────────────────
+   The landing's eyebrow: Colus, uppercase, wide-tracked, with a leading rule.
+   This is the brand's most recognisable typographic gesture — every panel
+   header wears one.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-colus);
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--color-clay);
+  line-height: 1;
+}
+.eyebrow::before {
+  content: "";
+  width: 24px;
+  height: 1px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* A Colus label with no rule — column heads, field labels, small caps. */
+.label-colus {
+  font-family: var(--font-colus);
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* Editorial numeral — the serif face, tabular, tight. For counts that matter. */
+.numeral {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1;
 }
 
 /* ─── Animations ─────────────────────────────────────────────────────────── */
@@ -175,7 +401,7 @@ h1, h2, h3 {
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.35; }
+  50%      { opacity: 0.35; }
 }
 
 @keyframes fade-in-up {
@@ -184,7 +410,7 @@ h1, h2, h3 {
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 0.35s ease both;
+  animation: fade-in-up 0.35s var(--ease-brand) both;
 }
 
 .live-dot {
@@ -201,8 +427,19 @@ h1, h2, h3 {
   animation: pulse-ring 1.8s ease-out infinite;
 }
 
-/* ─── Scrollbar (webkit) ─────────────────────────────────────────────────── */
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
+
+/* ─── Reduced motion ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html { scroll-behavior: auto; }
+}

@@ -14,137 +14,200 @@ import {
   Flag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { OpsSummary } from "@/lib/ops";
 import { ThemeToggle } from "./theme-toggle";
 
 const nav = [
-  { id: "01", label: "Aguardando Jogo",      href: "/partidas-aguardando",    icon: Clock,          alert: 2 },
-  { id: "02", label: "Finalizadas",           href: "/partidas-finalizadas",   icon: CheckCircle2,   alert: 3 },
-  { id: "03", label: "Convites",              href: "/convites",               icon: Mail,           alert: 1 },
-  { id: "04", label: "Sem Recomendação",      href: "/sem-recomendacao",       icon: UserX,          alert: 4 },
-  { id: "05", label: "Cancelamentos",         href: "/cancelamentos",          icon: XCircle,        alert: 1 },
-  { id: "06", label: "Pagamentos",            href: "/pagamentos",             icon: CreditCard,     alert: 2 },
-  { id: "07", label: "Quadras",              href: "/quadras-indisponiveis",  icon: AlertTriangle,  alert: 1 },
-  { id: "08", label: "Avaliações",            href: "/avaliacoes",             icon: Star,           alert: 0 },
-  { id: "09", label: "Denúncias",             href: "/denuncias",              icon: Flag,           alert: 2 },
+  { id: "01", label: "Aguardando Jogo",      href: "/partidas-aguardando",    icon: Clock },
+  { id: "02", label: "Finalizadas",           href: "/partidas-finalizadas",   icon: CheckCircle2 },
+  { id: "03", label: "Convites",              href: "/convites",               icon: Mail },
+  { id: "04", label: "Sem Recomendação",      href: "/sem-recomendacao",       icon: UserX },
+  { id: "05", label: "Cancelamentos",         href: "/cancelamentos",          icon: XCircle },
+  { id: "06", label: "Pagamentos",            href: "/pagamentos",             icon: CreditCard },
+  { id: "07", label: "Quadras",              href: "/quadras-indisponiveis",  icon: AlertTriangle },
+  { id: "08", label: "Avaliações",            href: "/avaliacoes",             icon: Star },
+  { id: "09", label: "Denúncias",             href: "/denuncias",              icon: Flag },
 ];
 
-const totalAlerts = nav.reduce((s, i) => s + i.alert, 0);
+// Red is the money-and-moderation colour. Only these panels get to use it, and
+// only they roll up into the headline alert count: #06 payments, #07 courts
+// pulled by clubs, #09 reports awaiting moderation. #01 and #05 are ledgers —
+// 66 healthy upcoming matches and 21 cancellations that already happened are
+// things to LOOK at, not things to FIX. Summing every panel produced a red
+// "138 alertas" that was mostly just the beta working, and an alert that fires
+// on success is one people learn to ignore.
+const ALERTING_PANELS = ["06", "07", "09"];
 
-export function Sidebar() {
+export function Sidebar({
+  summary = {},
+  searchSlot,
+}: {
+  summary?: OpsSummary;
+  /** Global-search trigger. Owned by another agent; mounts at #global-search-slot. */
+  searchSlot?: React.ReactNode;
+}) {
   const pathname = usePathname();
 
-  return (
-    <aside className="fixed top-0 left-0 h-screen w-60 flex flex-col border-r border-[var(--border)] bg-[var(--surface)] z-30">
+  const totalAlerts = ALERTING_PANELS.reduce((sum, id) => sum + (summary[id]?.count ?? 0), 0);
 
-      {/* Logo */}
-      <div className="px-5 pt-6 pb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[var(--primary)] flex items-center justify-center shrink-0">
-            <span className="font-display text-white text-[15px] italic font-normal leading-none">L</span>
-          </div>
-          <div>
-            <p className="font-display italic text-[15px] text-[var(--text-primary)] leading-none">LITS</p>
-            <p className="text-[9px] font-sans font-600 tracking-[0.18em] uppercase text-[var(--text-tertiary)] mt-0.5">
-              Operações
-            </p>
-          </div>
-        </div>
+  return (
+    <aside className="fixed top-0 left-0 z-30 flex h-screen w-60 flex-col border-r border-[var(--border)] bg-[var(--surface)]">
+      {/* ── Lockup ─────────────────────────────────────────────────────── */}
+      <div className="px-5 pt-6 pb-4">
+        <Link href="/" className="group flex items-center gap-2.5" aria-label="LITS — Operações">
+          {/* The real wordmark, painted with currentColor via CSS mask. */}
+          <span
+            aria-hidden
+            className="h-[22px] w-[41px] shrink-0 bg-[var(--text-primary)] transition-colors group-hover:bg-[var(--primary)]"
+            style={{
+              WebkitMask: "url('/assets/lits.svg') center/contain no-repeat",
+              mask: "url('/assets/lits.svg') center/contain no-repeat",
+            }}
+          />
+          <span className="mt-px h-3.5 w-px bg-[var(--border-strong)]" />
+          <span className="label-colus text-[9px] leading-none text-[var(--text-tertiary)]">
+            Operações
+          </span>
+        </Link>
       </div>
 
-      {/* Status bar */}
+      {/* ── Status line ────────────────────────────────────────────────── */}
       <div className="px-5 pb-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="live-dot inline-flex h-2 w-2 rounded-full bg-[var(--color-warning)]" style={{ animation: "pulse-dot 2s ease-in-out infinite" }} />
+          <span className="flex items-center gap-2">
+            <span className="relative flex h-1.5 w-1.5">
+              <span
+                className="live-dot inline-flex h-1.5 w-1.5 rounded-full bg-[var(--color-warning)]"
+                style={{ animation: "pulse-dot 2s ease-in-out infinite" }}
+              />
             </span>
-            <span className="text-[10px] font-sans font-600 tracking-[0.15em] uppercase text-[var(--text-tertiary)]">
+            <span className="label-colus text-[9px] leading-none text-[var(--text-tertiary)]">
               Beta Closed
             </span>
-          </div>
+          </span>
+
+          {/* Serif numeral, red, no noun until it earns one. */}
           {totalAlerts > 0 && (
-            <span className="text-[10px] font-sans font-700 text-[var(--color-error)]">
-              {totalAlerts} alertas
+            <span
+              title={`${totalAlerts} em pagamentos, quadras e denúncias`}
+              className="flex items-baseline gap-1 text-[var(--color-error)]"
+            >
+              <span className="numeral text-[15px]">{totalAlerts}</span>
+              <span className="label-colus text-[8px] leading-none opacity-70">alertas</span>
             </span>
           )}
         </div>
       </div>
 
-      {/* Divider */}
+      {/* ── Global search mount point ──────────────────────────────────────
+          Left empty on purpose. Another agent owns the search itself; pass it
+          in as `searchSlot` and it lands here. The wrapper does not render at
+          all when the slot is empty — an empty box would read as a broken input. */}
+      {searchSlot && (
+        <div id="global-search-slot" className="px-4 pb-4">
+          {searchSlot}
+        </div>
+      )}
+
       <div className="mx-5 h-px bg-[var(--border)]" />
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3">
-        <p className="px-2 mb-3 text-[9px] font-sans font-700 text-[var(--text-tertiary)] tracking-[0.2em] uppercase">
+      {/* ── Panels ─────────────────────────────────────────────────────── */}
+      <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <p className="label-colus mb-3 px-2 text-[9px] text-[var(--text-tertiary)]">
           Monitoramento
         </p>
 
         {nav.map((item) => {
           const Icon = item.icon;
+          const stat = summary[item.id];
+          const count = stat?.count;
+          const failed = stat?.failed === true;
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
+          const alarming = ALERTING_PANELS.includes(item.id);
 
           return (
             <Link
               key={item.id}
               href={item.href}
+              aria-current={active ? "page" : undefined}
               className={cn(
-                "group relative flex items-center gap-2.5 px-2.5 py-2 rounded-lg mb-0.5 transition-colors duration-150",
+                "group relative mb-0.5 flex items-center gap-2.5 rounded-md px-2.5 py-[7px] transition-colors duration-150",
                 active
-                  ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                  ? "bg-[var(--primary)]/12 text-[var(--primary)]"
                   : "text-[var(--text-secondary)] hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
               )}
             >
-              {/* Active left indicator */}
               {active && (
-                <span className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r-full bg-[var(--primary)]" />
+                <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r-full bg-[var(--primary)]" />
               )}
 
-              {/* ID */}
-              <span className={cn(
-                "text-[10px] font-sans font-600 tabular-nums w-5 shrink-0 leading-none",
-                active ? "text-[var(--primary)]" : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
-              )}>
+              {/* Panel number — Colus, the editorial folio mark. */}
+              <span
+                className={cn(
+                  "label-colus w-4 shrink-0 text-[9px] leading-none tracking-normal",
+                  active
+                    ? "text-[var(--primary)]"
+                    : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
+                )}
+              >
                 {item.id}
               </span>
 
-              {/* Icon */}
               <Icon
                 size={13}
+                strokeWidth={1.75}
                 className={cn(
                   "shrink-0 transition-colors",
-                  active ? "text-[var(--primary)]" : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
+                  active
+                    ? "text-[var(--primary)]"
+                    : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
                 )}
               />
 
-              {/* Label */}
-              <span className={cn(
-                "flex-1 text-[12px] font-sans font-500 leading-none truncate transition-colors",
-                active ? "text-[var(--primary)] font-600" : ""
-              )}>
+              <span
+                className={cn(
+                  "flex-1 truncate text-[12.5px] leading-none transition-colors",
+                  active ? "font-600" : "font-500"
+                )}
+              >
                 {item.label}
               </span>
 
-              {/* Alert count */}
-              {item.alert > 0 && (
-                <span className={cn(
-                  "inline-flex items-center justify-center min-w-[16px] h-4 rounded-full px-1 text-[9px] font-sans font-700 tabular-nums",
-                  active
-                    ? "bg-[var(--primary)]/20 text-[var(--primary)]"
-                    : "bg-[var(--color-error-bg)] text-[var(--color-error)]"
-                )}>
-                  {item.alert}
+              {/* A panel whose fetch failed shows "!", never a number. Rendering
+                  nothing would be indistinguishable from "all clear" — the one
+                  lie this sidebar must not tell. */}
+              {failed ? (
+                <span
+                  title="Falha ao carregar este painel"
+                  className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--color-warning-bg)] px-1 text-[9px] font-700 text-[var(--color-warning)]"
+                >
+                  !
                 </span>
-              )}
+              ) : count !== undefined && count > 0 ? (
+                <span
+                  className={cn(
+                    "inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9.5px] font-600 tabular-nums",
+                    active
+                      ? "bg-[var(--primary)]/20 text-[var(--primary)]"
+                      : alarming
+                        ? "bg-[var(--color-error-bg)] text-[var(--color-error)]"
+                        : // A ledger's count is information, not an alarm. Neutral.
+                          "bg-[var(--surface-raised)] text-[var(--text-secondary)]"
+                  )}
+                >
+                  {count}
+                </span>
+              ) : null}
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer */}
+      {/* ── Footer ─────────────────────────────────────────────────────── */}
       <div className="mx-5 h-px bg-[var(--border)]" />
-      <div className="px-5 py-4 flex items-center justify-between">
-        <p className="text-[10px] font-sans text-[var(--text-tertiary)] tracking-wide">
-          Live The Standard
+      <div className="flex items-center justify-between px-5 py-3.5">
+        <p className="text-[11px] italic leading-none text-[var(--text-tertiary)]">
+          Live the standard
         </p>
         <ThemeToggle />
       </div>

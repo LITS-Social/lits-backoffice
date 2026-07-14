@@ -1,98 +1,76 @@
-"use client";
-
-import { Mail, Clock, MapPin } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { Badge } from "@/components/ui/badge";
-import { openInvites } from "@/lib/mock";
-import { formatDate, formatCountdown } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { getApi } from "@/lib/api";
+import { StatRail } from "../_components/stat-rail";
+import { PanelError, TruncationNote } from "../_components/notes";
+import { OpenInvitesTable } from "./table";
 
-function CountdownTimer({ expiresAt }: { expiresAt: Date }) {
-  const [countdown, setCountdown] = useState(formatCountdown(expiresAt));
-  const isUrgent = expiresAt.getTime() - Date.now() < 20 * 60000;
+const URGENT_MS = 30 * 60_000;
 
-  useEffect(() => {
-    const id = setInterval(() => setCountdown(formatCountdown(expiresAt)), 1000);
-    return () => clearInterval(id);
-  }, [expiresAt]);
+export default async function ConvitesPage() {
+  const api = await getApi();
+  const { data, error } = await api.GET("/v1/ops/open-invites");
 
-  return (
-    <span
-      className={`text-[13px] font-sans font-700 tabular-nums ${
-        isUrgent ? "text-[var(--color-error)]" : "text-[var(--color-clay)]"
-      }`}
-    >
-      {countdown}
-    </span>
-  );
-}
+  if (error) {
+    return <PanelError eyebrow="#03" title="Convites em Aberto" detail={error.detail || error.title} />;
+  }
 
-export default function ConvitesPage() {
-  const urgent = openInvites.filter(
-    (i) => i.expiresAt.getTime() - Date.now() < 20 * 60000
-  );
+  const invites = data.invites ?? [];
+  const total = data.total ?? invites.length;
+
+  // Counted on the server at request time. Comparing absolute instants (not
+  // calendar days) makes this timezone-proof: "30 minutes from now" is the same
+  // 30 minutes in UTC on the Worker and in BRT on the founder's screen.
+  const now = Date.now();
+  const expiring = invites.filter((i) => {
+    const left = new Date(i.expires_at).getTime() - now;
+    return left > 0 && left < URGENT_MS;
+  }).length;
+  const expired = invites.filter((i) => new Date(i.expires_at).getTime() <= now).length;
+  const alreadyPlayed = invites.filter((i) => new Date(i.starts_at).getTime() < now).length;
 
   return (
     <div>
       <PageHeader
         eyebrow="#03"
         title="Convites em Aberto"
-        description="Convites enviados aguardando resposta. Janela de 1 hora — entrar em contato via WhatsApp se prestes a expirar."
-        action={
-          urgent.length > 0 ? (
-            <Badge variant="error">
-              <Clock size={10} /> {urgent.length} expirando em breve
-            </Badge>
-          ) : null
-        }
+        description="A janela de 2h correndo em tempo real. O topo da lista é quem precisa de um WhatsApp agora."
       />
 
-      <div className="px-8 py-6 space-y-3">
-        {openInvites.map((invite) => {
-          const isUrgent = invite.expiresAt.getTime() - Date.now() < 20 * 60000;
-          return (
-            <div
-              key={invite.id}
-              className={`rounded-xl border p-5 ${
-                isUrgent
-                  ? "bg-[var(--color-error-bg)] border-[var(--color-error)]/25"
-                  : "bg-[var(--surface)] border-[var(--border)]"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[14px] font-sans font-600 text-[var(--text-primary)]">
-                      {invite.sender}
-                    </span>
-                    <Mail size={13} className="text-[var(--text-tertiary)]" />
-                    <span className="text-[14px] font-sans text-[var(--text-primary)]">
-                      {invite.receiver}
-                    </span>
-                    <Badge variant="muted">{invite.category}</Badge>
-                    <Badge variant={invite.type === "ranked" ? "info" : "muted"}>
-                      {invite.type === "ranked" ? "Rankeada" : "Casual"}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-4 text-[12px] font-sans text-[var(--text-secondary)]">
-                    <span className="flex items-center gap-1">
-                      <MapPin size={11} /> {invite.club}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock size={11} /> Partida: {formatDate(invite.matchDatetime)}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-[10px] font-sans font-600 uppercase tracking-widest text-[var(--text-tertiary)] mb-1">
-                    Expira em
-                  </p>
-                  <CountdownTimer expiresAt={invite.expiresAt} />
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <StatRail
+        stats={[
+          { label: "Em aberto", value: total },
+          {
+            label: "Expirando",
+            value: expiring,
+            tone: "attention",
+            hint: "menos de 30 minutos de janela",
+          },
+          {
+            label: "Expirados",
+            value: expired,
+            tone: "attention",
+            hint: "a janela fechou sem resposta do convidado",
+          },
+          {
+            label: "Partida já passou",
+            value: alreadyPlayed,
+            tone: "attention",
+            hint: "convite ainda aberto para um horário que já aconteceu",
+          },
+        ]}
+      />
+
+      <div className="space-y-3 px-8 py-6">
+        {/* /v1/ops/open-invites takes no limit — it returns whatever booking-service's
+            default page holds. Today that is all 8 of them, so this stays silent; the
+            day it stops being all of them, it will not. */}
+        <TruncationNote
+          shown={invites.length}
+          total={total}
+          noun="convites"
+          reason="O endpoint /v1/ops/open-invites não aceita paginação, então o restante não chega ao painel."
+        />
+        <OpenInvitesTable invites={invites} />
       </div>
     </div>
   );

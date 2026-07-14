@@ -1,130 +1,85 @@
-import { Star } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { Badge } from "@/components/ui/badge";
-import { playerRatings } from "@/lib/mock";
-import { formatRelative } from "@/lib/utils";
+import { getApi } from "@/lib/api";
+import { StatRail } from "../_components/stat-rail";
+import { PanelError, TruncationNote } from "../_components/notes";
+import { PlayerEvaluationsTable } from "./table";
 
-function StarScore({ score }: { score: number }) {
-  return (
-    <span className="inline-flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Star
-          key={i}
-          size={11}
-          className={
-            i <= score
-              ? "fill-[var(--color-warning)] text-[var(--color-warning)]"
-              : "text-[var(--border-strong)]"
-          }
-        />
-      ))}
-    </span>
-  );
-}
+const LOW_SCORE = 3;
+const PATTERN_MIN_RATINGS = 2;
 
-function AvgStars({ avg }: { avg: number }) {
-  return (
-    <div className="flex items-center gap-1">
-      <StarScore score={Math.round(avg)} />
-      <span className="text-[12px] font-sans font-600 text-[var(--text-primary)]">
-        {avg.toFixed(1)}
-      </span>
-    </div>
-  );
-}
+export default async function AvaliacoesPage() {
+  const api = await getApi();
+  const { data, error } = await api.GET("/v1/ops/player-evaluations");
 
-export default function AvaliacoesPage() {
-  const flagged = playerRatings.filter((p) => p.flag === "negative");
+  if (error) {
+    return (
+      <PanelError eyebrow="#08" title="Avaliações Entre Jogadores" detail={error.detail || error.title} />
+    );
+  }
+
+  const evaluations = data.players ?? [];
+  const total = data.total ?? evaluations.length;
+
+  const rated = evaluations.filter((p) => p.count > 0);
+  const flagged = evaluations.filter(
+    (p) => p.count >= PATTERN_MIN_RATINGS && p.avg_rating < LOW_SCORE
+  ).length;
+
+  // Weighted by how many opponents actually rated each player — a mean of per-player
+  // means would let one player with a single 5★ pull the beta's average as hard as
+  // one with forty ratings. Computed only across rated players: folding in the
+  // never-rated (whose avg_rating is 0 by contract) would drag the whole thing
+  // toward zero and invent a crisis out of missing data.
+  const ratingCount = rated.reduce((n, p) => n + p.count, 0);
+  const weightedAvg =
+    ratingCount > 0
+      ? rated.reduce((sum, p) => sum + p.avg_rating * p.count, 0) / ratingCount
+      : null;
 
   return (
     <div>
       <PageHeader
         eyebrow="#08"
         title="Avaliações Entre Jogadores"
-        description="Notas recebidas por adversários e quem foram os jogadores que avaliaram cada um. Avaliações consistentemente negativas indicam comportamento inadequado ou nível incorreto."
-        action={
-          flagged.length > 0 ? (
-            <Badge variant="error">
-              <Star size={10} /> {flagged.length} com avaliação baixa
-            </Badge>
-          ) : null
-        }
+        description="Quem está sendo mal avaliado de forma recorrente — e por quem."
       />
 
-      <div className="px-8 py-6 space-y-3">
-        {playerRatings.map((player) => (
-          <div
-            key={player.id}
-            className={`rounded-xl border p-5 ${
-              player.flag === "negative"
-                ? "bg-[var(--color-error-bg)] border-[var(--color-error)]/25"
-                : "bg-[var(--surface)] border-[var(--border)]"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-6">
-              {/* Player identity + avg */}
-              <div className="flex items-center gap-3 w-56 shrink-0">
-                <div className="w-8 h-8 rounded-full bg-[var(--primary)] flex items-center justify-center text-[11px] text-white font-700 shrink-0">
-                  {player.player[0]}
-                </div>
-                <div>
-                  <p className="text-[14px] font-sans font-600 text-[var(--text-primary)] leading-tight">
-                    {player.player}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <Badge variant="muted">{player.category}</Badge>
-                    <Badge
-                      variant={
-                        player.flag === "positive"
-                          ? "success"
-                          : player.flag === "negative"
-                          ? "error"
-                          : "muted"
-                      }
-                    >
-                      {player.flag === "positive"
-                        ? "Positivo"
-                        : player.flag === "negative"
-                        ? "Atenção"
-                        : "Neutro"}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
+      <StatRail
+        stats={[
+          {
+            label: "Mal avaliados",
+            value: flagged,
+            tone: "money",
+            hint: `média abaixo de ${LOW_SCORE},0 com ${PATTERN_MIN_RATINGS}+ avaliações — é padrão, não azar`,
+          },
+          {
+            label: "Média do beta",
+            // null, not 0.0. With no ratings on the wire there is no average to
+            // state, and a confident "0,0" would read as a beta full of awful
+            // players when what it really means is that nobody has rated anyone.
+            value: weightedAvg === null ? "—" : weightedAvg.toFixed(2).replace(".", ","),
+            unknown: weightedAvg === null,
+            hint:
+              weightedAvg === null
+                ? "nenhuma avaliação registrada ainda"
+                : `ponderada por ${ratingCount} ${ratingCount === 1 ? "avaliação" : "avaliações"}`,
+          },
+          {
+            label: "Jogadores avaliados",
+            value: rated.length,
+            hint: `de ${total} no painel`,
+          },
+        ]}
+      />
 
-              {/* Avg rating */}
-              <div className="shrink-0 pt-0.5">
-                <p className="text-[10px] font-sans font-600 uppercase tracking-widest text-[var(--text-tertiary)] mb-1">
-                  Média
-                </p>
-                <AvgStars avg={player.avgRating} />
-              </div>
-
-              {/* All raters */}
-              <div className="flex-1">
-                <p className="text-[10px] font-sans font-600 uppercase tracking-widest text-[var(--text-tertiary)] mb-2">
-                  Avaliado por ({player.ratings.length})
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  {player.ratings.map((r, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 text-[12px] font-sans"
-                    >
-                      <StarScore score={r.score} />
-                      <span className="text-[var(--text-primary)] font-500">
-                        {r.ratedBy}
-                      </span>
-                      <span className="text-[var(--text-tertiary)]">
-                        {formatRelative(r.at)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+      <div className="space-y-3 px-8 py-6">
+        <TruncationNote
+          shown={evaluations.length}
+          total={total}
+          noun="jogadores"
+          reason="O endpoint /v1/ops/player-evaluations não aceita paginação."
+        />
+        <PlayerEvaluationsTable evaluations={evaluations} />
       </div>
     </div>
   );
