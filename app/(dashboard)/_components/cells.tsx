@@ -1,6 +1,11 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
+import { PlayerLink } from "@/components/ui/player-link";
+import type { components } from "@/lib/api/openapi";
 import { cn, formatDate, formatRelative } from "@/lib/utils";
+
+type OpsUserRef = components["schemas"]["OpsUserRef"];
 
 /**
  * ── The rail ──────────────────────────────────────────────────────────────────
@@ -102,6 +107,10 @@ export function When({
  * else @username, else short id). A name that IS the id is a real signal — an
  * account that never finished onboarding — so it is rendered in mono to say so,
  * rather than being dressed up as a person's name.
+ *
+ * Every name is a door into the player's dossier — this is the single place that
+ * makes it so, by wrapping the name in `PlayerLink`. A nameless account links too:
+ * an account that never finished onboarding is exactly the one staff wants to open.
  */
 export function Player({
   name,
@@ -115,23 +124,111 @@ export function Player({
   const nameless = id.startsWith(name) && name.length < 12;
 
   return (
-    <span
-      title={id}
+    <PlayerLink
+      userId={id}
+      name={name}
       className={cn(
-        "block truncate",
+        "block",
         nameless
           ? "font-mono text-[11px] text-[var(--text-tertiary)]"
           : strong
             ? "font-600 text-[var(--text-primary)]"
             : "text-[var(--text-primary)]"
       )}
-    >
-      {name}
-    </span>
+    />
   );
 }
 
 /** An absent value the API genuinely did not send. Never a stand-in for one we forgot to fetch. */
 export function Absent({ children = "—" }: { children?: string }) {
   return <span className="text-[var(--text-tertiary)]">{children}</span>;
+}
+
+/**
+ * ── Match type ────────────────────────────────────────────────────────────────
+ *
+ * The booking's mode, as a quiet piece of metadata — not an alert. It is context
+ * for a row, so it uses the `muted` badge: transparent ground, tertiary text, a
+ * hairline border. Red stays reserved for money and moderation; this never spends
+ * an alert colour on describing what kind of match it is.
+ *
+ * The BFF sends the five slugs enumerated in the OpenAPI spec. An absent value —
+ * or a slug this map does not know — renders NOTHING rather than a raw slug: a
+ * chip is worth showing only when it can say a real word.
+ */
+const MATCH_TYPE_LABELS: Record<string, string> = {
+  casual: "Casual",
+  ranked: "Rank",
+  quick: "Rápida",
+  social: "Social",
+  event: "Evento",
+};
+
+/** The human label for a booking's `match_type`, or undefined when absent/unknown. */
+export function matchTypeLabel(value?: string): string | undefined {
+  if (!value) return undefined;
+  return MATCH_TYPE_LABELS[value];
+}
+
+export function MatchType({ value }: { value?: string }) {
+  const label = matchTypeLabel(value);
+  if (!label) return null;
+  return <Badge variant="muted">{label}</Badge>;
+}
+
+/**
+ * ── Contact ───────────────────────────────────────────────────────────────────
+ *
+ * A player's reachable channels — email as a `mailto:`, phone as a WhatsApp
+ * deep-link — for the two panels the BFF enriches with them (convites,
+ * cancelamentos). Everywhere else `OpsUserRef.email`/`phone` are absent, and this
+ * renders the honest `Absent` dash rather than a placeholder.
+ *
+ * Phone arrives E.164 ("+5511999999999"); `wa.me` wants bare digits, so the "+"
+ * and any punctuation are stripped. Phone is empty on most rows today (PhoneSync
+ * has not backfilled it) — that is expected, and an email-only or fully-empty
+ * contact is shown as-is, never hidden.
+ *
+ * Quiet exactly like `PlayerLink`: inherits the surrounding type, reveals colour
+ * and underline only on hover/focus. Each link stops propagation because
+ * DataTable rows are click targets that expand — a click on a contact must open
+ * mail/WhatsApp without also toggling the row open behind it.
+ */
+const QUIET_LINK = cn(
+  "rounded-sm underline-offset-2 transition-colors",
+  "hover:text-[var(--primary)] hover:underline",
+  "focus-visible:text-[var(--primary)] focus-visible:underline"
+);
+
+export function Contact({ user }: { user: OpsUserRef }) {
+  const email = user.email?.trim();
+  const phone = user.phone?.trim();
+  const waDigits = phone ? phone.replace(/\D/g, "") : "";
+
+  if (!email && !waDigits) return <Absent />;
+
+  return (
+    <span className="flex flex-col gap-0.5">
+      {email && (
+        <a
+          href={`mailto:${email}`}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(QUIET_LINK, "break-all")}
+        >
+          {email}
+        </a>
+      )}
+      {waDigits && (
+        <a
+          href={`https://wa.me/${waDigits}`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className={QUIET_LINK}
+        >
+          {phone}
+        </a>
+      )}
+    </span>
+  );
 }

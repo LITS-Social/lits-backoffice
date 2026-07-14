@@ -5,7 +5,7 @@ import { DataTable, type DataTableColumn, type DataTableFilterGroup } from "@/co
 import { Badge } from "@/components/ui/badge";
 import { DetailGrid } from "@/components/ui/detail-grid";
 import type { components } from "@/lib/api/openapi";
-import { Absent, Player, When } from "../_components/cells";
+import { Absent, Contact, Player, When, matchTypeLabel } from "../_components/cells";
 
 type CancellationItem = components["schemas"]["CancellationItem"];
 
@@ -189,9 +189,22 @@ export function CancellationsTable({ cancellations }: { cancellations: Cancellat
             },
             { label: "Jogador", value: c.host.name },
             { label: "Jogador ID", value: c.host.user_id, mono: true },
+            { label: "Contato do jogador", value: <Contact user={c.host} /> },
             { label: "Adversário", value: c.guest?.name ?? "—" },
             { label: "Adversário ID", value: c.guest?.user_id ?? "—", mono: true },
+            {
+              label: "Contato do adversário",
+              value: c.guest ? <Contact user={c.guest} /> : <Absent />,
+            },
+            {
+              // The schema does not record who cancelled (see "Quem cancelou" below),
+              // so staff get BOTH contacts and pick the one who was left stranded.
+              label: "Quem contatar",
+              value: "Não sabemos quem cancelou — contato dos dois; fale com o jogador que sobrou.",
+              span: true,
+            },
             { label: "Quadra", value: c.court_label },
+            { label: "Tipo de partida", value: matchTypeLabel(c.match_type) },
             { label: "Horário da partida", value: new Date(c.starts_at).toLocaleString("pt-BR") },
             {
               label: "Cancelado em",

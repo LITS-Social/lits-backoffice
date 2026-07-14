@@ -6,7 +6,7 @@ import { DetailGrid } from "@/components/ui/detail-grid";
 import { PaymentLegs, Price } from "@/components/ui/payment-legs";
 import { formatCurrency } from "@/lib/utils";
 import type { components } from "@/lib/api/openapi";
-import { Absent, Player, When, rail } from "../_components/cells";
+import { Absent, MatchType, Player, When, matchTypeLabel, rail } from "../_components/cells";
 
 type UpcomingMatchItem = components["schemas"]["UpcomingMatchItem"];
 
@@ -97,10 +97,13 @@ const columns: DataTableColumn<UpcomingMatchItem>[] = [
     header: "Quadra",
     sortAccessor: (m) => m.court_label,
     render: (m) => (
-      <span className="flex min-w-0 items-center gap-1">
-        <MapPin size={11} className="shrink-0 text-[var(--text-tertiary)]" />
-        <span className="truncate">{m.court_label}</span>
-      </span>
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="flex min-w-0 items-center gap-1">
+          <MapPin size={11} className="shrink-0 text-[var(--text-tertiary)]" />
+          <span className="truncate">{m.court_label}</span>
+        </span>
+        <MatchType value={m.match_type} />
+      </div>
     ),
   },
   {
@@ -188,6 +191,7 @@ export function UpcomingMatchesTable({ matches }: { matches: UpcomingMatchItem[]
             { label: "Convidado", value: m.guest?.name ?? "—" },
             { label: "Convidado ID", value: m.guest?.user_id ?? "—", mono: true },
             { label: "Quadra", value: m.court_label },
+            { label: "Tipo de partida", value: matchTypeLabel(m.match_type) },
             { label: "Início", value: new Date(m.starts_at).toLocaleString("pt-BR") },
             { label: "Fim", value: new Date(m.ends_at).toLocaleString("pt-BR") },
             { label: "Criada em", value: new Date(m.created_at).toLocaleString("pt-BR") },

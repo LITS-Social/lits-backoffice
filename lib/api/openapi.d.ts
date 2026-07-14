@@ -248,6 +248,8 @@ export interface components {
             host: components["schemas"]["OpsUserRef"];
             /** Format: double */
             hours_before?: number;
+            /** @description Booking mode: casual | ranked | quick | social | event */
+            match_type?: string;
             /** Format: date-time */
             starts_at: string;
             within_policy?: boolean;
@@ -360,6 +362,8 @@ export interface components {
             host: components["schemas"]["OpsUserRef"];
             /** @description Whether the host settled their half, and how much */
             host_payment: components["schemas"]["PaymentLeg"];
+            /** @description Booking mode: casual | ranked | quick | social | event */
+            match_type?: string;
             /**
              * Format: int64
              * @description Booking total in centavos; 0 for a free (public-court) booking
@@ -614,8 +618,12 @@ export interface components {
             user: components["schemas"]["OpsUserRef"];
         };
         OpsUserRef: {
+            /** @description Account email (users.email); staff-only, only on contact-enriched panels */
+            email?: string;
             /** @description Display name resolved from user-service (profiles.display_name) */
             name: string;
+            /** @description Login phone E.164 (users.phone_e164); staff-only, empty until PhoneSync backfills it */
+            phone?: string;
             /** @description UUIDv7 of the user */
             user_id: string;
         };
@@ -747,6 +755,8 @@ export interface components {
             guest_payment?: components["schemas"]["PaymentLeg"];
             host: components["schemas"]["OpsUserRef"];
             host_payment: components["schemas"]["PaymentLeg"];
+            /** @description Booking mode: casual | ranked | quick | social | event */
+            match_type?: string;
             payment_settled: boolean;
             payment_status?: string;
             /** Format: int64 */

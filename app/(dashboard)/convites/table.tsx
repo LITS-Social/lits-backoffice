@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { DetailGrid } from "@/components/ui/detail-grid";
 import { PaymentLegs, Price } from "@/components/ui/payment-legs";
 import type { components } from "@/lib/api/openapi";
-import { Player, When, rail } from "../_components/cells";
+import { Contact, MatchType, Player, When, matchTypeLabel, rail } from "../_components/cells";
 import { CountdownTimer, URGENT_MS } from "./countdown-timer";
 
 type OpenInviteItem = components["schemas"]["OpenInviteItem"];
@@ -85,10 +85,19 @@ const columns: DataTableColumn<OpenInviteItem>[] = [
     header: "Quadra",
     sortAccessor: (i) => i.court_label,
     render: (i) => (
-      <span className="flex min-w-0 items-center gap-1">
-        <MapPin size={11} className="shrink-0 text-[var(--text-tertiary)]" />
-        <span className="truncate">{i.court_label}</span>
-      </span>
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="flex min-w-0 items-center gap-1">
+          <MapPin size={11} className="shrink-0 text-[var(--text-tertiary)]" />
+          <span className="truncate">{i.court_label}</span>
+        </span>
+        {/*
+          Reads "Casual" on every row here by design: this panel is filtered to
+          bookings in awaiting_guest_accept, a state the app only produces for
+          casual matches. The chip stays anyway so the column is honest the day a
+          non-casual invite can reach it.
+        */}
+        <MatchType value={i.match_type} />
+      </div>
     ),
   },
   {
@@ -179,9 +188,13 @@ export function OpenInvitesTable({ invites }: { invites: OpenInviteItem[] }) {
             { label: "Booking ID", value: i.booking_id, mono: true, span: true },
             { label: "Convidado", value: i.guest.name },
             { label: "Convidado ID", value: i.guest.user_id, mono: true },
+            // Both sides, because the founder chases whichever one has not answered.
+            { label: "Contato do convidado", value: <Contact user={i.guest} /> },
             { label: "Host", value: i.host.name },
             { label: "Host ID", value: i.host.user_id, mono: true },
+            { label: "Contato do host", value: <Contact user={i.host} /> },
             { label: "Quadra", value: i.court_label },
+            { label: "Tipo de partida", value: matchTypeLabel(i.match_type) },
             { label: "Início da partida", value: new Date(i.starts_at).toLocaleString("pt-BR") },
             { label: "Criado em", value: new Date(i.created_at).toLocaleString("pt-BR") },
             {
