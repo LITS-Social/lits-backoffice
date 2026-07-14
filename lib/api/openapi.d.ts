@@ -881,7 +881,12 @@ export interface operations {
     };
     "ops-list-open-invites": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Max rows to return */
+                limit?: number;
+                /** @description Rows to skip (paging) */
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, ChevronsUpDown, ChevronUp } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "./empty-state";
 import { SearchInput } from "./search-input";
@@ -49,6 +49,9 @@ export interface DataTableProps<T> {
   emptyMessage: string;
   /** Shown when search/filters narrow the (non-empty) data to zero rows. */
   noResultsMessage?: string;
+  /** Rows per page. The table paginates client-side over the full fetched set,
+   *  so search/sort/filter still span everything — only the display is paged. */
+  pageSize?: number;
 }
 
 function compareValues(a: string | number, b: string | number): number {
@@ -68,8 +71,10 @@ export function DataTable<T>({
   rowClassName,
   emptyMessage,
   noResultsMessage = "Nada encontrado para os filtros ou busca aplicados.",
+  pageSize = 25,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection } | null>(
     initialSort ?? null
   );
@@ -113,6 +118,21 @@ export function DataTable<T>({
   }, [filtered, sort, columns]);
 
   const narrowed = sorted.length !== rows.length;
+
+  // Paginate the FULLY filtered+sorted set, so a search covers every row and only
+  // the rendered slice is a page. Clamp rather than store a page that a shrinking
+  // result set has put out of range — narrowing to 3 rows must not strand you on
+  // page 5 staring at an empty table.
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const paged = sorted.slice(safePage * pageSize, safePage * pageSize + pageSize);
+
+  // A new search/filter/sort resets to the first page — page 4 of the old result
+  // set is meaningless against the new one.
+  const resetKey = `${search}|${sort?.columnId ?? ""}|${sort?.direction ?? ""}|${Object.values(activeFilters).join(",")}`;
+  useEffect(() => {
+    setPage(0);
+  }, [resetKey]);
 
   const gridTemplate = [renderDetail ? "20px" : null, ...columns.map((c) => c.width ?? "1fr")]
     .filter((v): v is string => v !== null)
@@ -221,7 +241,7 @@ export function DataTable<T>({
           </div>
 
           <div>
-            {sorted.map((row) => {
+            {paged.map((row) => {
               const key = rowKey(row);
               const isExpanded = expanded.has(key);
               const extraClass = rowClassName?.(row);
@@ -289,6 +309,39 @@ export function DataTable<T>({
               );
             })}
           </div>
+
+          {/* Pager. Only earns its space once there is more than one page. */}
+          {sorted.length > pageSize && (
+            <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--surface-sunken)] px-4 py-2.5">
+              <span className="label-colus text-[8.5px] text-[var(--text-tertiary)]">
+                {safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, sorted.length)} de{" "}
+                {sorted.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPage(safePage - 1)}
+                  disabled={safePage === 0}
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                  aria-label="Página anterior"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="label-colus min-w-[3.5rem] text-center text-[8.5px] text-[var(--text-secondary)] tabular-nums">
+                  {safePage + 1} / {pageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage(safePage + 1)}
+                  disabled={safePage >= pageCount - 1}
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                  aria-label="Próxima página"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
