@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/manual-reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List paid confirmed bookings ops must physically reserve on the club side (panel #02 Reservas Manuais) */
+        get: operations["ops-list-manual-reservations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/open-invites": {
         parameters: {
             query?: never;
@@ -337,6 +354,36 @@ export interface components {
              */
             type: string;
         };
+        ManualReservationItem: {
+            booking_id: string;
+            court_id?: string;
+            /** @description court_name, else private-court bairro/rua, else street_address */
+            court_label: string;
+            currency?: string;
+            guest?: components["schemas"]["OpsUserRef"];
+            host: components["schemas"]["OpsUserRef"];
+            /** @description always 'approved' for this panel */
+            payment_status: string;
+            /** Format: int64 */
+            price_cents: number;
+            /** Format: date-time */
+            starts_at: string;
+            /** @description franchises.street_address for the physical reservation call */
+            street_address?: string;
+            /** @description clay | hard | grass | beach | carpet */
+            surface?: string;
+        };
+        ManualReservationsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ManualReservationsResponseBody.json
+             */
+            readonly $schema?: string;
+            reservations: components["schemas"]["ManualReservationItem"][] | null;
+            /** Format: int32 */
+            total: number;
+        };
         OpenInviteItem: {
             /** @description UUIDv7 booking identifier */
             booking_id: string;
@@ -399,6 +446,11 @@ export interface components {
             deleted_at?: string;
             /** @description Account email (users.email); staff-only contact field */
             email?: string;
+            /**
+             * Format: date-time
+             * @description Last activity (users.last_seen_at via TouchLastSeen); último login. Empty until the user's first stamped activity.
+             */
+            last_seen_at?: string;
             /** @description Login phone in E.164 (users.phone_e164); staff-only contact field */
             phone_e164?: string;
             /** @description Canonical role string (e.g. consumer, staff:admin) */
@@ -876,6 +928,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourtIssuesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-manual-reservations": {
+        parameters: {
+            query?: {
+                /** @description Max rows to return */
+                limit?: number;
+                /** @description Rows to skip (paging) */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualReservationsResponseBody"];
                 };
             };
             /** @description Error */

@@ -286,6 +286,12 @@ function Identity({ account, userId }: { account: Dossier["account"]; userId: st
   if (account.created_at) {
     fields.push({ label: "Cadastro", value: <Timestamp iso={account.created_at} /> });
   }
+  // Empty until the account's first stamped activity (TouchLastSeen). Absent means
+  // "never seen since the field shipped", not "seen at epoch" — so it is omitted
+  // rather than faked with a "—", same law as phone_e164 above.
+  if (account.last_seen_at) {
+    fields.push({ label: "Último login", value: <Timestamp iso={account.last_seen_at} /> });
+  }
   if (account.deleted_at) {
     fields.push({ label: "Excluída em", value: <Timestamp iso={account.deleted_at} /> });
   }

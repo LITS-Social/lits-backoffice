@@ -32,7 +32,7 @@ export type OpsSummary = Record<string, PanelStat>;
 export const getOpsSummary = cache(async (): Promise<OpsSummary> => {
   const api = await getApi();
 
-  const [invites, payments, evaluations, upcoming, cancellations, courtIssues, reports] =
+  const [invites, payments, evaluations, upcoming, cancellations, courtIssues, reports, manualReservations] =
     await Promise.all([
       api.GET("/v1/ops/open-invites"),
       api.GET("/v1/ops/payment-issues"),
@@ -41,6 +41,7 @@ export const getOpsSummary = cache(async (): Promise<OpsSummary> => {
       api.GET("/v1/ops/cancellations", { params: { query: { limit: 50, offset: 0 } } }),
       api.GET("/v1/ops/court-issues"),
       api.GET("/v1/ops/reports", { params: { query: { limit: 50, offset: 0 } } }),
+      api.GET("/v1/ops/manual-reservations", { params: { query: { limit: 50, offset: 0 } } }),
     ]);
 
   // Prefer the server's `total` over the length of the page we happened to fetch.
@@ -73,5 +74,6 @@ export const getOpsSummary = cache(async (): Promise<OpsSummary> => {
     "07": stat("07", courtIssues.data?.issues, !!courtIssues.error, courtIssues.data?.total),
     "08": stat("08", evaluations.data?.players, !!evaluations.error, evaluations.data?.total),
     "09": stat("09", reports.data?.reports, !!reports.error, reports.data?.total),
+    "10": stat("10", manualReservations.data?.reservations, !!manualReservations.error, manualReservations.data?.total),
   };
 });
