@@ -123,6 +123,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all posts across every author (backoffice content console)
+         * @description Cross-author list from feed-service AdminListPosts. Keyset-paginated newest-first; `q` searches caption; `include_deleted` toggles soft-deleted rows. Author display identities are joined best-effort from user-service. `reported` is true when an open (pending/reviewing) report targets the post.
+         */
+        get: operations["ops-list-posts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/posts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a post (staff override, audited)
+         * @description Staff soft-delete: feed-service AdminDeletePost sets deleted_at (never a hard delete) and writes an append-only ops_audit_log row stamped with the acting staff principal. Requires an authenticated staff identity — the same gate the other write ops endpoints use.
+         */
+        delete: operations["ops-delete-post"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/reports": {
         parameters: {
             query?: never;
@@ -186,6 +226,26 @@ export interface paths {
         };
         /** List confirmed upcoming matches (panel #01 Aguardando Jogo) */
         get: operations["ops-list-upcoming-matches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all users (backoffice user console)
+         * @description Cross-user list from user-service AdminListUsers (users LEFT JOIN profiles in one query). Keyset-paginated newest-first; `q` filters over name/username/email/phone. No `total` (keyset, no COUNT). posts_count/bookings_count are best-effort 0 — no cheap per-user count RPC exists.
+         */
+        get: operations["ops-list-users"];
         put?: never;
         post?: never;
         delete?: never;
@@ -307,6 +367,31 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        DeletePostRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeletePostRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Optional reason recorded in the ops audit log */
+            reason?: string;
+        };
+        DeletePostResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeletePostResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: date-time
+             * @description Soft-delete timestamp (RFC3339)
+             */
+            deleted_at: string;
+            /** @description UUIDv7 of the soft-deleted post */
+            post_id: string;
+        };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
             location?: string;
@@ -353,6 +438,32 @@ export interface components {
              * @example https://example.com/errors/example
              */
             type: string;
+        };
+        ListAllPostsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListAllPostsResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description True when more posts exist beyond this page */
+            has_more: boolean;
+            /** @description Cursor for the next page; empty when no more pages */
+            next_cursor?: string;
+            posts: components["schemas"]["OpsPostRow"][] | null;
+        };
+        ListAllUsersResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListAllUsersResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description True when more users exist beyond this page */
+            has_more: boolean;
+            /** @description Cursor for the next page; empty when no more pages */
+            next_cursor?: string;
+            users: components["schemas"]["OpsUserRow"][] | null;
         };
         ManualReservationItem: {
             booking_id: string;
@@ -580,6 +691,44 @@ export interface components {
              */
             unpaid_legs: number;
         };
+        OpsPostAuthor: {
+            /** @description URL of the author's first profile photo; empty when none */
+            avatar_url?: string;
+            /** @description Display name (profiles.display_name, else @username, else short id) */
+            name: string;
+            /** @description UUIDv7 of the author */
+            user_id: string;
+            /** @description users.username; absent when never set */
+            username?: string;
+        };
+        OpsPostRow: {
+            /** @description 1-2 author UUIDv7s (2 for co-authored score posts) */
+            author_ids: string[] | null;
+            /** @description Display identity for each author id, best-effort via user-service */
+            authors: components["schemas"]["OpsPostAuthor"][] | null;
+            caption?: string;
+            /** Format: int32 */
+            comments_count: number;
+            /** Format: date-time */
+            created_at?: string;
+            /**
+             * Format: date-time
+             * @description Soft-delete timestamp; absent when the post is live
+             */
+            deleted_at?: string;
+            /** @description UUIDv7 of the post */
+            id: string;
+            /** Format: int32 */
+            likes_count: number;
+            /** @description CDN URLs of attached photos */
+            photo_urls?: string[] | null;
+            /** @description photo | score | match | general | unspecified */
+            post_type: string;
+            /** @description True when an open (pending/reviewing) report targets this post */
+            reported: boolean;
+            /** @description Structured score payload (canonical posts.score_json); absent for non-score posts */
+            score_json?: unknown;
+        };
         OpsSearchBooking: {
             /** @description UUIDv7 booking identifier */
             booking_id: string;
@@ -678,6 +827,47 @@ export interface components {
             phone?: string;
             /** @description UUIDv7 of the user */
             user_id: string;
+        };
+        OpsUserRow: {
+            /** @description URL of the first profile photo; empty when none */
+            avatar_url?: string;
+            /**
+             * Format: int32
+             * @description Always 0 — no cheap per-user count RPC exists; best-effort, see the user dossier for real per-user rollups
+             */
+            bookings_count: number;
+            /**
+             * Format: date-time
+             * @description Account creation (RFC3339)
+             */
+            created_at?: string;
+            /** @description users.email (staff-only contact field) */
+            email?: string;
+            /** @description UUIDv7 of the user */
+            id: string;
+            /**
+             * Format: date-time
+             * @description Last activity (users.last_seen_at); empty until first stamped activity
+             */
+            last_seen_at?: string;
+            /** @description Skill category A|B|C|D|PRO (profiles.category); empty until nivelamento */
+            level?: string;
+            /** @description Display name resolved from profiles.display_name, else @username, else short id */
+            name: string;
+            /** @description Login phone in E.164 (users.phone_e164); staff-only */
+            phone_e164?: string;
+            /**
+             * Format: int32
+             * @description Always 0 — no cheap per-user count RPC exists; best-effort, see the user dossier for real per-user rollups
+             */
+            posts_count: number;
+            /** @description users.username; absent when never set */
+            username?: string;
+            /**
+             * Format: int32
+             * @description Gamification level (profiles.xp_level); 0 when the user has no profile
+             */
+            xp_level: number;
         };
         PaymentIssueItem: {
             /**
@@ -1072,6 +1262,80 @@ export interface operations {
             };
         };
     };
+    "ops-list-posts": {
+        parameters: {
+            query?: {
+                /** @description Optional caption search (ILIKE). Empty returns all posts. */
+                q?: string;
+                /** @description Opaque keyset cursor from a previous page's next_cursor */
+                cursor?: string;
+                /** @description Max rows to return */
+                limit?: number;
+                /** @description Include soft-deleted posts (default false) */
+                include_deleted?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAllPostsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the post to soft-delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeletePostRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletePostResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-list-reports": {
         parameters: {
             query?: {
@@ -1193,6 +1457,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpcomingMatchesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-users": {
+        parameters: {
+            query?: {
+                /** @description Optional filter over name/username/email/phone (ILIKE). Empty returns all users. */
+                q?: string;
+                /** @description Opaque keyset cursor from a previous page's next_cursor */
+                cursor?: string;
+                /** @description Max rows to return */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAllUsersResponseBody"];
                 };
             };
             /** @description Error */
