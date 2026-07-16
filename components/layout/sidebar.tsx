@@ -13,6 +13,8 @@ import {
   Star,
   Flag,
   CalendarCheck,
+  LayoutGrid,
+  PlusCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { OpsSummary } from "@/lib/ops";
@@ -200,6 +202,60 @@ export function Sidebar({
                   {count}
                 </span>
               ) : null}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* ── Gestão ─────────────────────────────────────────────────────── */}
+      <div className="mx-5 h-px bg-[var(--border)]" />
+      <nav className="px-3 py-4">
+        <p className="label-colus mb-3 px-2 text-[9px] text-[var(--text-tertiary)]">
+          Gestão
+        </p>
+
+        {[
+          { href: "/quadras",      label: "Quadras",      Icon: LayoutGrid },
+          { href: "/quadras/nova", label: "Nova Quadra",  Icon: PlusCircle },
+        ].map(({ href, label, Icon }) => {
+          // "/quadras" must not light up when on "/quadras/nova"
+          const active = href === "/quadras"
+            ? pathname === "/quadras"
+            : pathname === href || pathname.startsWith(href + "/");
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "group relative mb-0.5 flex items-center gap-2.5 rounded-md px-2.5 py-[7px] transition-colors duration-150",
+                active
+                  ? "bg-[var(--primary)]/12 text-[var(--primary)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
+              )}
+            >
+              {active && (
+                <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r-full bg-[var(--primary)]" />
+              )}
+              <span className="label-colus w-4 shrink-0 text-[9px] leading-none tracking-normal text-transparent" />
+              <Icon
+                size={13}
+                strokeWidth={1.75}
+                className={cn(
+                  "shrink-0 transition-colors",
+                  active
+                    ? "text-[var(--primary)]"
+                    : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
+                )}
+              />
+              <span
+                className={cn(
+                  "flex-1 truncate text-[12.5px] leading-none transition-colors",
+                  active ? "font-600" : "font-500"
+                )}
+              >
+                {label}
+              </span>
             </Link>
           );
         })}

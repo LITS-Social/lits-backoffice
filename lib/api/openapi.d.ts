@@ -4,6 +4,59 @@
  */
 
 export interface paths {
+    "/v1/ops/franchises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List bookable franchises (partner + public; excludes listing-only venues) */
+        get: operations["ops-list-franchises"];
+        put?: never;
+        /** Create a new franchise */
+        post: operations["ops-create-franchise"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all courts with franchise info and slot totals */
+        get: operations["ops-list-courts"];
+        put?: never;
+        /** Create a court with pre-generated availability slots (ADR-0063 pricing) */
+        post: operations["ops-create-court"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: { id: string };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Hard-delete a court and all its availability slots */
+        delete: operations["ops-delete-court"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/cancellations": {
         parameters: {
             query?: never;
@@ -218,6 +271,54 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        FranchiseItem: {
+            id: string;
+            slug: string;
+            name: string;
+            /** @description partner | public */
+            kind: string;
+            active: boolean;
+        };
+        ListFranchisesResponseBody: {
+            franchises: components["schemas"]["FranchiseItem"][];
+        };
+        CreateFranchiseRequestBody: {
+            readonly $schema?: string;
+            slug: string;
+            name: string;
+            /** @enum {string} */
+            kind: "partner" | "public";
+        };
+        CreateCourtRequestBody: {
+            readonly $schema?: string;
+            franchise_id: string;
+            name: string;
+            /** @enum {string} */
+            surface: "clay" | "hard" | "grass" | "beach" | "carpet";
+            indoor: boolean;
+            days_forward?: number;
+            start_hour?: number;
+            end_hour?: number;
+        };
+        CreateCourtResponseBody: {
+            readonly $schema?: string;
+            court_id: string;
+            slots_created: number;
+        };
+        CourtListItem: {
+            id: string;
+            franchise_id: string;
+            franchise_name: string;
+            name: string;
+            /** @enum {string} */
+            surface: "clay" | "hard" | "grass" | "beach" | "carpet";
+            indoor: boolean;
+            is_active: boolean;
+            slots_total: number;
+        };
+        ListCourtsResponseBody: {
+            courts: components["schemas"]["CourtListItem"][];
+        };
         AffectedBookingItem: {
             booking_id: string;
             /** Format: date-time */
@@ -845,6 +946,110 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "ops-list-franchises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: { [name: string]: unknown };
+                content: { "application/json": components["schemas"]["ListFranchisesResponseBody"] };
+            };
+            default: {
+                headers: { [name: string]: unknown };
+                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
+            };
+        };
+    };
+    "ops-create-franchise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: { "application/json": components["schemas"]["CreateFranchiseRequestBody"] };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: { [name: string]: unknown };
+                content: { "application/json": components["schemas"]["FranchiseItem"] };
+            };
+            default: {
+                headers: { [name: string]: unknown };
+                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
+            };
+        };
+    };
+    "ops-create-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: { "application/json": components["schemas"]["CreateCourtRequestBody"] };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: { [name: string]: unknown };
+                content: { "application/json": components["schemas"]["CreateCourtResponseBody"] };
+            };
+            default: {
+                headers: { [name: string]: unknown };
+                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
+            };
+        };
+    };
+    "ops-list-courts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: { [name: string]: unknown };
+                content: { "application/json": components["schemas"]["ListCourtsResponseBody"] };
+            };
+            default: {
+                headers: { [name: string]: unknown };
+                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
+            };
+        };
+    };
+    "ops-delete-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: { id: string };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: { [name: string]: unknown };
+                content?: never;
+            };
+            default: {
+                headers: { [name: string]: unknown };
+                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
+            };
+        };
+    };
     "ops-list-cancellations": {
         parameters: {
             query?: {
