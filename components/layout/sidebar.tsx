@@ -15,6 +15,7 @@ import {
   CalendarCheck,
   Users,
   Images,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { OpsSummary } from "@/lib/ops";
@@ -33,6 +34,7 @@ const nav = [
   { id: "10", label: "Reservas Pagas",        href: "/reservas-pagas",         icon: CalendarCheck },
   { id: "11", label: "Usuários",              href: "/usuarios",               icon: Users },
   { id: "12", label: "Posts",                 href: "/posts",                  icon: Images },
+  { id: "13", label: "Enviar Anúncio",        href: "/anuncios",               icon: Megaphone },
 ];
 
 // Red is the money-and-moderation colour. Only these panels get to use it, and
