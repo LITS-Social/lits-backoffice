@@ -4,6 +4,94 @@
  */
 
 export interface paths {
+    "/v1/ops/announcements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Broadcast a push + inbox announcement to a saved audience (or all PlayTennis members)
+         * @description Resolves the target member set: audience_id fans out via user-service ListUsersByAudience; an empty audience_id falls back to every PlayTennis member (ListUsersByPreferredClubBrand(brand=playtennis)) for backward compatibility. Dispatches a push + inbox notification per member via notifications-service Send with a bounded worker pool. Best-effort per recipient: a single Send failure is counted, never aborting the broadcast. Returns sent/failed/total. Staff-gated like the other /v1/ops/* write endpoints.
+         */
+        post: operations["ops-send-announcement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/audiences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List saved announcement audiences (panel #13 targeting picker)
+         * @description Fetches the saved audience filters from user-service ListAudiences, ordered presets-first then by name. `include_deleted` toggles soft-deleted rows. Staff-gated.
+         */
+        get: operations["ops-list-audiences"];
+        put?: never;
+        /**
+         * Create a saved announcement audience (panel #13 write)
+         * @description Persists a new audience filter (name + classes/genders/club_brand) via user-service CreateAudience. is_preset is always false for API-created audiences. Staff-gated.
+         */
+        post: operations["ops-create-audience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/audiences/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Live member-count preview for a saved or inline audience filter (panel #13)
+         * @description Returns the live reach of a filter via user-service CountAudienceMembers: pass audience_id to count a saved audience, or inline classes/genders/club_brand to preview an unsaved filter (the debounced call the UI makes while building a filter). Reports matched + missing_category. Staff-gated.
+         */
+        post: operations["ops-count-audience-members"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/audiences/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update a saved announcement audience (panel #13 write)
+         * @description Replaces the name and filter dimensions of an existing audience via user-service UpdateAudience. Staff-gated.
+         */
+        put: operations["ops-update-audience"];
+        post?: never;
+        /**
+         * Soft-delete a saved announcement audience (panel #13 write)
+         * @description Soft-deletes an audience (stamps deleted_at) via user-service DeleteAudience. Preset audiences cannot be deleted — the call returns 400. Staff-gated.
+         */
+        delete: operations["ops-delete-audience"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/cancellations": {
         parameters: {
             query?: never;
@@ -287,6 +375,57 @@ export interface components {
             /** Format: date-time */
             starts_at: string;
         };
+        AudienceBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AudienceBody.json
+             */
+            readonly $schema?: string;
+            /** @description category_skill values to include (A | B | C | D | PRO); empty = any class */
+            classes?: string[] | null;
+            /** @description Franchise brand scope (e.g. playtennis); empty = any club */
+            club_brand?: string;
+            /**
+             * Format: date-time
+             * @description Creation timestamp (RFC3339)
+             */
+            created_at?: string;
+            /**
+             * Format: date-time
+             * @description Soft-delete timestamp (RFC3339); present only for soft-deleted audiences
+             */
+            deleted_at?: string;
+            /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender */
+            genders?: string[] | null;
+            /** @description UUIDv7 audience identifier */
+            id: string;
+            /** @description True for seeded system presets; presets cannot be deleted */
+            is_preset: boolean;
+            /** @description Human-readable audience name shown in the picker */
+            name: string;
+            /**
+             * Format: date-time
+             * @description Last mutation timestamp (RFC3339)
+             */
+            updated_at?: string;
+        };
+        AudienceMutationBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AudienceMutationBody.json
+             */
+            readonly $schema?: string;
+            /** @description category_skill values to include (A | B | C | D | PRO); empty = any class */
+            classes?: string[] | null;
+            /** @description Franchise brand scope (e.g. playtennis); empty = any club */
+            club_brand?: string;
+            /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender */
+            genders?: string[] | null;
+            /** @description Human-readable audience name */
+            name: string;
+        };
         BlockCourtSlotRequestBody: {
             /**
              * Format: uri
@@ -342,6 +481,40 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        CountAudienceMembersBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CountAudienceMembersBody.json
+             */
+            readonly $schema?: string;
+            /** @description UUIDv7 of a saved audience to count; empty selects the inline filter below */
+            audience_id?: string;
+            /** @description category_skill values to include (A | B | C | D | PRO); empty = any class. Ignored when audience_id is set */
+            classes?: string[] | null;
+            /** @description Franchise brand scope (e.g. playtennis); empty = any club. Ignored when audience_id is set */
+            club_brand?: string;
+            /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender. Ignored when audience_id is set */
+            genders?: string[] | null;
+        };
+        CountAudienceMembersResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CountAudienceMembersResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of users the filter matches (would receive the announcement)
+             */
+            matched: number;
+            /**
+             * Format: int64
+             * @description Number of users excluded for having no declared skill category
+             */
+            missing_category: number;
+        };
         CourtIssueItem: {
             affected_bookings: components["schemas"]["AffectedBookingItem"][] | null;
             /** @description Reason the founder typed when blocking the slot; absent for sync-pushed blocks (nobody typed one) */
@@ -366,6 +539,16 @@ export interface components {
             issues: components["schemas"]["CourtIssueItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        DeleteAudienceResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteAudienceResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description UUIDv7 of the soft-deleted audience */
+            id: string;
         };
         DeletePostRequestBody: {
             /**
@@ -464,6 +647,15 @@ export interface components {
             /** @description Cursor for the next page; empty when no more pages */
             next_cursor?: string;
             users: components["schemas"]["OpsUserRow"][] | null;
+        };
+        ListAudiencesResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListAudiencesResponseBody.json
+             */
+            readonly $schema?: string;
+            audiences: components["schemas"]["AudienceBody"][] | null;
         };
         ManualReservationItem: {
             booking_id: string;
@@ -984,6 +1176,45 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        SendAnnouncementRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SendAnnouncementRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Saved audience UUIDv7 to target; empty broadcasts to all PlayTennis members (legacy default) */
+            audience_id?: string;
+            /** @description Push + inbox notification body text */
+            body: string;
+            /** @description Deep link routed on tap; defaults to lits://feed when empty */
+            deep_link?: string;
+            /** @description Push + inbox notification title */
+            title: string;
+        };
+        SendAnnouncementResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SendAnnouncementResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Members whose Send failed (counted, not fatal to the broadcast)
+             */
+            failed: number;
+            /**
+             * Format: int64
+             * @description Members the notification was successfully dispatched to
+             */
+            sent: number;
+            /**
+             * Format: int64
+             * @description Total members targeted (audience members, or all PlayTennis members on the legacy default)
+             */
+            total: number;
+        };
         UpcomingMatchItem: {
             alerts?: string[] | null;
             booking_id: string;
@@ -1035,6 +1266,205 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "ops-send-announcement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SendAnnouncementRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendAnnouncementResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-audiences": {
+        parameters: {
+            query?: {
+                /** @description Include soft-deleted audiences (default false) */
+                include_deleted?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAudiencesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-create-audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AudienceMutationBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudienceBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-count-audience-members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CountAudienceMembersBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountAudienceMembersResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-update-audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the audience to update */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AudienceMutationBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudienceBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the audience to soft-delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteAudienceResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-list-cancellations": {
         parameters: {
             query?: {

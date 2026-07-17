@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition, type FormEvent } from "react";
-import { AlertCircle, CheckCircle2, Radio, Send, X } from "lucide-react";
-import { sendAnnouncementAction } from "./actions";
-import type { SendAnnouncementState } from "./types";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
+import { AlertCircle, CheckCircle2, Radio, Send, Users2, X } from "lucide-react";
+import { countAnnouncementAudienceAction, sendAnnouncementAction } from "./actions";
+import type { Audience, SendAnnouncementState } from "./types";
 
 const idle: SendAnnouncementState = { ok: false };
 
@@ -12,27 +12,76 @@ const fieldClass =
 
 const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
 
+type CountState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "done"; matched: number; missingCategory: number }
+  | { status: "error"; message: string };
+
+/** Preset first, else the first audience, else none (legacy all-members target). */
+function defaultAudienceId(audiences: Audience[]): string {
+  return audiences.find((a) => a.is_preset)?.id ?? audiences[0]?.id ?? "";
+}
+
 /**
- * The "Enviar anúncio" write surface: composes a push + inbox broadcast to every
- * PlayTennis member.
+ * The "Enviar anúncio" write surface: composes a push + inbox broadcast to a
+ * chosen audience (panel #14).
  *
  * The Enviar button never sends. It opens a confirm dialog first — this messages
  * real users and cannot be recalled, so a single accidental click must not reach
- * production. The dialog previews the exact title and body about to go out, then
- * the confirm inside it is the only thing that fires the action.
+ * production. The dialog names the audience, its live member count, and previews
+ * the exact title and body about to go out; the confirm inside it is the only
+ * thing that fires the action.
  *
- * Inputs are controlled so the preview shows precisely what will be sent, not a
- * stale snapshot of a form the person kept editing.
+ * When no audiences are available (the list fetch failed), the picker collapses
+ * to the legacy fixed target and the send carries an empty audience_id — exactly
+ * the behaviour that shipped before audiences existed.
  */
-export function AnnouncementForm() {
+export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [deepLink, setDeepLink] = useState("");
+  const [audienceId, setAudienceId] = useState(() => defaultAudienceId(audiences));
+  // Loading from the start when a default audience exists, so the reach preview is
+  // never briefly blank on first paint before the mount fetch resolves.
+  const [count, setCount] = useState<CountState>(() =>
+    defaultAudienceId(audiences) ? { status: "loading" } : { status: "idle" }
+  );
   const [confirming, setConfirming] = useState(false);
   const [state, setState] = useState<SendAnnouncementState>(idle);
   const [isPending, startTransition] = useTransition();
 
+  const reqId = useRef(0);
+
   const canSend = title.trim().length > 0 && body.trim().length > 0;
+  const hasPicker = audiences.length > 0;
+
+  const selectedName = useMemo(
+    () => audiences.find((a) => a.id === audienceId)?.name ?? "todos os membros PlayTennis",
+    [audiences, audienceId]
+  );
+
+  // Live reach of the selected audience. A discrete select, so no debounce — the
+  // loading state is set by whoever changes the selection (initial state on mount,
+  // onChange on switch); the effect only fetches and settles the result, keeping
+  // the same monotonic guard the other panels use against out-of-order responses.
+  useEffect(() => {
+    if (!audienceId) return;
+    const id = ++reqId.current;
+    countAnnouncementAudienceAction(audienceId).then((res) => {
+      if (id !== reqId.current) return;
+      if (!res.ok) {
+        setCount({ status: "error", message: res.error });
+        return;
+      }
+      setCount({ status: "done", matched: res.matched, missingCategory: res.missingCategory });
+    });
+  }, [audienceId]);
+
+  function chooseAudience(id: string) {
+    setAudienceId(id);
+    setCount(id ? { status: "loading" } : { status: "idle" });
+  }
 
   // Esc closes the confirm dialog — but never mid-send, when there is no longer a
   // safe way to back out and cancelling the UI would just hide an in-flight fan-out.
@@ -57,6 +106,7 @@ export function AnnouncementForm() {
     formData.set("title", title.trim());
     formData.set("body", body.trim());
     if (deepLink.trim()) formData.set("deep_link", deepLink.trim());
+    if (audienceId) formData.set("audience_id", audienceId);
 
     startTransition(async () => {
       const result = await sendAnnouncementAction(idle, formData);
@@ -69,6 +119,11 @@ export function AnnouncementForm() {
       }
     });
   }
+
+  const confirmTitle =
+    count.status === "done"
+      ? `Enviar para ${selectedName} — ${count.matched} ${count.matched === 1 ? "membro" : "membros"}?`
+      : `Enviar para ${selectedName}?`;
 
   return (
     <div className="px-8 py-6">
@@ -162,17 +217,62 @@ export function AnnouncementForm() {
             </p>
           </div>
 
-          {/* Audience — fixed, not chosen. There is exactly one broadcast target
-              today, so this states it rather than offering a select of one option. */}
+          {/* Público — a saved audience from panel #14. Defaults to the preset that
+              preserves the old "all PlayTennis members" reach. */}
           <div>
-            <span className={labelClass}>Público</span>
-            <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2">
-              <Radio size={13} strokeWidth={2} className="shrink-0 text-[var(--primary)]" />
-              <span className="text-[13px] font-500 text-[var(--text-primary)]">Membros PlayTennis</span>
-              <span className="ml-auto label-colus text-[8px] text-[var(--text-tertiary)]">
-                Todos
-              </span>
-            </div>
+            <label htmlFor="audience_id" className={labelClass}>
+              Público
+            </label>
+            {hasPicker ? (
+              <>
+                <select
+                  id="audience_id"
+                  value={audienceId}
+                  onChange={(e) => chooseAudience(e.target.value)}
+                  className={fieldClass}
+                >
+                  {audiences.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                      {a.is_preset ? " (preset)" : ""}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Reach preview, before the confirm even opens. */}
+                <p className="mt-2 flex items-center gap-1.5 text-[11.5px] font-300 leading-snug text-[var(--text-secondary)]">
+                  <Users2 size={12} strokeWidth={2} className="shrink-0 text-[var(--primary)]" />
+                  {count.status === "loading" || count.status === "idle" ? (
+                    <span className="text-[var(--text-tertiary)]">Calculando alcance…</span>
+                  ) : count.status === "error" ? (
+                    <span className="text-[var(--color-error)]">{count.message}</span>
+                  ) : (
+                    <span>
+                      Vai enviar para{" "}
+                      <span className="font-600 tabular-nums text-[var(--text-primary)]">
+                        {count.matched}
+                      </span>{" "}
+                      {count.matched === 1 ? "pessoa" : "pessoas"}
+                      {count.missingCategory > 0 && (
+                        <span className="text-[var(--text-tertiary)]">
+                          {" "}· {count.missingCategory} sem classe declarada (fora do envio)
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </p>
+              </>
+            ) : (
+              // Legacy fallback: the audience list could not be loaded, so the send
+              // targets every PlayTennis member with an empty audience_id.
+              <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2">
+                <Radio size={13} strokeWidth={2} className="shrink-0 text-[var(--primary)]" />
+                <span className="text-[13px] font-500 text-[var(--text-primary)]">Membros PlayTennis</span>
+                <span className="ml-auto label-colus text-[8px] text-[var(--text-tertiary)]">
+                  Todos
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end border-t border-[var(--border)] pt-4">
@@ -208,7 +308,7 @@ export function AnnouncementForm() {
                   id="confirm-announcement-title"
                   className="font-display text-[21px] italic leading-tight tracking-[-0.02em] text-[var(--text-primary)]"
                 >
-                  Enviar para todos os membros PlayTennis?
+                  {confirmTitle}
                 </h2>
               </div>
               <button
