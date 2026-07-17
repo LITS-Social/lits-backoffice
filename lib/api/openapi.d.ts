@@ -109,6 +109,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/clubs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search clubs by name for the audience-builder multi-select
+         * @description Case-insensitive substring filter over club name, sorted by name. Backed by booking-service ListClubs (no server-side query — the ~184-club fleet is pulled once and filtered in the BFF). Returns id/name/brand/neighborhood; `id` is the value audience club_ids expects. Staff-gated.
+         */
+        get: operations["ops-search-clubs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/court-holds": {
         parameters: {
             query?: never;
@@ -382,10 +402,34 @@ export interface components {
              * @example https://example.com/schemas/AudienceBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int32
+             * @description Inclusive upper age bound in years; absent = no upper bound
+             */
+            age_max?: number;
+            /**
+             * Format: int32
+             * @description Inclusive lower age bound in years; absent = no lower bound
+             */
+            age_min?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center latitude (WGS84); zero = no geo filter
+             */
+            center_lat?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center longitude (WGS84); zero = no geo filter
+             */
+            center_lng?: number;
+            /** @description City names to include (multi); empty = any city */
+            cities?: string[] | null;
             /** @description category_skill values to include (A | B | C | D | PRO); empty = any class */
             classes?: string[] | null;
             /** @description Franchise brand scope (e.g. playtennis); empty = any club */
             club_brand?: string;
+            /** @description UUIDv7 club ids to scope to (multi); empty = any club */
+            club_ids?: string[] | null;
             /**
              * Format: date-time
              * @description Creation timestamp (RFC3339)
@@ -400,10 +444,25 @@ export interface components {
             genders?: string[] | null;
             /** @description UUIDv7 audience identifier */
             id: string;
+            /** @description intent_kind values to include (sport | networking | friendship); empty = any intent */
+            intents?: string[] | null;
             /** @description True for seeded system presets; presets cannot be deleted */
             is_preset: boolean;
             /** @description Human-readable audience name shown in the picker */
             name: string;
+            /** @description Neighborhood names to include (multi); empty = any neighborhood */
+            neighborhoods?: string[] | null;
+            /** @description play_style values to include (casual | ranked); empty = any play style */
+            play_styles?: string[] | null;
+            /** @description Preferred weekdays (0=Sunday .. 6=Saturday); empty = any day */
+            preferred_days?: number[] | null;
+            /** @description period_of_day values to include (morning | afternoon | evening); empty = any period */
+            preferred_periods?: string[] | null;
+            /**
+             * Format: double
+             * @description Geo-radius in kilometers; zero = no geo filter
+             */
+            radius_km?: number;
             /**
              * Format: date-time
              * @description Last mutation timestamp (RFC3339)
@@ -417,14 +476,53 @@ export interface components {
              * @example https://example.com/schemas/AudienceMutationBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int32
+             * @description Inclusive upper age bound in years; absent = no upper bound
+             */
+            age_max?: number;
+            /**
+             * Format: int32
+             * @description Inclusive lower age bound in years; absent = no lower bound
+             */
+            age_min?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center latitude (WGS84); zero = no geo filter
+             */
+            center_lat?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center longitude (WGS84); zero = no geo filter
+             */
+            center_lng?: number;
+            /** @description City names to include (multi); empty = any city */
+            cities?: string[] | null;
             /** @description category_skill values to include (A | B | C | D | PRO); empty = any class */
             classes?: string[] | null;
             /** @description Franchise brand scope (e.g. playtennis); empty = any club */
             club_brand?: string;
+            /** @description UUIDv7 club ids to scope to (multi); empty = any club */
+            club_ids?: string[] | null;
             /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender */
             genders?: string[] | null;
+            /** @description intent_kind values to include (sport | networking | friendship); empty = any intent */
+            intents?: string[] | null;
             /** @description Human-readable audience name */
             name: string;
+            /** @description Neighborhood names to include (multi); empty = any neighborhood */
+            neighborhoods?: string[] | null;
+            /** @description play_style values to include (casual | ranked); empty = any play style */
+            play_styles?: string[] | null;
+            /** @description Preferred weekdays (0=Sunday .. 6=Saturday); empty = any day */
+            preferred_days?: number[] | null;
+            /** @description period_of_day values to include (morning | afternoon | evening); empty = any period */
+            preferred_periods?: string[] | null;
+            /**
+             * Format: double
+             * @description Geo-radius in kilometers; zero = no geo filter
+             */
+            radius_km?: number;
         };
         BlockCourtSlotRequestBody: {
             /**
@@ -488,14 +586,53 @@ export interface components {
              * @example https://example.com/schemas/CountAudienceMembersBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int32
+             * @description Inclusive upper age bound in years; absent = no upper bound. Ignored when audience_id is set
+             */
+            age_max?: number;
+            /**
+             * Format: int32
+             * @description Inclusive lower age bound in years; absent = no lower bound. Ignored when audience_id is set
+             */
+            age_min?: number;
             /** @description UUIDv7 of a saved audience to count; empty selects the inline filter below */
             audience_id?: string;
+            /**
+             * Format: double
+             * @description Geo-radius center latitude (WGS84); zero = no geo filter. Ignored when audience_id is set
+             */
+            center_lat?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center longitude (WGS84); zero = no geo filter. Ignored when audience_id is set
+             */
+            center_lng?: number;
+            /** @description City names to include (multi); empty = any city. Ignored when audience_id is set */
+            cities?: string[] | null;
             /** @description category_skill values to include (A | B | C | D | PRO); empty = any class. Ignored when audience_id is set */
             classes?: string[] | null;
             /** @description Franchise brand scope (e.g. playtennis); empty = any club. Ignored when audience_id is set */
             club_brand?: string;
+            /** @description UUIDv7 club ids to scope to (multi); empty = any club. Ignored when audience_id is set */
+            club_ids?: string[] | null;
             /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender. Ignored when audience_id is set */
             genders?: string[] | null;
+            /** @description intent_kind values to include (sport | networking | friendship); empty = any intent. Ignored when audience_id is set */
+            intents?: string[] | null;
+            /** @description Neighborhood names to include (multi); empty = any neighborhood. Ignored when audience_id is set */
+            neighborhoods?: string[] | null;
+            /** @description play_style values to include (casual | ranked); empty = any play style. Ignored when audience_id is set */
+            play_styles?: string[] | null;
+            /** @description Preferred weekdays (0=Sunday .. 6=Saturday); empty = any day. Ignored when audience_id is set */
+            preferred_days?: number[] | null;
+            /** @description period_of_day values to include (morning | afternoon | evening); empty = any period. Ignored when audience_id is set */
+            preferred_periods?: string[] | null;
+            /**
+             * Format: double
+             * @description Geo-radius in kilometers; zero = no geo filter. Ignored when audience_id is set
+             */
+            radius_km?: number;
         };
         CountAudienceMembersResponseBody: {
             /**
@@ -657,6 +794,15 @@ export interface components {
             readonly $schema?: string;
             audiences: components["schemas"]["AudienceBody"][] | null;
         };
+        ListClubsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListClubsResponseBody.json
+             */
+            readonly $schema?: string;
+            clubs: components["schemas"]["OpsClub"][] | null;
+        };
         ManualReservationItem: {
             booking_id: string;
             court_id?: string;
@@ -735,6 +881,16 @@ export interface components {
             invites: components["schemas"]["OpenInviteItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        OpsClub: {
+            /** @description Franchise brand (e.g. playtennis); empty for independent venues / parks */
+            brand?: string;
+            /** @description UUIDv7 of the club (franchises.id); the value used in audience club_ids */
+            id: string;
+            /** @description Human-readable club name */
+            name: string;
+            /** @description Neighborhood / district for display; empty when unset */
+            neighborhood?: string;
         };
         OpsDossierAccount: {
             /**
@@ -1484,6 +1640,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CancellationsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-search-clubs": {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring filter over club name; empty returns the first clubs up to limit */
+                q?: string;
+                /** @description Max clubs to return */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListClubsResponseBody"];
                 };
             };
             /** @description Error */
