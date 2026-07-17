@@ -163,6 +163,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/finished-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List played matches, most recent first (panel #02 Finalizadas) */
+        get: operations["ops-list-finished-matches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/manual-reservations": {
         parameters: {
             query?: never;
@@ -758,6 +775,37 @@ export interface components {
              * @example https://example.com/errors/example
              */
             type: string;
+        };
+        FinishedMatchItem: {
+            alerts?: string[] | null;
+            booking_id: string;
+            court_label: string;
+            currency?: string;
+            /** Format: date-time */
+            ends_at: string;
+            guest?: components["schemas"]["OpsUserRef"];
+            guest_payment?: components["schemas"]["PaymentLeg"];
+            host: components["schemas"]["OpsUserRef"];
+            host_payment: components["schemas"]["PaymentLeg"];
+            /** @description Booking mode: casual | ranked | quick | social | event */
+            match_type?: string;
+            payment_settled: boolean;
+            payment_status?: string;
+            /** Format: int64 */
+            price_cents: number;
+            /** Format: date-time */
+            starts_at: string;
+        };
+        FinishedMatchesResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FinishedMatchesResponseBody.json
+             */
+            readonly $schema?: string;
+            matches: components["schemas"]["FinishedMatchItem"][] | null;
+            /** Format: int32 */
+            total: number;
         };
         ListAllPostsResponseBody: {
             /**
@@ -1738,6 +1786,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourtIssuesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-finished-matches": {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinishedMatchesResponseBody"];
                 };
             };
             /** @description Error */
