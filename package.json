@@ -9,7 +9,7 @@
     "lint": "eslint",
     "generate:api": "openapi-typescript ../lits-backend/bffs/bff-backoffice/openapi/openapi.json -o ./lib/api/openapi.d.ts",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "deploy": "rm -rf .open-next && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {

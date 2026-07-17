@@ -4,54 +4,89 @@
  */
 
 export interface paths {
-    "/v1/ops/franchises": {
+    "/v1/ops/announcements": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
-        };
-        /** List bookable franchises (partner + public; excludes listing-only venues) */
-        get: operations["ops-list-franchises"];
-        put?: never;
-        /** Create a new franchise */
-        post: operations["ops-create-franchise"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/ops/courts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List all courts with franchise info and slot totals */
-        get: operations["ops-list-courts"];
-        put?: never;
-        /** Create a court with pre-generated availability slots (ADR-0063 pricing) */
-        post: operations["ops-create-court"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/ops/courts/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: { id: string };
             cookie?: never;
         };
         get?: never;
         put?: never;
+        /**
+         * Broadcast a push + inbox announcement to a saved audience (or all PlayTennis members)
+         * @description Resolves the target member set: audience_id fans out via user-service ListUsersByAudience; an empty audience_id falls back to every PlayTennis member (ListUsersByPreferredClubBrand(brand=playtennis)) for backward compatibility. Dispatches a push + inbox notification per member via notifications-service Send with a bounded worker pool. Best-effort per recipient: a single Send failure is counted, never aborting the broadcast. Returns sent/failed/total. Staff-gated like the other /v1/ops/* write endpoints.
+         */
+        post: operations["ops-send-announcement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/audiences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List saved announcement audiences (panel #13 targeting picker)
+         * @description Fetches the saved audience filters from user-service ListAudiences, ordered presets-first then by name. `include_deleted` toggles soft-deleted rows. Staff-gated.
+         */
+        get: operations["ops-list-audiences"];
+        put?: never;
+        /**
+         * Create a saved announcement audience (panel #13 write)
+         * @description Persists a new audience filter (name + classes/genders/club_brand) via user-service CreateAudience. is_preset is always false for API-created audiences. Staff-gated.
+         */
+        post: operations["ops-create-audience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/audiences/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Live member-count preview for a saved or inline audience filter (panel #13)
+         * @description Returns the live reach of a filter via user-service CountAudienceMembers: pass audience_id to count a saved audience, or inline classes/genders/club_brand to preview an unsaved filter (the debounced call the UI makes while building a filter). Reports matched + missing_category. Staff-gated.
+         */
+        post: operations["ops-count-audience-members"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/audiences/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update a saved announcement audience (panel #13 write)
+         * @description Replaces the name and filter dimensions of an existing audience via user-service UpdateAudience. Staff-gated.
+         */
+        put: operations["ops-update-audience"];
         post?: never;
-        /** Hard-delete a court and all its availability slots */
-        delete: operations["ops-delete-court"];
+        /**
+         * Soft-delete a saved announcement audience (panel #13 write)
+         * @description Soft-deletes an audience (stamps deleted_at) via user-service DeleteAudience. Preset audiences cannot be deleted — the call returns 400. Staff-gated.
+         */
+        delete: operations["ops-delete-audience"];
         options?: never;
         head?: never;
         patch?: never;
@@ -102,6 +137,59 @@ export interface paths {
         get: operations["ops-list-court-issues"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all courts with franchise info and slot totals */
+        get: operations["ops-list-courts"];
+        put?: never;
+        /** Create a court with pre-generated availability slots (ADR-0063 pricing) */
+        post: operations["ops-create-court"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: { id: string };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Hard-delete a court and all its availability slots */
+        delete: operations["ops-delete-court"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/franchises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List bookable franchises (partner + public; excludes listing-only venues) */
+        get: operations["ops-list-franchises"];
+        put?: never;
+        /** Create a new franchise */
+        post: operations["ops-create-franchise"];
         delete?: never;
         options?: never;
         head?: never;
@@ -176,6 +264,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all posts across every author (backoffice content console)
+         * @description Cross-author list from feed-service AdminListPosts. Keyset-paginated newest-first; `q` searches caption; `include_deleted` toggles soft-deleted rows. Author display identities are joined best-effort from user-service. `reported` is true when an open (pending/reviewing) report targets the post.
+         */
+        get: operations["ops-list-posts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/posts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a post (staff override, audited)
+         * @description Staff soft-delete: feed-service AdminDeletePost sets deleted_at (never a hard delete) and writes an append-only ops_audit_log row stamped with the acting staff principal. Requires an authenticated staff identity — the same gate the other write ops endpoints use.
+         */
+        delete: operations["ops-delete-post"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/reports": {
         parameters: {
             query?: never;
@@ -239,6 +367,26 @@ export interface paths {
         };
         /** List confirmed upcoming matches (panel #01 Aguardando Jogo) */
         get: operations["ops-list-upcoming-matches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all users (backoffice user console)
+         * @description Cross-user list from user-service AdminListUsers (users LEFT JOIN profiles in one query). Keyset-paginated newest-first; `q` filters over name/username/email/phone. No `total` (keyset, no COUNT). posts_count/bookings_count are best-effort 0 — no cheap per-user count RPC exists.
+         */
+        get: operations["ops-list-users"];
         put?: never;
         post?: never;
         delete?: never;
@@ -328,6 +476,57 @@ export interface components {
             /** Format: date-time */
             starts_at: string;
         };
+        AudienceBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AudienceBody.json
+             */
+            readonly $schema?: string;
+            /** @description category_skill values to include (A | B | C | D | PRO); empty = any class */
+            classes?: string[] | null;
+            /** @description Franchise brand scope (e.g. playtennis); empty = any club */
+            club_brand?: string;
+            /**
+             * Format: date-time
+             * @description Creation timestamp (RFC3339)
+             */
+            created_at?: string;
+            /**
+             * Format: date-time
+             * @description Soft-delete timestamp (RFC3339); present only for soft-deleted audiences
+             */
+            deleted_at?: string;
+            /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender */
+            genders?: string[] | null;
+            /** @description UUIDv7 audience identifier */
+            id: string;
+            /** @description True for seeded system presets; presets cannot be deleted */
+            is_preset: boolean;
+            /** @description Human-readable audience name shown in the picker */
+            name: string;
+            /**
+             * Format: date-time
+             * @description Last mutation timestamp (RFC3339)
+             */
+            updated_at?: string;
+        };
+        AudienceMutationBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AudienceMutationBody.json
+             */
+            readonly $schema?: string;
+            /** @description category_skill values to include (A | B | C | D | PRO); empty = any class */
+            classes?: string[] | null;
+            /** @description Franchise brand scope (e.g. playtennis); empty = any club */
+            club_brand?: string;
+            /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender */
+            genders?: string[] | null;
+            /** @description Human-readable audience name */
+            name: string;
+        };
         BlockCourtSlotRequestBody: {
             /**
              * Format: uri
@@ -383,6 +582,40 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        CountAudienceMembersBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CountAudienceMembersBody.json
+             */
+            readonly $schema?: string;
+            /** @description UUIDv7 of a saved audience to count; empty selects the inline filter below */
+            audience_id?: string;
+            /** @description category_skill values to include (A | B | C | D | PRO); empty = any class. Ignored when audience_id is set */
+            classes?: string[] | null;
+            /** @description Franchise brand scope (e.g. playtennis); empty = any club. Ignored when audience_id is set */
+            club_brand?: string;
+            /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender. Ignored when audience_id is set */
+            genders?: string[] | null;
+        };
+        CountAudienceMembersResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CountAudienceMembersResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of users the filter matches (would receive the announcement)
+             */
+            matched: number;
+            /**
+             * Format: int64
+             * @description Number of users excluded for having no declared skill category
+             */
+            missing_category: number;
+        };
         CourtIssueItem: {
             affected_bookings: components["schemas"]["AffectedBookingItem"][] | null;
             /** @description Reason the founder typed when blocking the slot; absent for sync-pushed blocks (nobody typed one) */
@@ -407,6 +640,41 @@ export interface components {
             issues: components["schemas"]["CourtIssueItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        DeleteAudienceResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteAudienceResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description UUIDv7 of the soft-deleted audience */
+            id: string;
+        };
+        DeletePostRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeletePostRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Optional reason recorded in the ops audit log */
+            reason?: string;
+        };
+        DeletePostResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeletePostResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: date-time
+             * @description Soft-delete timestamp (RFC3339)
+             */
+            deleted_at: string;
+            /** @description UUIDv7 of the soft-deleted post */
+            post_id: string;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -454,6 +722,41 @@ export interface components {
              * @example https://example.com/errors/example
              */
             type: string;
+        };
+        ListAllPostsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListAllPostsResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description True when more posts exist beyond this page */
+            has_more: boolean;
+            /** @description Cursor for the next page; empty when no more pages */
+            next_cursor?: string;
+            posts: components["schemas"]["OpsPostRow"][] | null;
+        };
+        ListAllUsersResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListAllUsersResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description True when more users exist beyond this page */
+            has_more: boolean;
+            /** @description Cursor for the next page; empty when no more pages */
+            next_cursor?: string;
+            users: components["schemas"]["OpsUserRow"][] | null;
+        };
+        ListAudiencesResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListAudiencesResponseBody.json
+             */
+            readonly $schema?: string;
+            audiences: components["schemas"]["AudienceBody"][] | null;
         };
         ManualReservationItem: {
             booking_id: string;
@@ -681,6 +984,44 @@ export interface components {
              */
             unpaid_legs: number;
         };
+        OpsPostAuthor: {
+            /** @description URL of the author's first profile photo; empty when none */
+            avatar_url?: string;
+            /** @description Display name (profiles.display_name, else @username, else short id) */
+            name: string;
+            /** @description UUIDv7 of the author */
+            user_id: string;
+            /** @description users.username; absent when never set */
+            username?: string;
+        };
+        OpsPostRow: {
+            /** @description 1-2 author UUIDv7s (2 for co-authored score posts) */
+            author_ids: string[] | null;
+            /** @description Display identity for each author id, best-effort via user-service */
+            authors: components["schemas"]["OpsPostAuthor"][] | null;
+            caption?: string;
+            /** Format: int32 */
+            comments_count: number;
+            /** Format: date-time */
+            created_at?: string;
+            /**
+             * Format: date-time
+             * @description Soft-delete timestamp; absent when the post is live
+             */
+            deleted_at?: string;
+            /** @description UUIDv7 of the post */
+            id: string;
+            /** Format: int32 */
+            likes_count: number;
+            /** @description CDN URLs of attached photos */
+            photo_urls?: string[] | null;
+            /** @description photo | score | match | general | unspecified */
+            post_type: string;
+            /** @description True when an open (pending/reviewing) report targets this post */
+            reported: boolean;
+            /** @description Structured score payload (canonical posts.score_json); absent for non-score posts */
+            score_json?: unknown;
+        };
         OpsSearchBooking: {
             /** @description UUIDv7 booking identifier */
             booking_id: string;
@@ -779,6 +1120,47 @@ export interface components {
             phone?: string;
             /** @description UUIDv7 of the user */
             user_id: string;
+        };
+        OpsUserRow: {
+            /** @description URL of the first profile photo; empty when none */
+            avatar_url?: string;
+            /**
+             * Format: int32
+             * @description Always 0 — no cheap per-user count RPC exists; best-effort, see the user dossier for real per-user rollups
+             */
+            bookings_count: number;
+            /**
+             * Format: date-time
+             * @description Account creation (RFC3339)
+             */
+            created_at?: string;
+            /** @description users.email (staff-only contact field) */
+            email?: string;
+            /** @description UUIDv7 of the user */
+            id: string;
+            /**
+             * Format: date-time
+             * @description Last activity (users.last_seen_at); empty until first stamped activity
+             */
+            last_seen_at?: string;
+            /** @description Skill category A|B|C|D|PRO (profiles.category); empty until nivelamento */
+            level?: string;
+            /** @description Display name resolved from profiles.display_name, else @username, else short id */
+            name: string;
+            /** @description Login phone in E.164 (users.phone_e164); staff-only */
+            phone_e164?: string;
+            /**
+             * Format: int32
+             * @description Always 0 — no cheap per-user count RPC exists; best-effort, see the user dossier for real per-user rollups
+             */
+            posts_count: number;
+            /** @description users.username; absent when never set */
+            username?: string;
+            /**
+             * Format: int32
+             * @description Gamification level (profiles.xp_level); 0 when the user has no profile
+             */
+            xp_level: number;
         };
         PaymentIssueItem: {
             /**
@@ -895,6 +1277,45 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        SendAnnouncementRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SendAnnouncementRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Saved audience UUIDv7 to target; empty broadcasts to all PlayTennis members (legacy default) */
+            audience_id?: string;
+            /** @description Push + inbox notification body text */
+            body: string;
+            /** @description Deep link routed on tap; defaults to lits://feed when empty */
+            deep_link?: string;
+            /** @description Push + inbox notification title */
+            title: string;
+        };
+        SendAnnouncementResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SendAnnouncementResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Members whose Send failed (counted, not fatal to the broadcast)
+             */
+            failed: number;
+            /**
+             * Format: int64
+             * @description Members the notification was successfully dispatched to
+             */
+            sent: number;
+            /**
+             * Format: int64
+             * @description Total members targeted (audience members, or all PlayTennis members on the legacy default)
+             */
+            total: number;
+        };
         UpcomingMatchItem: {
             alerts?: string[] | null;
             booking_id: string;
@@ -988,6 +1409,104 @@ export interface operations {
             };
         };
     };
+    "ops-send-announcement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SendAnnouncementRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendAnnouncementResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-audiences": {
+        parameters: {
+            query?: {
+                /** @description Include soft-deleted audiences (default false) */
+                include_deleted?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAudiencesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-create-audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AudienceMutationBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudienceBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-create-court": {
         parameters: {
             query?: never;
@@ -1027,6 +1546,107 @@ export interface operations {
             default: {
                 headers: { [name: string]: unknown };
                 content: { "application/problem+json": components["schemas"]["ErrorModel"] };
+            };
+        };
+    };
+    "ops-count-audience-members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CountAudienceMembersBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountAudienceMembersResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-update-audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the audience to update */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AudienceMutationBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudienceBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the audience to soft-delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteAudienceResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
             };
         };
     };
@@ -1277,6 +1897,80 @@ export interface operations {
             };
         };
     };
+    "ops-list-posts": {
+        parameters: {
+            query?: {
+                /** @description Optional caption search (ILIKE). Empty returns all posts. */
+                q?: string;
+                /** @description Opaque keyset cursor from a previous page's next_cursor */
+                cursor?: string;
+                /** @description Max rows to return */
+                limit?: number;
+                /** @description Include soft-deleted posts (default false) */
+                include_deleted?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAllPostsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the post to soft-delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeletePostRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletePostResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-list-reports": {
         parameters: {
             query?: {
@@ -1398,6 +2092,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpcomingMatchesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-users": {
+        parameters: {
+            query?: {
+                /** @description Optional filter over name/username/email/phone (ILIKE). Empty returns all users. */
+                q?: string;
+                /** @description Opaque keyset cursor from a previous page's next_cursor */
+                cursor?: string;
+                /** @description Max rows to return */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAllUsersResponseBody"];
                 };
             };
             /** @description Error */

@@ -15,6 +15,10 @@ import {
   CalendarCheck,
   LayoutGrid,
   PlusCircle,
+  Users,
+  Users2,
+  Images,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { OpsSummary } from "@/lib/ops";
@@ -31,6 +35,10 @@ const nav = [
   { id: "08", label: "Avaliações",            href: "/avaliacoes",             icon: Star },
   { id: "09", label: "Denúncias",             href: "/denuncias",              icon: Flag },
   { id: "10", label: "Reservas Pagas",        href: "/reservas-pagas",         icon: CalendarCheck },
+  { id: "11", label: "Usuários",              href: "/usuarios",               icon: Users },
+  { id: "12", label: "Posts",                 href: "/posts",                  icon: Images },
+  { id: "13", label: "Enviar Anúncio",        href: "/anuncios",               icon: Megaphone },
+  { id: "14", label: "Públicos",              href: "/publicos",               icon: Users2 },
 ];
 
 // Red is the money-and-moderation colour. Only these panels get to use it, and

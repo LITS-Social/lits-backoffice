@@ -200,6 +200,46 @@ const QUIET_LINK = cn(
   "focus-visible:text-[var(--primary)] focus-visible:underline"
 );
 
+/**
+ * ── Avatar ────────────────────────────────────────────────────────────────────
+ *
+ * A player's or author's profile photo, small, round, on a hairline ring — the
+ * glance-level "who" for the directory (#11) and the feed (#12), the two panels
+ * whose rows are about a person rather than a booking.
+ *
+ * When user-service has no photo (`avatar_url` empty, which is most beta accounts)
+ * it falls back to the first letter of the name on a recessed ground, never a
+ * broken-image icon. Plain `<img>` on purpose: these are arbitrary user-service /
+ * CDN hosts, and next/image would demand each one be allow-listed in
+ * remotePatterns — a config that silently breaks on the first unlisted host.
+ */
+export function Avatar({
+  src,
+  name,
+  size = 26,
+}: {
+  src?: string;
+  name: string;
+  size?: number;
+}) {
+  const initial = name?.trim().charAt(0).toUpperCase() || "?";
+
+  return (
+    <span
+      aria-hidden
+      style={{ width: size, height: size }}
+      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--surface-raised)] text-[var(--text-tertiary)]"
+    >
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
+      ) : (
+        <span className="font-colus text-[10px] leading-none">{initial}</span>
+      )}
+    </span>
+  );
+}
+
 export function Contact({ user }: { user: OpsUserRef }) {
   const email = user.email?.trim();
   const phone = user.phone?.trim();
