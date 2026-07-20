@@ -163,6 +163,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/courts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all courts with franchise info and slot totals */
+        get: operations["ops-list-courts"];
+        put?: never;
+        /**
+         * Create a court with pre-generated availability slots (ADR-0063 pricing)
+         * @description Inserts the court then generates hourly slots for the requested horizon (default 90 days). Pricing: public courts → free; paid courts 10h–17h59 → R$220; 06h–09h59 and 18h+ → R$280.
+         */
+        post: operations["ops-create-court"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Hard-delete a court and all its availability slots */
+        delete: operations["ops-delete-court"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/finished-matches": {
         parameters: {
             query?: never;
@@ -174,6 +212,24 @@ export interface paths {
         get: operations["ops-list-finished-matches"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/franchises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List bookable franchises (partner + public; excludes listing-only venues) */
+        get: operations["ops-list-franchises"];
+        put?: never;
+        /** Create a new franchise */
+        post: operations["ops-create-franchise"];
         delete?: never;
         options?: never;
         head?: never;
@@ -694,6 +750,104 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        CourtListItem: {
+            /** @description Owning franchise UUID */
+            franchise_id: string;
+            /** @description Franchise display name */
+            franchise_name: string;
+            /** @description Court UUID */
+            id: string;
+            /** @description Whether indoors */
+            indoor: boolean;
+            /** @description Whether active */
+            is_active: boolean;
+            /** @description Court display name */
+            name: string;
+            /**
+             * Format: int64
+             * @description Total slot count (including past)
+             */
+            slots_total: number;
+            /** @description Surface type */
+            surface: string;
+        };
+        CreateCourtBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateCourtBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Days of slots to generate ahead (default 90)
+             */
+            days_forward?: number;
+            /**
+             * Format: int64
+             * @description Last slot start hour, inclusive, local time (default 22)
+             */
+            end_hour?: number;
+            /** @description UUID of the owning franchise */
+            franchise_id: string;
+            /** @description Whether the court is indoors */
+            indoor: boolean;
+            /** @description Court display name */
+            name: string;
+            /**
+             * Format: int64
+             * @description Override price in cents for all slots; falls back to franchise default then ADR-0063 formula
+             */
+            price_cents?: number;
+            /**
+             * Format: int64
+             * @description First slot hour, inclusive, local time (default 6)
+             * @default 6
+             */
+            start_hour: number;
+            /**
+             * @description Surface type
+             * @enum {string}
+             */
+            surface: "clay" | "hard" | "grass" | "beach" | "carpet";
+        };
+        CreateCourtResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateCourtResultBody.json
+             */
+            readonly $schema?: string;
+            /** @description UUID of the newly created court */
+            court_id: string;
+            /**
+             * Format: int64
+             * @description Number of availability slots generated
+             */
+            slots_created: number;
+        };
+        CreateFranchiseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateFranchiseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Default slot price in cents for courts in this franchise; falls back to the ADR-0063 formula when unset
+             */
+            default_price_cents?: number;
+            /**
+             * @description Venue kind: partner (paid club) or public (free park)
+             * @enum {string}
+             */
+            kind: "partner" | "public";
+            /** @description Display name */
+            name: string;
+            /** @description URL-safe slug (lowercase, hyphens) */
+            slug: string;
+        };
         DeleteAudienceResponseBody: {
             /**
              * Format: uri
@@ -807,6 +961,24 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        FranchiseItem: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FranchiseItem.json
+             */
+            readonly $schema?: string;
+            /** @description Whether the franchise is currently active */
+            active: boolean;
+            /** @description UUIDv4 franchise identifier */
+            id: string;
+            /** @description Venue kind: partner | public | listing */
+            kind: string;
+            /** @description Display name */
+            name: string;
+            /** @description URL-safe unique slug (citext) */
+            slug: string;
+        };
         ListAllPostsResponseBody: {
             /**
              * Format: uri
@@ -850,6 +1022,24 @@ export interface components {
              */
             readonly $schema?: string;
             clubs: components["schemas"]["OpsClub"][] | null;
+        };
+        ListCourtsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListCourtsBody.json
+             */
+            readonly $schema?: string;
+            courts: components["schemas"]["CourtListItem"][] | null;
+        };
+        ListFranchisesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListFranchisesBody.json
+             */
+            readonly $schema?: string;
+            franchises: components["schemas"]["FranchiseItem"][] | null;
         };
         ManualReservationItem: {
             booking_id: string;
@@ -1799,6 +1989,98 @@ export interface operations {
             };
         };
     };
+    "ops-list-courts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListCourtsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-create-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateCourtBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateCourtResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID to delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-list-finished-matches": {
         parameters: {
             query?: {
@@ -1818,6 +2100,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FinishedMatchesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-franchises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListFranchisesBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-create-franchise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateFranchiseBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FranchiseItem"];
                 };
             };
             /** @description Error */

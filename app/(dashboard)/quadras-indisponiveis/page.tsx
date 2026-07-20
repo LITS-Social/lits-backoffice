@@ -22,10 +22,6 @@ export default async function QuadrasIndisponiveisPage() {
 
   const affectedBookings = issues.reduce((n, i) => n + (i.affected_bookings?.length ?? 0), 0);
 
-  // The number this panel exists for: how many human beings are going to turn up
-  // at a court that is not there. Counted per PERSON, not per booking — a booking
-  // with a guest strands two of them, and warning only the host leaves the other
-  // one standing on the pavement.
   const strandedPlayers = issues.reduce(
     (n, i) => n + (i.affected_bookings ?? []).reduce((m, b) => m + (b.guest ? 2 : 1), 0),
     0
