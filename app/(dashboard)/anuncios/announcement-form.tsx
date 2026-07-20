@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
-import { AlertCircle, CheckCircle2, Radio, Send, Users2, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, CornerDownRight, Radio, Send, Users2, X } from "lucide-react";
 import { countAnnouncementAudienceAction, sendAnnouncementAction } from "./actions";
+import {
+  ANNOUNCEMENT_DESTINATIONS,
+  CUSTOM_DESTINATION,
+  destinationLabel,
+  isValidDeepLink,
+} from "@/lib/announcement-destinations";
 import type { Audience, SendAnnouncementState } from "./types";
 
 const idle: SendAnnouncementState = { ok: false };
@@ -40,7 +46,11 @@ function defaultAudienceId(audiences: Audience[]): string {
 export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [deepLink, setDeepLink] = useState("");
+  // The picked screen: a canonical lits://<host> or the CUSTOM_DESTINATION
+  // sentinel that reveals the advanced free-text input below. Defaults to feed,
+  // matching the legacy "empty deep_link = feed" behaviour.
+  const [destination, setDestination] = useState<string>(ANNOUNCEMENT_DESTINATIONS[0].value);
+  const [customDeepLink, setCustomDeepLink] = useState("");
   const [audienceId, setAudienceId] = useState(() => defaultAudienceId(audiences));
   // Loading from the start when a default audience exists, so the reach preview is
   // never briefly blank on first paint before the mount fetch resolves.
@@ -53,7 +63,14 @@ export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
 
   const reqId = useRef(0);
 
-  const canSend = title.trim().length > 0 && body.trim().length > 0;
+  const isCustom = destination === CUSTOM_DESTINATION;
+  // The lits://<host> string that actually goes out: the picked screen, or the
+  // trimmed free-text value when "Outro (avançado)" is chosen.
+  const effectiveDeepLink = isCustom ? customDeepLink.trim() : destination;
+  // In advanced mode the free-text value must be a well-formed lits:// link, so
+  // the escape hatch can't reintroduce the dead-link typo the picker fixes.
+  const customValid = !isCustom || isValidDeepLink(customDeepLink);
+  const canSend = title.trim().length > 0 && body.trim().length > 0 && customValid;
   const hasPicker = audiences.length > 0;
 
   const selectedName = useMemo(
@@ -105,7 +122,7 @@ export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
     const formData = new FormData();
     formData.set("title", title.trim());
     formData.set("body", body.trim());
-    if (deepLink.trim()) formData.set("deep_link", deepLink.trim());
+    if (effectiveDeepLink) formData.set("deep_link", effectiveDeepLink);
     if (audienceId) formData.set("audience_id", audienceId);
 
     startTransition(async () => {
@@ -115,7 +132,8 @@ export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
         setConfirming(false);
         setTitle("");
         setBody("");
-        setDeepLink("");
+        setDestination(ANNOUNCEMENT_DESTINATIONS[0].value);
+        setCustomDeepLink("");
       }
     });
   }
@@ -200,20 +218,46 @@ export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
             />
           </div>
 
+          {/* Destino — a curated list of the app's navigable screens (mirrors the
+              lits-mobile deep-link resolver), so a hand-typed host can't dead-end.
+              "Outro (avançado)" reveals a validated free-text input for parametric
+              links (lits://profile/{id}) that no fixed screen entry can express. */}
           <div>
-            <label htmlFor="deep_link" className={labelClass}>
-              Deep link <span className="normal-case tracking-normal opacity-70">(opcional)</span>
+            <label htmlFor="destination" className={labelClass}>
+              Destino <span className="normal-case tracking-normal opacity-70">(para onde o toque leva)</span>
             </label>
-            <input
-              id="deep_link"
-              name="deep_link"
-              value={deepLink}
-              onChange={(e) => setDeepLink(e.target.value)}
-              placeholder="lits://..."
-              className={`${fieldClass} font-mono text-[12px]`}
-            />
+            <select
+              id="destination"
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+              className={fieldClass}
+            >
+              {ANNOUNCEMENT_DESTINATIONS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+              <option value={CUSTOM_DESTINATION}>Outro (avançado)…</option>
+            </select>
+
+            {isCustom && (
+              <input
+                id="custom_deep_link"
+                aria-label="Deep link customizado"
+                value={customDeepLink}
+                onChange={(e) => setCustomDeepLink(e.target.value)}
+                placeholder="lits://profile/123"
+                aria-invalid={!customValid}
+                className={`${fieldClass} mt-2 font-mono text-[12px] ${
+                  !customValid ? "border-[var(--color-error)]" : ""
+                }`}
+              />
+            )}
+
             <p className="mt-1.5 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-              Para onde o toque no anúncio leva dentro do app. Deixe vazio para abrir só o feed.
+              {isCustom
+                ? "Deep link paramétrico (avançado). Precisa começar com lits://."
+                : "A tela do app que o anúncio abre. O padrão é o feed."}
             </p>
           </div>
 
@@ -337,9 +381,15 @@ export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
                 <p className="mt-1.5 whitespace-pre-wrap text-[12.5px] font-300 leading-relaxed text-[var(--text-secondary)]">
                   {body.trim()}
                 </p>
-                {deepLink.trim() && (
-                  <p className="mt-2.5 truncate font-mono text-[10.5px] text-[var(--text-tertiary)]">
-                    {deepLink.trim()}
+                {effectiveDeepLink && (
+                  <p className="mt-2.5 flex items-center gap-1.5 text-[11px] font-300 text-[var(--text-tertiary)]">
+                    <CornerDownRight size={11} strokeWidth={2} className="shrink-0" />
+                    <span>
+                      Abre em{" "}
+                      <span className="font-500 text-[var(--text-secondary)]">
+                        {destinationLabel(effectiveDeepLink)}
+                      </span>
+                    </span>
                   </p>
                 )}
               </div>

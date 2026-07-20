@@ -109,6 +109,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/clubs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search clubs by name for the audience-builder multi-select
+         * @description Case-insensitive substring filter over club name, sorted by name. Backed by booking-service ListClubs (no server-side query — the ~184-club fleet is pulled once and filtered in the BFF). Returns id/name/brand/neighborhood; `id` is the value audience club_ids expects. Staff-gated.
+         */
+        get: operations["ops-search-clubs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/court-holds": {
         parameters: {
             query?: never;
@@ -153,7 +173,10 @@ export interface paths {
         /** List all courts with franchise info and slot totals */
         get: operations["ops-list-courts"];
         put?: never;
-        /** Create a court with pre-generated availability slots (ADR-0063 pricing) */
+        /**
+         * Create a court with pre-generated availability slots (ADR-0063 pricing)
+         * @description Inserts the court then generates hourly slots for the requested horizon (default 90 days). Pricing: public courts → free; paid courts 10h–17h59 → R$220; 06h–09h59 and 18h+ → R$280.
+         */
         post: operations["ops-create-court"];
         delete?: never;
         options?: never;
@@ -165,7 +188,7 @@ export interface paths {
         parameters: {
             query?: never;
             header?: never;
-            path: { id: string };
+            path?: never;
             cookie?: never;
         };
         get?: never;
@@ -173,6 +196,23 @@ export interface paths {
         post?: never;
         /** Hard-delete a court and all its availability slots */
         delete: operations["ops-delete-court"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/finished-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List played matches, most recent first (panel #02 Finalizadas) */
+        get: operations["ops-list-finished-matches"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -419,54 +459,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        FranchiseItem: {
-            id: string;
-            slug: string;
-            name: string;
-            /** @description partner | public */
-            kind: string;
-            active: boolean;
-        };
-        ListFranchisesResponseBody: {
-            franchises: components["schemas"]["FranchiseItem"][];
-        };
-        CreateFranchiseRequestBody: {
-            readonly $schema?: string;
-            slug: string;
-            name: string;
-            /** @enum {string} */
-            kind: "partner" | "public";
-        };
-        CreateCourtRequestBody: {
-            readonly $schema?: string;
-            franchise_id: string;
-            name: string;
-            /** @enum {string} */
-            surface: "clay" | "hard" | "grass" | "beach" | "carpet";
-            indoor: boolean;
-            days_forward?: number;
-            start_hour?: number;
-            end_hour?: number;
-        };
-        CreateCourtResponseBody: {
-            readonly $schema?: string;
-            court_id: string;
-            slots_created: number;
-        };
-        CourtListItem: {
-            id: string;
-            franchise_id: string;
-            franchise_name: string;
-            name: string;
-            /** @enum {string} */
-            surface: "clay" | "hard" | "grass" | "beach" | "carpet";
-            indoor: boolean;
-            is_active: boolean;
-            slots_total: number;
-        };
-        ListCourtsResponseBody: {
-            courts: components["schemas"]["CourtListItem"][];
-        };
         AffectedBookingItem: {
             booking_id: string;
             /** Format: date-time */
@@ -483,10 +475,34 @@ export interface components {
              * @example https://example.com/schemas/AudienceBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int32
+             * @description Inclusive upper age bound in years; absent = no upper bound
+             */
+            age_max?: number;
+            /**
+             * Format: int32
+             * @description Inclusive lower age bound in years; absent = no lower bound
+             */
+            age_min?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center latitude (WGS84); zero = no geo filter
+             */
+            center_lat?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center longitude (WGS84); zero = no geo filter
+             */
+            center_lng?: number;
+            /** @description City names to include (multi); empty = any city */
+            cities?: string[] | null;
             /** @description category_skill values to include (A | B | C | D | PRO); empty = any class */
             classes?: string[] | null;
             /** @description Franchise brand scope (e.g. playtennis); empty = any club */
             club_brand?: string;
+            /** @description UUIDv7 club ids to scope to (multi); empty = any club */
+            club_ids?: string[] | null;
             /**
              * Format: date-time
              * @description Creation timestamp (RFC3339)
@@ -501,10 +517,25 @@ export interface components {
             genders?: string[] | null;
             /** @description UUIDv7 audience identifier */
             id: string;
+            /** @description intent_kind values to include (sport | networking | friendship); empty = any intent */
+            intents?: string[] | null;
             /** @description True for seeded system presets; presets cannot be deleted */
             is_preset: boolean;
             /** @description Human-readable audience name shown in the picker */
             name: string;
+            /** @description Neighborhood names to include (multi); empty = any neighborhood */
+            neighborhoods?: string[] | null;
+            /** @description play_style values to include (casual | ranked); empty = any play style */
+            play_styles?: string[] | null;
+            /** @description Preferred weekdays (0=Sunday .. 6=Saturday); empty = any day */
+            preferred_days?: number[] | null;
+            /** @description period_of_day values to include (morning | afternoon | evening); empty = any period */
+            preferred_periods?: string[] | null;
+            /**
+             * Format: double
+             * @description Geo-radius in kilometers; zero = no geo filter
+             */
+            radius_km?: number;
             /**
              * Format: date-time
              * @description Last mutation timestamp (RFC3339)
@@ -518,14 +549,53 @@ export interface components {
              * @example https://example.com/schemas/AudienceMutationBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int32
+             * @description Inclusive upper age bound in years; absent = no upper bound
+             */
+            age_max?: number;
+            /**
+             * Format: int32
+             * @description Inclusive lower age bound in years; absent = no lower bound
+             */
+            age_min?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center latitude (WGS84); zero = no geo filter
+             */
+            center_lat?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center longitude (WGS84); zero = no geo filter
+             */
+            center_lng?: number;
+            /** @description City names to include (multi); empty = any city */
+            cities?: string[] | null;
             /** @description category_skill values to include (A | B | C | D | PRO); empty = any class */
             classes?: string[] | null;
             /** @description Franchise brand scope (e.g. playtennis); empty = any club */
             club_brand?: string;
+            /** @description UUIDv7 club ids to scope to (multi); empty = any club */
+            club_ids?: string[] | null;
             /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender */
             genders?: string[] | null;
+            /** @description intent_kind values to include (sport | networking | friendship); empty = any intent */
+            intents?: string[] | null;
             /** @description Human-readable audience name */
             name: string;
+            /** @description Neighborhood names to include (multi); empty = any neighborhood */
+            neighborhoods?: string[] | null;
+            /** @description play_style values to include (casual | ranked); empty = any play style */
+            play_styles?: string[] | null;
+            /** @description Preferred weekdays (0=Sunday .. 6=Saturday); empty = any day */
+            preferred_days?: number[] | null;
+            /** @description period_of_day values to include (morning | afternoon | evening); empty = any period */
+            preferred_periods?: string[] | null;
+            /**
+             * Format: double
+             * @description Geo-radius in kilometers; zero = no geo filter
+             */
+            radius_km?: number;
         };
         BlockCourtSlotRequestBody: {
             /**
@@ -589,14 +659,53 @@ export interface components {
              * @example https://example.com/schemas/CountAudienceMembersBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int32
+             * @description Inclusive upper age bound in years; absent = no upper bound. Ignored when audience_id is set
+             */
+            age_max?: number;
+            /**
+             * Format: int32
+             * @description Inclusive lower age bound in years; absent = no lower bound. Ignored when audience_id is set
+             */
+            age_min?: number;
             /** @description UUIDv7 of a saved audience to count; empty selects the inline filter below */
             audience_id?: string;
+            /**
+             * Format: double
+             * @description Geo-radius center latitude (WGS84); zero = no geo filter. Ignored when audience_id is set
+             */
+            center_lat?: number;
+            /**
+             * Format: double
+             * @description Geo-radius center longitude (WGS84); zero = no geo filter. Ignored when audience_id is set
+             */
+            center_lng?: number;
+            /** @description City names to include (multi); empty = any city. Ignored when audience_id is set */
+            cities?: string[] | null;
             /** @description category_skill values to include (A | B | C | D | PRO); empty = any class. Ignored when audience_id is set */
             classes?: string[] | null;
             /** @description Franchise brand scope (e.g. playtennis); empty = any club. Ignored when audience_id is set */
             club_brand?: string;
+            /** @description UUIDv7 club ids to scope to (multi); empty = any club. Ignored when audience_id is set */
+            club_ids?: string[] | null;
             /** @description user_gender values to include (male | female | non_binary | prefer_not_say); empty = any gender. Ignored when audience_id is set */
             genders?: string[] | null;
+            /** @description intent_kind values to include (sport | networking | friendship); empty = any intent. Ignored when audience_id is set */
+            intents?: string[] | null;
+            /** @description Neighborhood names to include (multi); empty = any neighborhood. Ignored when audience_id is set */
+            neighborhoods?: string[] | null;
+            /** @description play_style values to include (casual | ranked); empty = any play style. Ignored when audience_id is set */
+            play_styles?: string[] | null;
+            /** @description Preferred weekdays (0=Sunday .. 6=Saturday); empty = any day. Ignored when audience_id is set */
+            preferred_days?: number[] | null;
+            /** @description period_of_day values to include (morning | afternoon | evening); empty = any period. Ignored when audience_id is set */
+            preferred_periods?: string[] | null;
+            /**
+             * Format: double
+             * @description Geo-radius in kilometers; zero = no geo filter. Ignored when audience_id is set
+             */
+            radius_km?: number;
         };
         CountAudienceMembersResponseBody: {
             /**
@@ -640,6 +749,104 @@ export interface components {
             issues: components["schemas"]["CourtIssueItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        CourtListItem: {
+            /** @description Owning franchise UUID */
+            franchise_id: string;
+            /** @description Franchise display name */
+            franchise_name: string;
+            /** @description Court UUID */
+            id: string;
+            /** @description Whether indoors */
+            indoor: boolean;
+            /** @description Whether active */
+            is_active: boolean;
+            /** @description Court display name */
+            name: string;
+            /**
+             * Format: int64
+             * @description Total slot count (including past)
+             */
+            slots_total: number;
+            /** @description Surface type */
+            surface: string;
+        };
+        CreateCourtBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateCourtBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Days of slots to generate ahead (default 90)
+             */
+            days_forward?: number;
+            /**
+             * Format: int64
+             * @description Last slot start hour, inclusive, local time (default 22)
+             */
+            end_hour?: number;
+            /** @description UUID of the owning franchise */
+            franchise_id: string;
+            /** @description Whether the court is indoors */
+            indoor: boolean;
+            /** @description Court display name */
+            name: string;
+            /**
+             * Format: int64
+             * @description Override price in cents for all slots; falls back to franchise default then ADR-0063 formula
+             */
+            price_cents?: number;
+            /**
+             * Format: int64
+             * @description First slot hour, inclusive, local time (default 6)
+             * @default 6
+             */
+            start_hour: number;
+            /**
+             * @description Surface type
+             * @enum {string}
+             */
+            surface: "clay" | "hard" | "grass" | "beach" | "carpet";
+        };
+        CreateCourtResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateCourtResultBody.json
+             */
+            readonly $schema?: string;
+            /** @description UUID of the newly created court */
+            court_id: string;
+            /**
+             * Format: int64
+             * @description Number of availability slots generated
+             */
+            slots_created: number;
+        };
+        CreateFranchiseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateFranchiseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Default slot price in cents for courts in this franchise; falls back to the ADR-0063 formula when unset
+             */
+            default_price_cents?: number;
+            /**
+             * @description Venue kind: partner (paid club) or public (free park)
+             * @enum {string}
+             */
+            kind: "partner" | "public";
+            /** @description Display name */
+            name: string;
+            /** @description URL-safe slug (lowercase, hyphens) */
+            slug: string;
         };
         DeleteAudienceResponseBody: {
             /**
@@ -723,6 +930,55 @@ export interface components {
              */
             type: string;
         };
+        FinishedMatchItem: {
+            alerts?: string[] | null;
+            booking_id: string;
+            court_label: string;
+            currency?: string;
+            /** Format: date-time */
+            ends_at: string;
+            guest?: components["schemas"]["OpsUserRef"];
+            guest_payment?: components["schemas"]["PaymentLeg"];
+            host: components["schemas"]["OpsUserRef"];
+            host_payment: components["schemas"]["PaymentLeg"];
+            /** @description Booking mode: casual | ranked | quick | social | event */
+            match_type?: string;
+            payment_settled: boolean;
+            payment_status?: string;
+            /** Format: int64 */
+            price_cents: number;
+            /** Format: date-time */
+            starts_at: string;
+        };
+        FinishedMatchesResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FinishedMatchesResponseBody.json
+             */
+            readonly $schema?: string;
+            matches: components["schemas"]["FinishedMatchItem"][] | null;
+            /** Format: int32 */
+            total: number;
+        };
+        FranchiseItem: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FranchiseItem.json
+             */
+            readonly $schema?: string;
+            /** @description Whether the franchise is currently active */
+            active: boolean;
+            /** @description UUIDv4 franchise identifier */
+            id: string;
+            /** @description Venue kind: partner | public | listing */
+            kind: string;
+            /** @description Display name */
+            name: string;
+            /** @description URL-safe unique slug (citext) */
+            slug: string;
+        };
         ListAllPostsResponseBody: {
             /**
              * Format: uri
@@ -757,6 +1013,33 @@ export interface components {
              */
             readonly $schema?: string;
             audiences: components["schemas"]["AudienceBody"][] | null;
+        };
+        ListClubsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListClubsResponseBody.json
+             */
+            readonly $schema?: string;
+            clubs: components["schemas"]["OpsClub"][] | null;
+        };
+        ListCourtsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListCourtsBody.json
+             */
+            readonly $schema?: string;
+            courts: components["schemas"]["CourtListItem"][] | null;
+        };
+        ListFranchisesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListFranchisesBody.json
+             */
+            readonly $schema?: string;
+            franchises: components["schemas"]["FranchiseItem"][] | null;
         };
         ManualReservationItem: {
             booking_id: string;
@@ -836,6 +1119,16 @@ export interface components {
             invites: components["schemas"]["OpenInviteItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        OpsClub: {
+            /** @description Franchise brand (e.g. playtennis); empty for independent venues / parks */
+            brand?: string;
+            /** @description UUIDv7 of the club (franchises.id); the value used in audience club_ids */
+            id: string;
+            /** @description Human-readable club name */
+            name: string;
+            /** @description Neighborhood / district for display; empty when unset */
+            neighborhood?: string;
         };
         OpsDossierAccount: {
             /**
@@ -1367,48 +1660,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    "ops-list-franchises": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: { [name: string]: unknown };
-                content: { "application/json": components["schemas"]["ListFranchisesResponseBody"] };
-            };
-            default: {
-                headers: { [name: string]: unknown };
-                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
-            };
-        };
-    };
-    "ops-create-franchise": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: { "application/json": components["schemas"]["CreateFranchiseRequestBody"] };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: { [name: string]: unknown };
-                content: { "application/json": components["schemas"]["FranchiseItem"] };
-            };
-            default: {
-                headers: { [name: string]: unknown };
-                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
-            };
-        };
-    };
     "ops-send-announcement": {
         parameters: {
             query?: never;
@@ -1504,48 +1755,6 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["ErrorModel"];
                 };
-            };
-        };
-    };
-    "ops-create-court": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: { "application/json": components["schemas"]["CreateCourtRequestBody"] };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: { [name: string]: unknown };
-                content: { "application/json": components["schemas"]["CreateCourtResponseBody"] };
-            };
-            default: {
-                headers: { [name: string]: unknown };
-                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
-            };
-        };
-    };
-    "ops-list-courts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: { [name: string]: unknown };
-                content: { "application/json": components["schemas"]["ListCourtsResponseBody"] };
-            };
-            default: {
-                headers: { [name: string]: unknown };
-                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
             };
         };
     };
@@ -1650,26 +1859,6 @@ export interface operations {
             };
         };
     };
-    "ops-delete-court": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: { id: string };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: { [name: string]: unknown };
-                content?: never;
-            };
-            default: {
-                headers: { [name: string]: unknown };
-                content: { "application/problem+json": components["schemas"]["ErrorModel"] };
-            };
-        };
-    };
     "ops-list-cancellations": {
         parameters: {
             query?: {
@@ -1689,6 +1878,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CancellationsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-search-clubs": {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring filter over club name; empty returns the first clubs up to limit */
+                q?: string;
+                /** @description Max clubs to return */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListClubsResponseBody"];
                 };
             };
             /** @description Error */
@@ -1753,6 +1976,192 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourtIssuesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-courts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListCourtsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-create-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateCourtBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateCourtResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID to delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-finished-matches": {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinishedMatchesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-franchises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListFranchisesBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-create-franchise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateFranchiseBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FranchiseItem"];
                 };
             };
             /** @description Error */
