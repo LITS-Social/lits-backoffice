@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { AlertCircle, Check, ChevronRight, Plus } from "lucide-react";
+import { reaisToCents } from "@/lib/utils";
 import {
   createFranchiseAction,
   createCourtAction,
@@ -92,6 +93,7 @@ function FranchiseStep({
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"partner" | "public">("partner");
+  const [defaultPrice, setDefaultPrice] = useState("");
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -102,8 +104,13 @@ function FranchiseStep({
       const f = franchises.find((f) => f.id === selectedId);
       onNext(selectedId, f?.name ?? selectedId);
     } else {
+      const defaultPriceCents = reaisToCents(defaultPrice);
+      if (defaultPrice.trim() !== "" && defaultPriceCents === null) {
+        setError("Preço padrão inválido. Use ex: 220 ou 220,50.");
+        return;
+      }
       startTransition(async () => {
-        const result = await createFranchiseAction(slug.trim(), name.trim(), kind);
+        const result = await createFranchiseAction(slug.trim(), name.trim(), kind, defaultPriceCents);
         if (!result.ok || !result.franchise) {
           setError(result.error ?? "Falha ao criar franquia.");
           return;
@@ -206,6 +213,22 @@ function FranchiseStep({
               ))}
             </div>
           </div>
+          <div>
+            <label htmlFor="default_price" className={labelClass}>
+              Preço padrão da academia (R$)
+            </label>
+            <input
+              id="default_price"
+              inputMode="decimal"
+              value={defaultPrice}
+              onChange={(e) => setDefaultPrice(e.target.value)}
+              placeholder="ex: 220"
+              className={fieldClass}
+            />
+            <p className="mt-1 text-[10.5px] font-300 text-[var(--text-tertiary)]">
+              Opcional. Aplicado às quadras desta academia quando não houver preço próprio.
+            </p>
+          </div>
         </div>
       )}
 
@@ -243,6 +266,7 @@ function CourtStep({
   const [daysForward, setDaysForward] = useState(90);
   const [startHour, setStartHour] = useState(6);
   const [endHour, setEndHour] = useState(22);
+  const [price, setPrice] = useState("");
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -250,6 +274,11 @@ function CourtStep({
     setError("");
     if (!name.trim()) { setError("Informe o nome da quadra."); return; }
     if (startHour >= endHour) { setError("Hora de início deve ser menor que a hora de fim."); return; }
+    const priceCents = reaisToCents(price);
+    if (price.trim() !== "" && priceCents === null) {
+      setError("Preço da quadra inválido. Use ex: 250 ou 250,50.");
+      return;
+    }
     startTransition(async () => {
       const result = await createCourtAction({
         franchiseId,
@@ -259,6 +288,7 @@ function CourtStep({
         daysForward,
         startHour,
         endHour,
+        priceCents,
       });
       if (!result.ok) {
         setError(result.error ?? "Falha ao criar quadra.");
@@ -374,9 +404,24 @@ function CourtStep({
           />
         </div>
       </div>
+
+      <div>
+        <label htmlFor="court_price" className={labelClass}>
+          Preço da quadra (R$) — opcional, sobrepõe o padrão
+        </label>
+        <input
+          id="court_price"
+          inputMode="decimal"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          placeholder="ex: 250"
+          className={fieldClass}
+        />
+      </div>
+
       <p className="text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
         Gera slots das {String(startHour).padStart(2, "0")}h às {String(endHour).padStart(2, "0")}h para os próximos {daysForward} dias.
-        Preços: 10h–17h59 → R$&nbsp;220; demais → R$&nbsp;280; quadras públicas → R$&nbsp;0.
+        Preço personalizado (quadra ou padrão da academia) sobrepõe a fórmula 10h–17h59 → R$&nbsp;220; demais → R$&nbsp;280; quadras públicas → R$&nbsp;0.
       </p>
 
       {error && <ErrorBanner message={error} />}

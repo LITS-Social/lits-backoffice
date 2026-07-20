@@ -28,11 +28,17 @@ export async function listFranchisesAction(): Promise<{ franchises: FranchiseIte
 export async function createFranchiseAction(
   slug: string,
   name: string,
-  kind: "partner" | "public"
+  kind: "partner" | "public",
+  defaultPriceCents?: number | null
 ): Promise<CreateFranchiseState> {
   const api = await getApi();
   const { data, error } = await api.POST("/v1/ops/franchises", {
-    body: { slug, name, kind },
+    body: {
+      slug,
+      name,
+      kind,
+      ...(defaultPriceCents != null ? { default_price_cents: defaultPriceCents } : {}),
+    },
   });
   if (error) return { ok: false, error: error.detail || error.title || "Falha ao criar franquia." };
   return { ok: true, franchise: data };
@@ -46,6 +52,7 @@ export async function createCourtAction(params: {
   daysForward: number;
   startHour: number;
   endHour: number;
+  priceCents?: number | null;
 }): Promise<CreateCourtState> {
   const api = await getApi();
   const { data, error } = await api.POST("/v1/ops/courts", {
@@ -57,6 +64,7 @@ export async function createCourtAction(params: {
       days_forward: params.daysForward,
       start_hour: params.startHour,
       end_hour: params.endHour,
+      ...(params.priceCents != null ? { price_cents: params.priceCents } : {}),
     },
   });
   if (error) return { ok: false, error: error.detail || error.title || "Falha ao criar quadra." };

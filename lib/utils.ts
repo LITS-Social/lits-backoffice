@@ -59,3 +59,32 @@ export function formatCountdown(targetDate: Date): string {
   if (diffMin >= 60) return `${Math.floor(diffMin / 60)}h ${diffMin % 60}min`;
   return `${diffMin}min ${diffSec}s`;
 }
+
+/**
+ * Parse a BRL reais string typed by staff into integer centavos. Handles the
+ * pt-BR convention where "." is the thousands separator and "," the decimal:
+ *   "220" -> 22000, "220,50" -> 22050, "220.50" -> 22050 (US decimal),
+ *   "1.500" -> 150000, "1.500,00" -> 150000, "1.234.567" -> 123456700.
+ * The rightmost separator counts as decimal only when it is followed by 1-2
+ * digits; otherwise every separator is treated as a thousands group. Empty/blank
+ * or non-numeric input returns null so callers can omit the field entirely and
+ * let the backend fall back to its default pricing. Rounds to the nearest cent.
+ */
+export function reaisToCents(input: string): number | null {
+  const cleaned = input.trim().replace(/[^\d.,-]/g, "")
+  if (cleaned === "" || cleaned === "-") return null
+  const lastSep = Math.max(cleaned.lastIndexOf(","), cleaned.lastIndexOf("."))
+  let normalized: string
+  if (lastSep === -1) {
+    normalized = cleaned
+  } else {
+    const decimals = cleaned.length - lastSep - 1
+    const intPart = cleaned.slice(0, lastSep).replace(/[.,]/g, "")
+    const fracPart = cleaned.slice(lastSep + 1)
+    // 1-2 trailing digits => decimal separator; anything else => thousands group.
+    normalized = decimals >= 1 && decimals <= 2 ? `${intPart}.${fracPart}` : intPart + fracPart
+  }
+  const reais = Number(normalized)
+  if (!Number.isFinite(reais) || reais < 0) return null
+  return Math.round(reais * 100)
+}
