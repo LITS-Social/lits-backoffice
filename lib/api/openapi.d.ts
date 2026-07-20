@@ -198,7 +198,91 @@ export interface paths {
         delete: operations["ops-delete-court"];
         options?: never;
         head?: never;
+        /**
+         * Update a court (name, surface, indoor)
+         * @description Partial update: only the provided fields change (COALESCE keeps the rest). Returns the updated court. 404 if the court does not exist.
+         */
+        patch: operations["ops-update-court"];
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}/regenerate-availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wipe and re-lay a court's future availability grid
+         * @description Deletes future available+unbooked slots, then regenerates the hourly grid using the same America/Sao_Paulo timezone logic and ADR-0063 price precedence (body price > franchise default > hour band) as court creation. Booked/blocked slots survive. Returns slots_deleted + slots_created.
+         */
+        post: operations["ops-regenerate-court-availability"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}/reprice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reprice a court going forward (all future, unbooked slots)
+         * @description Sets price_cents on every future slot that is still available (slot_start > now AND status = 'available'). Past slots and booked/blocked slots are never touched. Returns the number of slots repriced.
+         */
+        post: operations["ops-reprice-court"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}/slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a court's availability slots for the slot editor
+         * @description Returns slots in [from, to) (RFC3339; defaults now … now+7d), oldest first, capped at 500. Each row carries slot_start/slot_end, status, price_cents and block_reason.
+         */
+        get: operations["ops-list-court-slots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}/slots/{slot_start}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit a single availability slot (block/unblock, reason, price)
+         * @description slot_start is the RFC3339 instant identifying the slot (URL-encoded). Partial update: only provided fields change; an empty block_reason clears it. 404 if the slot does not exist.
+         */
+        patch: operations["ops-update-court-slot"];
         trace?: never;
     };
     "/v1/ops/finished-matches": {
@@ -234,6 +318,26 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/franchises/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a franchise (name and/or default slot price)
+         * @description Partial update: only the provided fields change (COALESCE keeps the rest). Returns the full updated franchise, including default_price_cents. 404 if the franchise does not exist.
+         */
+        patch: operations["ops-update-franchise"];
         trace?: never;
     };
     "/v1/ops/manual-reservations": {
@@ -725,6 +829,26 @@ export interface components {
              */
             missing_category: number;
         };
+        CourtDetail: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CourtDetail.json
+             */
+            readonly $schema?: string;
+            /** @description Owning franchise UUID */
+            franchise_id: string;
+            /** @description Court UUID */
+            id: string;
+            /** @description Whether indoors */
+            indoor: boolean;
+            /** @description Whether active */
+            is_active: boolean;
+            /** @description Court display name */
+            name: string;
+            /** @description Surface type */
+            surface: string;
+        };
         CourtIssueItem: {
             affected_bookings: components["schemas"]["AffectedBookingItem"][] | null;
             /** @description Reason the founder typed when blocking the slot; absent for sync-pushed blocks (nobody typed one) */
@@ -770,6 +894,27 @@ export interface components {
             slots_total: number;
             /** @description Surface type */
             surface: string;
+        };
+        CourtSlotItem: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CourtSlotItem.json
+             */
+            readonly $schema?: string;
+            /** @description Reason the slot is off the market, or null */
+            block_reason: string | null;
+            /**
+             * Format: int64
+             * @description Slot price in cents, or null
+             */
+            price_cents: number | null;
+            /** @description Slot end instant (RFC3339) */
+            slot_end: string;
+            /** @description Slot start instant (RFC3339) */
+            slot_start: string;
+            /** @description Slot status: available | booked | blocked */
+            status: string;
         };
         CreateCourtBody: {
             /**
@@ -961,6 +1106,29 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        FranchiseDetail: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FranchiseDetail.json
+             */
+            readonly $schema?: string;
+            /** @description Whether the franchise is currently active */
+            active: boolean;
+            /**
+             * Format: int64
+             * @description Default slot price in cents, or null when unset
+             */
+            default_price_cents: number | null;
+            /** @description UUIDv4 franchise identifier */
+            id: string;
+            /** @description Venue kind: partner | public | listing */
+            kind: string;
+            /** @description Display name */
+            name: string;
+            /** @description URL-safe unique slug (citext) */
+            slug: string;
+        };
         FranchiseItem: {
             /**
              * Format: uri
@@ -1022,6 +1190,15 @@ export interface components {
              */
             readonly $schema?: string;
             clubs: components["schemas"]["OpsClub"][] | null;
+        };
+        ListCourtSlotsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListCourtSlotsBody.json
+             */
+            readonly $schema?: string;
+            slots: components["schemas"]["CourtSlotItem"][] | null;
         };
         ListCourtsBody: {
             /**
@@ -1559,6 +1736,53 @@ export interface components {
             resolved_by?: string;
             status: string;
         };
+        RegenerateAvailabilityBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RegenerateAvailabilityBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Days of slots to generate ahead (default 90)
+             */
+            days_forward?: number;
+            /**
+             * Format: int64
+             * @description Last slot start hour, inclusive, local time (default 22)
+             */
+            end_hour?: number;
+            /**
+             * Format: int64
+             * @description Override price in cents for all slots; falls back to franchise default then ADR-0063 formula
+             */
+            price_cents?: number;
+            /**
+             * Format: int64
+             * @description First slot hour, inclusive, local time (default 6)
+             * @default 6
+             */
+            start_hour: number;
+        };
+        RegenerateAvailabilityResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RegenerateAvailabilityResultBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of availability slots generated
+             */
+            slots_created: number;
+            /**
+             * Format: int64
+             * @description Number of future available slots removed before regeneration
+             */
+            slots_deleted: number;
+        };
         ReportsResponseBody: {
             /**
              * Format: uri
@@ -1569,6 +1793,32 @@ export interface components {
             reports: components["schemas"]["PostReportItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        RepriceCourtBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RepriceCourtBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description New price in cents applied to all future available slots
+             */
+            price_cents: number;
+        };
+        RepriceCourtResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RepriceCourtResultBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of future available slots repriced
+             */
+            slots_updated: number;
         };
         SendAnnouncementRequestBody: {
             /**
@@ -1641,6 +1891,58 @@ export interface components {
             matches: components["schemas"]["UpcomingMatchItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        UpdateCourtBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateCourtBody.json
+             */
+            readonly $schema?: string;
+            /** @description Whether the court is indoors (unset = unchanged) */
+            indoor?: boolean;
+            /** @description New court name (unset = unchanged) */
+            name?: string;
+            /**
+             * @description New surface type (unset = unchanged)
+             * @enum {string}
+             */
+            surface?: "clay" | "hard" | "grass" | "beach" | "carpet";
+        };
+        UpdateCourtSlotBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateCourtSlotBody.json
+             */
+            readonly $schema?: string;
+            /** @description Reason the slot is off the market (unset = unchanged; empty string clears it) */
+            block_reason?: string;
+            /**
+             * Format: int64
+             * @description New slot price in cents (unset = unchanged)
+             */
+            price_cents?: number;
+            /**
+             * @description New slot status (unset = unchanged)
+             * @enum {string}
+             */
+            status?: "available" | "blocked";
+        };
+        UpdateFranchiseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateFranchiseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description New default slot price in cents (unset = unchanged)
+             */
+            default_price_cents?: number;
+            /** @description New display name (unset = unchanged) */
+            name?: string;
         };
         UpdateReportStatusRequestBody: {
             /**
@@ -2081,6 +2383,189 @@ export interface operations {
             };
         };
     };
+    "ops-update-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID to update */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UpdateCourtBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourtDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-regenerate-court-availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID to regenerate availability for */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RegenerateAvailabilityBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegenerateAvailabilityResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-reprice-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID to reprice */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RepriceCourtBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepriceCourtResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-court-slots": {
+        parameters: {
+            query?: {
+                /** @description Range start (RFC3339); defaults to now */
+                from?: string;
+                /** @description Range end (RFC3339); defaults to now + 7 days */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Court UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListCourtSlotsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-update-court-slot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID */
+                id: string;
+                /** @description Slot start instant (RFC3339) identifying the slot */
+                slot_start: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UpdateCourtSlotBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourtSlotItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-list-finished-matches": {
         parameters: {
             query?: {
@@ -2162,6 +2647,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FranchiseItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-update-franchise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Franchise UUID to update */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UpdateFranchiseBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FranchiseDetail"];
                 };
             };
             /** @description Error */

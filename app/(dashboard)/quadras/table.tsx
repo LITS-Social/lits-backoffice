@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
+import { Pencil } from "lucide-react";
 import { DataTable, type DataTableColumn, type DataTableFilterGroup } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { DetailGrid } from "@/components/ui/detail-grid";
@@ -173,7 +175,16 @@ export function CourtsTable({ courts }: { courts: CourtListItem[] }) {
           />
           <div>
             <p className="eyebrow mb-3">Ações</p>
-            <DeleteButton court={c} />
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href={`/quadras/${c.id}/editar`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--text-tertiary)]/30 px-3 py-1.5 text-[11.5px] font-500 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Editar quadra
+              </Link>
+              <DeleteButton court={c} />
+            </div>
           </div>
         </div>
       )}
