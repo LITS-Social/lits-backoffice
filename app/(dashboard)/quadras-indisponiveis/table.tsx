@@ -21,8 +21,6 @@ const filters: DataTableFilterGroup<CourtIssueItem>[] = [
     label: "Impacto",
     options: [
       {
-        // The only filter that matters at 6am when a club calls: show me the ones
-        // where somebody is about to be left standing there.
         value: "stranded",
         label: "Com jogadores na mão",
         predicate: (i) => strandedCount(i) > 0,
@@ -42,9 +40,6 @@ const filters: DataTableFilterGroup<CourtIssueItem>[] = [
 
 const columns: DataTableColumn<CourtIssueItem>[] = [
   {
-    // The stranded players lead the row. Everything else on this panel — which
-    // court, whose fault, what time — is detail hanging off the one question that
-    // has a clock on it: who do I have to call?
     id: "stranded",
     header: "Quem fica na mão",
     width: "300px",
@@ -52,8 +47,6 @@ const columns: DataTableColumn<CourtIssueItem>[] = [
     render: (i) => {
       const bookings = i.affected_bookings ?? [];
       if (bookings.length === 0) {
-        // A block that strands nobody is the good outcome. It says so plainly and
-        // then gets out of the way.
         return <span className="text-[11.5px] text-[var(--text-tertiary)]">Ninguém — quadra vazia</span>;
       }
 
@@ -119,20 +112,6 @@ const columns: DataTableColumn<CourtIssueItem>[] = [
     header: "Motivo",
     width: "180px",
     sortAccessor: (i) => i.block_reason ?? "",
-    /**
-     * What the founder typed when he blocked the slot.
-     *
-     * This field could not be shown until now for an embarrassing reason: the
-     * write path INSERTed it into a court_availability.block_reason column that no
-     * migration had ever created, so "Bloquear quadra" — this panel's only write
-     * action — returned HTTP 500 on every call, and the read path never selected
-     * the column either. Both halves are fixed; this is the reason arriving where
-     * it was always meant to land.
-     *
-     * ABSENT renders as nothing at all — not "—", not "sem motivo". A block pushed
-     * by the club availability sync has no reason because nobody typed one, and
-     * printing a placeholder there would dress up an empty column as an answer.
-     */
     render: (i) =>
       i.block_reason ? (
         <span
@@ -151,8 +130,6 @@ export function CourtIssuesTable({ issues }: { issues: CourtIssueItem[] }) {
       rows={issues}
       columns={columns}
       filters={filters}
-      // Most people stranded first — not chronological. The founder is triaging
-      // damage here, and the biggest pile of damage goes at the top.
       initialSort={{ columnId: "stranded", direction: "asc" }}
       rowKey={(i) => `${i.court_id}-${i.slot_start}`}
       searchText={(i) =>
@@ -165,15 +142,6 @@ export function CourtIssuesTable({ issues }: { issues: CourtIssueItem[] }) {
       searchPlaceholder="Buscar por quadra, endereço, motivo ou jogador..."
       emptyMessage="Nenhuma quadra indisponível."
       noResultsMessage="Nenhuma quadra indisponível encontrada para esse filtro ou busca."
-      /**
-       * The rail marks the blocks with people behind them — clay, because this is a
-       * "go warn someone" job, not a debt and not moderation.
-       *
-       * A block with zero affected bookings is completely silent. A club pulling a
-       * court that nobody had booked is not an incident; it is Tuesday. If those
-       * rows glowed too, the ones with two players about to show up to a padlock
-       * would look exactly the same as them.
-       */
       rowClassName={(i) => (strandedCount(i) > 0 ? rail("attention", true) : undefined)}
       renderDetail={(i) => (
         <div className="space-y-5">
@@ -186,9 +154,6 @@ export function CourtIssuesTable({ issues }: { issues: CourtIssueItem[] }) {
               { label: "Origem", value: i.manual ? "Bloqueio manual" : "Reportado pelo clube" },
               { label: "Início do bloqueio", value: new Date(i.slot_start).toLocaleString("pt-BR") },
               { label: "Fim do bloqueio", value: new Date(i.slot_end).toLocaleString("pt-BR") },
-              // Spread-in, not a "—" row: a sync-pushed block has no reason because
-              // nobody typed one, and an empty field is more honest than a dash
-              // pretending to be the answer to "por que essa quadra sumiu?".
               ...(i.block_reason
                 ? [{ label: "Motivo do bloqueio", value: i.block_reason, span: true }]
                 : []),
@@ -207,8 +172,6 @@ export function CourtIssuesTable({ issues }: { issues: CourtIssueItem[] }) {
                     key={b.booking_id}
                     className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-3"
                   >
-                    {/* Both players, both ids. This is the card someone reads with a
-                        phone already in their hand. */}
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                       <span className="text-[12.5px] font-600 text-[var(--text-primary)]">
                         {b.host.name}

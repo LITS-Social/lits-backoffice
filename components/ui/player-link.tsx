@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +20,15 @@ import { cn } from "@/lib/utils";
  * `stopPropagation` matters: DataTable rows are themselves click targets (they
  * expand). Without it, clicking a name would both navigate AND toggle the row
  * open behind you.
+ *
+ * "use client" is required here, not optional: this component carries an
+ * onClick, and a couple of its call sites (RatingsSection/ReportList on the
+ * user dossier page) render it directly from a Server Component tree, not
+ * from inside an already-client-boundary table. Without this directive, that
+ * path throws "Event handlers cannot be passed to Client Component props" —
+ * silently, only for a user who actually has data to render (an empty list
+ * renders EmptyState instead and never hits this component), which is why it
+ * stayed hidden until someone with a real rating opened their dossier.
  */
 export function PlayerLink({
   userId,

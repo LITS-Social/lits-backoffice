@@ -2,8 +2,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { getApi } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { StatRail } from "../_components/stat-rail";
-import { PanelError, TruncationNote } from "../_components/notes";
+import { PanelError, PanelNote, TruncationNote } from "../_components/notes";
 import { PaymentIssuesTable } from "./table";
+import { SuccessfulPaymentsTable } from "./succeeded-table";
 
 /**
  * Ask for more than the beta can currently produce.
@@ -23,9 +24,10 @@ const LIMIT = 500;
 
 export default async function PagamentosPage() {
   const api = await getApi();
-  const { data, error } = await api.GET("/v1/ops/payment-issues", {
-    params: { query: { limit: LIMIT } },
-  });
+  const [{ data, error }, succeededRes] = await Promise.all([
+    api.GET("/v1/ops/payment-issues", { params: { query: { limit: LIMIT } } }),
+    api.GET("/v1/ops/payments-succeeded", { params: { query: { limit: LIMIT } } }),
+  ]);
 
   if (error) {
     return <PanelError eyebrow="#06" title="Problemas de Pagamento" detail={error.detail || error.title} />;
@@ -34,6 +36,15 @@ export default async function PagamentosPage() {
   const issues = data.issues ?? [];
   const total = data.total ?? issues.length;
   const truncated = issues.length < total;
+
+  // Succeeded payments are a SEPARATE fetch from a SEPARATE endpoint — this
+  // section can fail (or come back capped) on its own without hiding the
+  // issues queue above, which is the actionable part of this panel.
+  const succeededFailed = !!succeededRes.error;
+  const succeeded = succeededRes.data?.payments ?? [];
+  const succeededTotal = succeededRes.data?.total ?? succeeded.length;
+  const succeededTruncated = succeeded.length < succeededTotal;
+  const succeededCents = succeeded.reduce((sum, p) => sum + p.amount_cents, 0);
 
   const rejected = issues.filter((i) => i.payment_status === "rejected").length;
   // A stuck payment on a booking that is already CANCELLED is a different animal:
@@ -102,6 +113,16 @@ export default async function PagamentosPage() {
             value: dead,
             hint: scoped("ninguém vai à quadra — é questão de estorno, não de cobrança"),
           },
+          succeededFailed
+            ? { label: "Concluídos", value: 0, unknown: true }
+            : {
+                label: "Concluídos",
+                value: succeededTotal,
+                tone: "calm",
+                hint: succeededTruncated
+                  ? `só ${succeeded.length} carregados — soma abaixo é parcial`
+                  : `soma ${formatCurrency(succeededCents)}`,
+              },
         ]}
       />
 
@@ -118,6 +139,23 @@ export default async function PagamentosPage() {
           reason={`Esta tela pede ${LIMIT} por vez e o beta já passou disso — as demais não chegam ao painel.`}
         />
         <PaymentIssuesTable issues={issues} />
+
+        <div className="pt-6">
+          <p className="eyebrow mb-3">Pagamentos concluídos</p>
+          {succeededFailed ? (
+            <PanelNote>Não foi possível carregar os pagamentos concluídos — a consulta falhou.</PanelNote>
+          ) : (
+            <>
+              <TruncationNote
+                shown={succeeded.length}
+                total={succeededTotal}
+                noun="pagamentos concluídos"
+                reason={`Esta tela pede ${LIMIT} por vez — as demais não chegam ao painel.`}
+              />
+              <SuccessfulPaymentsTable payments={succeeded} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

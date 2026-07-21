@@ -92,6 +92,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/audit-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the staff ops audit ledger
+         * @description Read-only record of staff-initiated destructive/administrative actions (actor, action, target, reason, created_at). ?target_type/?actor filter; cursor-paginated on id DESC.
+         */
+        get: operations["ops-list-audit-log"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/block-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * User block graph: recent events + top-blocked users
+         * @description Recent block events (cursor-paginated on created_at DESC) plus the top-20 most-blocked users, an abuse-pattern signal.
+         */
+        get: operations["ops-list-block-graph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/cancellations": {
         parameters: {
             query?: never;
@@ -101,6 +141,26 @@ export interface paths {
         };
         /** List cancelled matches (panel #05 Cancelamentos) */
         get: operations["ops-list-cancellations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/chat-flagged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat moderation queue
+         * @description Messages with moderation_status IN (hard_blocked_reported, pending_review) awaiting staff review. Cursor-paginated on id DESC.
+         */
+        get: operations["ops-list-chat-flagged"];
         put?: never;
         post?: never;
         delete?: never;
@@ -121,6 +181,26 @@ export interface paths {
          * @description Case-insensitive substring filter over club name, sorted by name. Backed by booking-service ListClubs (no server-side query — the ~184-club fleet is pulled once and filtered in the BFF). Returns id/name/brand/neighborhood; `id` is the value audience club_ids expects. Staff-gated.
          */
         get: operations["ops-search-clubs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Data-source connector health board
+         * @description Crawler/import health (SmashCourts, PlayTennis, rest-connector...). Unhealthy connectors sort first.
+         */
+        get: operations["ops-list-connectors"];
         put?: never;
         post?: never;
         delete?: never;
@@ -163,6 +243,132 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/courts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all courts with franchise info and slot totals */
+        get: operations["ops-list-courts"];
+        put?: never;
+        /**
+         * Create a court with pre-generated availability slots (ADR-0063 pricing)
+         * @description Inserts the court then generates hourly slots for the requested horizon (default 90 days). Pricing: public courts → free; paid courts 10h–17h59 → R$220; 06h–09h59 and 18h+ → R$280. Set auto_generate=false to create the court with zero slots and hand-enter them via POST /v1/ops/courts/{id}/slots.
+         */
+        post: operations["ops-create-court"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Hard-delete a court and all its availability slots */
+        delete: operations["ops-delete-court"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a court (name, surface, indoor)
+         * @description Partial update: only the provided fields change (COALESCE keeps the rest). Returns the updated court. 404 if the court does not exist.
+         */
+        patch: operations["ops-update-court"];
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}/regenerate-availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wipe and re-lay a court's future availability grid
+         * @description Deletes future available+unbooked slots, then regenerates the hourly grid using the same America/Sao_Paulo timezone logic and ADR-0063 price precedence (body price > franchise default > hour band) as court creation. Booked/blocked slots survive. Returns slots_deleted + slots_created.
+         */
+        post: operations["ops-regenerate-court-availability"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}/reprice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reprice a court going forward (all future, unbooked slots)
+         * @description Sets price_cents on every future slot that is still available (slot_start > now AND status = 'available'). Past slots and booked/blocked slots are never touched. Returns the number of slots repriced.
+         */
+        post: operations["ops-reprice-court"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}/slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a court's availability slots for the slot editor
+         * @description Returns slots in [from, to) (RFC3339; defaults now … now+7d), oldest first, capped at 500. Each row carries slot_start/slot_end, status, price_cents and block_reason.
+         */
+        get: operations["ops-list-court-slots"];
+        put?: never;
+        /**
+         * Bulk-add arbitrary manual availability slots to a court
+         * @description Hand-enters 1..200 slots for clubs that do not use the auto-generated window. Each slot_start is an absolute RFC3339 instant stored verbatim (no timezone conversion); slot_end defaults to slot_start + 1h and must be after it. When price_cents is omitted, the same precedence as the generated grid applies (franchise default → ADR-0063 hour band; public franchise → free). status defaults to 'available'. Runs in one transaction with ON CONFLICT (court_id, slot_start) DO NOTHING, returning slots_created + slots_skipped. 404 if the court does not exist.
+         */
+        post: operations["ops-add-court-slots"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/courts/{id}/slots/{slot_start}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit a single availability slot (block/unblock, reason, price)
+         * @description slot_start is the RFC3339 instant identifying the slot (URL-encoded). Partial update: only provided fields change; an empty block_reason clears it. 404 if the slot does not exist.
+         */
+        patch: operations["ops-update-court-slot"];
+        trace?: never;
+    };
     "/v1/ops/finished-matches": {
         parameters: {
             query?: never;
@@ -180,6 +386,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/franchises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List bookable franchises (partner + public; excludes listing-only venues) */
+        get: operations["ops-list-franchises"];
+        put?: never;
+        /** Create a new franchise */
+        post: operations["ops-create-franchise"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/franchises/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a franchise (name and/or default slot price)
+         * @description Partial update: only the provided fields change (COALESCE keeps the rest). Returns the full updated franchise, including default_price_cents. 404 if the franchise does not exist.
+         */
+        patch: operations["ops-update-franchise"];
+        trace?: never;
+    };
+    "/v1/ops/live-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bookings currently in progress
+         * @description Bookings with status='live', newest first, capped at 100.
+         */
+        get: operations["ops-list-live-matches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/manual-reservations": {
         parameters: {
             query?: never;
@@ -189,6 +453,26 @@ export interface paths {
         };
         /** List paid confirmed bookings ops must physically reserve on the club side (panel #02 Reservas Manuais) */
         get: operations["ops-list-manual-reservations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Founder KPI snapshot
+         * @description DB-native counts and sums: users, bookings, GMV, LITS take, posts, plus 14-day daily series for signups and bookings. avg_rating and active_users_7d are intentionally omitted (no reliable source).
+         */
+        get: operations["ops-get-metrics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -223,6 +507,23 @@ export interface paths {
         };
         /** List PIX bookings with pending/rejected payments (panel #06 Problemas de Pagamento) */
         get: operations["ops-list-payment-issues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/payments-succeeded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List PIX bookings with an approved payment (panel #06 companion — payments that worked) */
+        get: operations["ops-list-successful-payments"];
         put?: never;
         post?: never;
         delete?: never;
@@ -288,6 +589,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/posts/{id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a post's comments for moderation */
+        get: operations["ops-list-post-comments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/posts/{id}/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a comment on a post */
+        delete: operations["ops-delete-post-comment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/posts/{id}/redact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redact a post's content without a hard delete */
+        post: operations["ops-redact-post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/reports": {
         parameters: {
             query?: never;
@@ -320,6 +672,43 @@ export interface paths {
         head?: never;
         /** Update a feed post report status (panel #09 write) */
         patch: operations["ops-update-report-status"];
+        trace?: never;
+    };
+    "/v1/ops/sanctions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List sanction records
+         * @description ?active=true (default) = currently active only; ?active=false = full history. Cursor-paginated on applied_at DESC.
+         */
+        get: operations["ops-list-sanctions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/sanctions/{id}/lift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lift an active sanction */
+        post: operations["ops-lift-sanction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/ops/search": {
@@ -359,6 +748,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/user-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List reports filed against a user's profile/chat conduct
+         * @description App Store guideline 1.2 report+block queue. Each item carries repeat_count: distinct reporters who reported the same target. ?status filters; cursor-paginated on id DESC.
+         */
+        get: operations["ops-list-user-reports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/users": {
         parameters: {
             query?: never;
@@ -373,6 +782,97 @@ export interface paths {
         get: operations["ops-list-users"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/users/{id}/badges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grant a verified badge to a user
+         * @description Idempotent: granting an already-present badge is a no-op returning the current set.
+         */
+        post: operations["ops-grant-badge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/users/{id}/badges/{badge}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a verified badge from a user */
+        delete: operations["ops-revoke-badge"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/users/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deactivate a user account (LGPD-style soft delete, 30d grace) */
+        post: operations["ops-deactivate-user"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/users/{id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate a soft-deleted user account */
+        post: operations["ops-reactivate-user"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/users/{id}/sanctions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a sanction record to a user
+         * @description bff-backoffice-owned record-keeping (public.user_sanctions) — does NOT gate login, matchmaking, or ranked play yet. See BadgesHandler doc comment.
+         */
+        post: operations["ops-apply-sanction"];
         delete?: never;
         options?: never;
         head?: never;
@@ -403,6 +903,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AddCourtSlotsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AddCourtSlotsBody.json
+             */
+            readonly $schema?: string;
+            /** @description Slots to insert (1..200) */
+            slots: components["schemas"]["ManualSlotItem"][] | null;
+        };
+        AddCourtSlotsResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AddCourtSlotsResultBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of slots inserted
+             */
+            slots_created: number;
+            /**
+             * Format: int64
+             * @description Number of slots skipped because a slot already existed at that start (ON CONFLICT)
+             */
+            slots_skipped: number;
+        };
         AffectedBookingItem: {
             booking_id: string;
             /** Format: date-time */
@@ -411,6 +939,25 @@ export interface components {
             host: components["schemas"]["OpsUserRef"];
             /** Format: date-time */
             starts_at: string;
+        };
+        ApplySanctionBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ApplySanctionBody.json
+             */
+            readonly $schema?: string;
+            /** @description Acting staff identifier (CF Access email) */
+            applied_by: string;
+            /** @description RFC3339 expiry instant; omit for a permanent sanction */
+            expires_at?: string;
+            /** @description Justification, recorded for the audit trail */
+            reason: string;
+            /**
+             * @description Kind of restriction
+             * @enum {string}
+             */
+            sanction_type: "ranked_suspension" | "platform_ban" | "shadowban";
         };
         AudienceBody: {
             /**
@@ -541,6 +1088,35 @@ export interface components {
              */
             radius_km?: number;
         };
+        AuditLogItem: {
+            /** @description Action verb, e.g. post_delete */
+            action: string;
+            /** @description Acting staff principal (Cloudflare Access email) */
+            actor: string;
+            /** @description RFC3339 timestamp */
+            created_at: string;
+            /**
+             * Format: int64
+             * @description Log entry id
+             */
+            id: number;
+            /** @description Operator-supplied reason, or null */
+            reason: string | null;
+            /** @description Target entity id */
+            target_id: string;
+            /** @description Target entity kind, e.g. post */
+            target_type: string;
+        };
+        BadgesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/BadgesBody.json
+             */
+            readonly $schema?: string;
+            /** @description The user's full badge set after this change */
+            verified_badges: string[] | null;
+        };
         BlockCourtSlotRequestBody: {
             /**
              * Format: uri
@@ -569,6 +1145,27 @@ export interface components {
             starts_at: string;
             status: string;
         };
+        BlockEventItem: {
+            /** @description RFC3339 timestamp */
+            created_at: string;
+            /** @description Block UUID */
+            id: string;
+            /** @description Reason supplied by the blocking user, or null */
+            reason: string | null;
+            /** @description Blocked user UUID */
+            target_user_id: string;
+            /** @description Blocking user UUID */
+            user_id: string;
+        };
+        BlockTarget: {
+            /**
+             * Format: int64
+             * @description Number of distinct users who have blocked this user
+             */
+            block_count: number;
+            /** @description Blocked user UUID */
+            target_user_id: string;
+        };
         CancellationItem: {
             booking_id: string;
             cancel_reason: string;
@@ -595,6 +1192,36 @@ export interface components {
             cancellations: components["schemas"]["CancellationItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        ConnectorItem: {
+            /**
+             * Format: int64
+             * @description Consecutive error count
+             */
+            error_count: number;
+            /** @description Owning franchise UUID */
+            franchise_id: string;
+            /** @description Owning franchise display name */
+            franchise_name: string;
+            /** @description healthy | degraded | unhealthy */
+            health_status: string;
+            /** @description Connector UUID */
+            id: string;
+            /** @description Most recent error message, or null */
+            last_error: string | null;
+            /** @description RFC3339 last successful sync, or null */
+            last_sync_at: string | null;
+            /** @description RFC3339 next scheduled sync, or null */
+            next_sync_at: string | null;
+            /** @description active | paused | disabled */
+            status: string;
+            /**
+             * Format: int64
+             * @description Sync cadence in minutes
+             */
+            sync_interval_minutes: number;
+            /** @description Connector type */
+            type: string;
         };
         CountAudienceMembersBody: {
             /**
@@ -669,6 +1296,26 @@ export interface components {
              */
             missing_category: number;
         };
+        CourtDetail: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CourtDetail.json
+             */
+            readonly $schema?: string;
+            /** @description Owning franchise UUID */
+            franchise_id: string;
+            /** @description Court UUID */
+            id: string;
+            /** @description Whether indoors */
+            indoor: boolean;
+            /** @description Whether active */
+            is_active: boolean;
+            /** @description Court display name */
+            name: string;
+            /** @description Surface type */
+            surface: string;
+        };
         CourtIssueItem: {
             affected_bookings: components["schemas"]["AffectedBookingItem"][] | null;
             /** @description Reason the founder typed when blocking the slot; absent for sync-pushed blocks (nobody typed one) */
@@ -694,6 +1341,164 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        CourtListItem: {
+            /** @description Owning franchise UUID */
+            franchise_id: string;
+            /** @description Franchise display name */
+            franchise_name: string;
+            /** @description Court UUID */
+            id: string;
+            /** @description Whether indoors */
+            indoor: boolean;
+            /** @description Whether active */
+            is_active: boolean;
+            /** @description Court display name */
+            name: string;
+            /**
+             * Format: int64
+             * @description Total slot count (including past)
+             */
+            slots_total: number;
+            /** @description Surface type */
+            surface: string;
+        };
+        CourtSlotItem: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CourtSlotItem.json
+             */
+            readonly $schema?: string;
+            /** @description Reason the slot is off the market, or null */
+            block_reason: string | null;
+            /**
+             * Format: int64
+             * @description Slot price in cents, or null
+             */
+            price_cents: number | null;
+            /** @description Slot end instant (RFC3339) */
+            slot_end: string;
+            /** @description Slot start instant (RFC3339) */
+            slot_start: string;
+            /** @description Slot status: available | booked | blocked */
+            status: string;
+        };
+        CreateCourtBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateCourtBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description generate the hourly availability window automatically; set false to add slots manually via POST /slots
+             * @default true
+             */
+            auto_generate: boolean;
+            /**
+             * Format: int64
+             * @description Days of slots to generate ahead (default 90)
+             */
+            days_forward?: number;
+            /**
+             * Format: int64
+             * @description Last slot start hour, inclusive, local time (default 22)
+             */
+            end_hour?: number;
+            /** @description UUID of the owning franchise */
+            franchise_id: string;
+            /** @description Whether the court is indoors */
+            indoor: boolean;
+            /** @description Court display name */
+            name: string;
+            /**
+             * Format: int64
+             * @description Override price in cents for all slots; falls back to franchise default then ADR-0063 formula
+             */
+            price_cents?: number;
+            /**
+             * Format: int64
+             * @description First slot hour, inclusive, local time (default 6)
+             * @default 6
+             */
+            start_hour: number;
+            /**
+             * @description Surface type
+             * @enum {string}
+             */
+            surface: "clay" | "hard" | "grass" | "beach" | "carpet";
+        };
+        CreateCourtResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateCourtResultBody.json
+             */
+            readonly $schema?: string;
+            /** @description UUID of the newly created court */
+            court_id: string;
+            /**
+             * Format: int64
+             * @description Number of availability slots generated
+             */
+            slots_created: number;
+        };
+        CreateFranchiseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateFranchiseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Default slot price in cents for courts in this franchise; falls back to the ADR-0063 formula when unset
+             */
+            default_price_cents?: number;
+            /**
+             * @description Venue kind: partner (paid club) or public (free park)
+             * @enum {string}
+             */
+            kind: "partner" | "public";
+            /** @description Display name */
+            name: string;
+            /** @description URL-safe slug (lowercase, hyphens) */
+            slug: string;
+        };
+        DailyCount: {
+            /**
+             * Format: int64
+             * @description Number of rows created on that day
+             */
+            count: number;
+            /** @description Day, RFC3339 date-truncated (UTC midnight of that day) */
+            date: string;
+        };
+        DeactivateUserRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeactivateUserRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Reason recorded for the deactivation (LGPD-style soft delete) */
+            reason: string;
+        };
+        DeactivateUserResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeactivateUserResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: date-time
+             * @description When the 30-day grace window expires and the account becomes eligible for hard delete
+             */
+            hard_delete_at?: string;
+            /** @description UUIDv7 of the deactivated user */
+            user_id: string;
+        };
         DeleteAudienceResponseBody: {
             /**
              * Format: uri
@@ -703,6 +1508,31 @@ export interface components {
             readonly $schema?: string;
             /** @description UUIDv7 of the soft-deleted audience */
             id: string;
+        };
+        DeletePostCommentRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeletePostCommentRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description UUIDv7 of the staff/owner performing the deletion */
+            deleter_user_id: string;
+        };
+        DeletePostCommentResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeletePostCommentResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Id of the soft-deleted comment
+             */
+            comment_id: number;
+            /** @description UUIDv7 of the post that owns the deleted comment */
+            post_id: string;
         };
         DeletePostRequestBody: {
             /**
@@ -807,6 +1637,89 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        FlaggedMessageItem: {
+            /** @description Message content, truncated to 300 chars; null when the message has no text content */
+            content: string | null;
+            /** @description RFC3339 creation timestamp */
+            created_at: string;
+            /**
+             * Format: int64
+             * @description Message id
+             */
+            id: number;
+            /** @description Message type */
+            message_type: string;
+            /** @description Moderation status: hard_blocked_reported | pending_review */
+            moderation_status: string;
+            /** @description Sender user UUID */
+            sender_id: string;
+            /** @description Chat thread UUID */
+            thread_id: string;
+        };
+        FranchiseDetail: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FranchiseDetail.json
+             */
+            readonly $schema?: string;
+            /** @description Whether the franchise is currently active */
+            active: boolean;
+            /**
+             * Format: int64
+             * @description Default slot price in cents, or null when unset
+             */
+            default_price_cents: number | null;
+            /** @description UUIDv4 franchise identifier */
+            id: string;
+            /** @description Venue kind: partner | public | listing */
+            kind: string;
+            /** @description Display name */
+            name: string;
+            /** @description URL-safe unique slug (citext) */
+            slug: string;
+        };
+        FranchiseItem: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FranchiseItem.json
+             */
+            readonly $schema?: string;
+            /** @description Whether the franchise is currently active */
+            active: boolean;
+            /** @description UUIDv4 franchise identifier */
+            id: string;
+            /** @description Venue kind: partner | public | listing */
+            kind: string;
+            /** @description Display name */
+            name: string;
+            /** @description URL-safe unique slug (citext) */
+            slug: string;
+        };
+        GrantBadgeBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/GrantBadgeBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Badge to grant
+             * @enum {string}
+             */
+            badge: "selfie_match" | "celebrity" | "club_official" | "federation_athlete" | "beta_tester";
+        };
+        LiftSanctionBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/LiftSanctionBody.json
+             */
+            readonly $schema?: string;
+            /** @description Acting staff identifier (CF Access email) */
+            lifted_by: string;
+        };
         ListAllPostsResponseBody: {
             /**
              * Format: uri
@@ -842,6 +1755,30 @@ export interface components {
             readonly $schema?: string;
             audiences: components["schemas"]["AudienceBody"][] | null;
         };
+        ListAuditLogBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListAuditLogBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["AuditLogItem"][] | null;
+            /** @description Pass as cursor to fetch the next page; absent when this is the last page */
+            next_cursor?: string;
+        };
+        ListBlockGraphBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListBlockGraphBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["BlockEventItem"][] | null;
+            /** @description Pass as cursor to fetch the next page; absent when this is the last page */
+            next_cursor?: string;
+            /** @description Top 20 most-blocked users, by distinct blocker count */
+            top_targets: components["schemas"]["BlockTarget"][] | null;
+        };
         ListClubsResponseBody: {
             /**
              * Format: uri
@@ -850,6 +1787,111 @@ export interface components {
              */
             readonly $schema?: string;
             clubs: components["schemas"]["OpsClub"][] | null;
+        };
+        ListConnectorsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListConnectorsBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ConnectorItem"][] | null;
+        };
+        ListCourtSlotsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListCourtSlotsBody.json
+             */
+            readonly $schema?: string;
+            slots: components["schemas"]["CourtSlotItem"][] | null;
+        };
+        ListCourtsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListCourtsBody.json
+             */
+            readonly $schema?: string;
+            courts: components["schemas"]["CourtListItem"][] | null;
+        };
+        ListFlaggedMessagesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListFlaggedMessagesBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["FlaggedMessageItem"][] | null;
+            /** @description Pass as cursor to fetch the next page; absent when this is the last page */
+            next_cursor?: string;
+        };
+        ListFranchisesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListFranchisesBody.json
+             */
+            readonly $schema?: string;
+            franchises: components["schemas"]["FranchiseItem"][] | null;
+        };
+        ListLiveMatchesBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListLiveMatchesBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["LiveMatchItem"][] | null;
+        };
+        ListPostCommentsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListPostCommentsResponseBody.json
+             */
+            readonly $schema?: string;
+            comments: components["schemas"]["OpsComment"][] | null;
+            /** @description True when more comments exist beyond this page */
+            has_more: boolean;
+            /** @description Cursor for the next page; empty when no more pages */
+            next_cursor?: string;
+        };
+        ListSanctionsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListSanctionsBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["SanctionItem"][] | null;
+            /** @description Pass as cursor to fetch the next page; absent when this is the last page */
+            next_cursor?: string;
+        };
+        ListUserReportsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListUserReportsBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["UserReportItem"][] | null;
+            /** @description Pass as cursor to fetch the next page; absent when this is the last page */
+            next_cursor?: string;
+        };
+        LiveMatchItem: {
+            /** @description Booking UUID */
+            booking_id: string;
+            /** @description Court UUID */
+            court_id: string;
+            /** @description Guest user UUID, or null when the booking has no guest yet */
+            guest_id: string | null;
+            /** @description Host user UUID */
+            host_id: string;
+            /** @description RFC3339 slot start instant */
+            starts_at: string;
+            /** @description Booking status (always 'live' for this endpoint) */
+            status: string;
         };
         ManualReservationItem: {
             booking_id: string;
@@ -880,6 +1922,74 @@ export interface components {
             reservations: components["schemas"]["ManualReservationItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        ManualSlotItem: {
+            /**
+             * Format: int64
+             * @description Slot price in cents; falls back to franchise default then ADR-0063 hour band (public → free)
+             */
+            price_cents?: number;
+            /** @description Slot end instant (RFC3339); defaults to slot_start + 1h */
+            slot_end?: string;
+            /** @description Slot start instant (RFC3339 with offset), stored verbatim */
+            slot_start: string;
+            /**
+             * @description Slot status (default available)
+             * @enum {string}
+             */
+            status?: "available" | "blocked";
+        };
+        MetricsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MetricsBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Bookings created in the last 7 days
+             */
+            bookings_7d: number;
+            /** @description New bookings per day, last 14 days */
+            bookings_daily: components["schemas"]["DailyCount"][] | null;
+            /**
+             * Format: int64
+             * @description Gross merchandise value in cents: SUM(total_cents) over confirmed+played+live bookings only
+             */
+            gmv_cents: number;
+            /**
+             * Format: int64
+             * @description LITS platform revenue in cents: SUM(lits_fee_cents) over confirmed+played+live bookings only
+             */
+            lits_take_cents: number;
+            /**
+             * Format: int64
+             * @description Users created in the last 30 days
+             */
+            new_users_30d: number;
+            /**
+             * Format: int64
+             * @description Users created in the last 7 days
+             */
+            new_users_7d: number;
+            /** @description New users per day, last 14 days */
+            signups_daily: components["schemas"]["DailyCount"][] | null;
+            /**
+             * Format: int64
+             * @description Total bookings (all statuses, all time)
+             */
+            total_bookings: number;
+            /**
+             * Format: int64
+             * @description Total feed posts (all time)
+             */
+            total_posts: number;
+            /**
+             * Format: int64
+             * @description Total registered users (all time)
+             */
+            total_users: number;
         };
         OpenInviteItem: {
             /** @description UUIDv7 booking identifier */
@@ -939,6 +2049,29 @@ export interface components {
             name: string;
             /** @description Neighborhood / district for display; empty when unset */
             neighborhood?: string;
+        };
+        OpsComment: {
+            /**
+             * Format: int64
+             * @description Sequential id of the comment (post_comments BIGINT IDENTITY)
+             */
+            comment_id: number;
+            content: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: int32 */
+            like_count: number;
+            /**
+             * Format: int64
+             * @description 0 for a top-level comment; otherwise the parent comment_id (reply, max depth 1)
+             */
+            parent_id?: number;
+            /** @description UUIDv7 of the post this comment belongs to */
+            post_id: string;
+            /** Format: int32 */
+            reply_count: number;
+            /** @description UUIDv7 of the commenter */
+            user_id: string;
         };
         OpsDossierAccount: {
             /**
@@ -1369,6 +2502,87 @@ export interface components {
             resolved_by?: string;
             status: string;
         };
+        ReactivateUserResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ReactivateUserResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description Lifecycle status after reactivation — always "active" */
+            status: string;
+            /** @description UUIDv7 of the reactivated user */
+            user_id: string;
+        };
+        RedactPostRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RedactPostRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Human-readable reason recorded in the audit trail */
+            reason: string;
+            /** @description UUIDv7 of the staff principal performing the redaction */
+            staff_user_id: string;
+        };
+        RedactPostResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RedactPostResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description UUIDv7 of the redacted post */
+            post_id: string;
+        };
+        RegenerateAvailabilityBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RegenerateAvailabilityBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Days of slots to generate ahead (default 90)
+             */
+            days_forward?: number;
+            /**
+             * Format: int64
+             * @description Last slot start hour, inclusive, local time (default 22)
+             */
+            end_hour?: number;
+            /**
+             * Format: int64
+             * @description Override price in cents for all slots; falls back to franchise default then ADR-0063 formula
+             */
+            price_cents?: number;
+            /**
+             * Format: int64
+             * @description First slot hour, inclusive, local time (default 6)
+             * @default 6
+             */
+            start_hour: number;
+        };
+        RegenerateAvailabilityResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RegenerateAvailabilityResultBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of availability slots generated
+             */
+            slots_created: number;
+            /**
+             * Format: int64
+             * @description Number of future available slots removed before regeneration
+             */
+            slots_deleted: number;
+        };
         ReportsResponseBody: {
             /**
              * Format: uri
@@ -1379,6 +2593,58 @@ export interface components {
             reports: components["schemas"]["PostReportItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        RepriceCourtBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RepriceCourtBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description New price in cents applied to all future available slots
+             */
+            price_cents: number;
+        };
+        RepriceCourtResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RepriceCourtResultBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of future available slots repriced
+             */
+            slots_updated: number;
+        };
+        SanctionItem: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SanctionItem.json
+             */
+            readonly $schema?: string;
+            /** @description RFC3339 timestamp */
+            applied_at: string;
+            /** @description Acting staff identifier */
+            applied_by: string;
+            /** @description RFC3339 expiry instant, or null when permanent */
+            expires_at: string | null;
+            /** @description Sanction UUID */
+            id: string;
+            /** @description RFC3339 timestamp the sanction was lifted, or null when still active */
+            lifted_at: string | null;
+            /** @description Staff identifier who lifted it, or null */
+            lifted_by: string | null;
+            /** @description Justification */
+            reason: string;
+            /** @description ranked_suspension | platform_ban | shadowban */
+            sanction_type: string;
+            /** @description Sanctioned user UUID */
+            user_id: string;
         };
         SendAnnouncementRequestBody: {
             /**
@@ -1419,6 +2685,37 @@ export interface components {
              */
             total: number;
         };
+        SuccessfulPaymentItem: {
+            /**
+             * Format: int64
+             * @description Charged amount in centavos (booking total_cents)
+             */
+            amount_cents: number;
+            /** @description UUIDv7 booking identifier */
+            booking_id: string;
+            /** @description Booking lifecycle status at the time of payment */
+            booking_status: string;
+            /**
+             * Format: date-time
+             * @description When the booking was created (RFC3339)
+             */
+            created_at: string;
+            /** @description ISO 4217 currency code (BRL) */
+            currency: string;
+            /** @description The payer (booking host); name joined from user-service on user_id */
+            user: components["schemas"]["OpsUserRef"];
+        };
+        SuccessfulPaymentsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SuccessfulPaymentsResponseBody.json
+             */
+            readonly $schema?: string;
+            payments: components["schemas"]["SuccessfulPaymentItem"][] | null;
+            /** Format: int32 */
+            total: number;
+        };
         UpcomingMatchItem: {
             alerts?: string[] | null;
             booking_id: string;
@@ -1452,6 +2749,58 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        UpdateCourtBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateCourtBody.json
+             */
+            readonly $schema?: string;
+            /** @description Whether the court is indoors (unset = unchanged) */
+            indoor?: boolean;
+            /** @description New court name (unset = unchanged) */
+            name?: string;
+            /**
+             * @description New surface type (unset = unchanged)
+             * @enum {string}
+             */
+            surface?: "clay" | "hard" | "grass" | "beach" | "carpet";
+        };
+        UpdateCourtSlotBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateCourtSlotBody.json
+             */
+            readonly $schema?: string;
+            /** @description Reason the slot is off the market (unset = unchanged; empty string clears it) */
+            block_reason?: string;
+            /**
+             * Format: int64
+             * @description New slot price in cents (unset = unchanged)
+             */
+            price_cents?: number;
+            /**
+             * @description New slot status (unset = unchanged)
+             * @enum {string}
+             */
+            status?: "available" | "blocked";
+        };
+        UpdateFranchiseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateFranchiseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description New default slot price in cents (unset = unchanged)
+             */
+            default_price_cents?: number;
+            /** @description New display name (unset = unchanged) */
+            name?: string;
+        };
         UpdateReportStatusRequestBody: {
             /**
              * Format: uri
@@ -1459,6 +2808,34 @@ export interface components {
              * @example https://example.com/schemas/UpdateReportStatusRequestBody.json
              */
             readonly $schema?: string;
+            status: string;
+        };
+        UserReportItem: {
+            /** @description RFC3339 creation timestamp */
+            created_at: string;
+            /** @description Free-text details supplied by the reporter */
+            details: string;
+            /**
+             * Format: int64
+             * @description Report id
+             */
+            id: number;
+            /** @description Report reason */
+            reason: string;
+            /**
+             * Format: int64
+             * @description Distinct reporters who have reported this same reported_user_id (repeat-offender signal)
+             */
+            repeat_count: number;
+            /** @description Reported user UUID */
+            reported_user_id: string;
+            /** @description Reporting user UUID */
+            reporter_user_id: string;
+            /** @description RFC3339 resolution timestamp, or null when still open */
+            resolved_at: string | null;
+            /** @description Staff identifier who resolved this report, or null when still open */
+            resolved_by: string | null;
+            /** @description pending | reviewing | resolved | dismissed */
             status: string;
         };
     };
@@ -1669,6 +3046,78 @@ export interface operations {
             };
         };
     };
+    "ops-list-audit-log": {
+        parameters: {
+            query?: {
+                /** @description Filter by target_type; omit for all */
+                target_type?: string;
+                /** @description Filter by acting staff email; omit for all */
+                actor?: string;
+                /** @description Opaque cursor (id of the last item from the previous page); omit for the first page */
+                cursor?: string;
+                /** @description Max items to return (default 50, max 100) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAuditLogBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-block-graph": {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor (id of the last item from the previous page); omit for the first page */
+                cursor?: string;
+                /** @description Max items to return (default 50, max 100) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListBlockGraphBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-list-cancellations": {
         parameters: {
             query?: {
@@ -1688,6 +3137,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CancellationsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-chat-flagged": {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor (id of the last item from the previous page); omit for the first page */
+                cursor?: string;
+                /** @description Max items to return (default 50, max 100) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListFlaggedMessagesBody"];
                 };
             };
             /** @description Error */
@@ -1722,6 +3205,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListClubsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListConnectorsBody"];
                 };
             };
             /** @description Error */
@@ -1799,6 +3311,317 @@ export interface operations {
             };
         };
     };
+    "ops-list-courts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListCourtsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-create-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateCourtBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateCourtResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID to delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-update-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID to update */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UpdateCourtBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourtDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-regenerate-court-availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID to regenerate availability for */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RegenerateAvailabilityBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegenerateAvailabilityResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-reprice-court": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID to reprice */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RepriceCourtBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepriceCourtResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-court-slots": {
+        parameters: {
+            query?: {
+                /** @description Range start (RFC3339); defaults to now */
+                from?: string;
+                /** @description Range end (RFC3339); defaults to now + 7 days */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Court UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListCourtSlotsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-add-court-slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AddCourtSlotsBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddCourtSlotsResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-update-court-slot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID */
+                id: string;
+                /** @description Slot start instant (RFC3339) identifying the slot */
+                slot_start: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UpdateCourtSlotBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourtSlotItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-list-finished-matches": {
         parameters: {
             query?: {
@@ -1818,6 +3641,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FinishedMatchesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-franchises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListFranchisesBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-create-franchise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateFranchiseBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FranchiseItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-update-franchise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Franchise UUID to update */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UpdateFranchiseBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FranchiseDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-live-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListLiveMatchesBody"];
                 };
             };
             /** @description Error */
@@ -1852,6 +3802,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManualReservationsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-get-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsBody"];
                 };
             };
             /** @description Error */
@@ -1920,6 +3899,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentIssuesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-successful-payments": {
+        parameters: {
+            query?: {
+                /** @description Max rows to return */
+                limit?: number;
+                /** @description Rows to skip (paging) */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessfulPaymentsResponseBody"];
                 };
             };
             /** @description Error */
@@ -2036,6 +4049,119 @@ export interface operations {
             };
         };
     };
+    "ops-list-post-comments": {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor from a previous page's next_cursor */
+                cursor?: string;
+                /** @description Max comments to return */
+                limit?: number;
+                /** @description When true, returns a two-level tree (top-level comments + their replies) instead of a flat created_at-ASC list */
+                tree?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the post whose comments to list */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListPostCommentsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-post-comment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the post that owns the comment */
+                id: string;
+                /** @description Sequential id of the comment to delete */
+                comment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletePostCommentRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletePostCommentResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-redact-post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the post to redact */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedactPostRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedactPostResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-list-reports": {
         parameters: {
             query?: {
@@ -2091,6 +4217,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PostReportItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-sanctions": {
+        parameters: {
+            query?: {
+                /** @description true (default) = currently active only (not lifted, not expired); false = all history */
+                active?: "true" | "false";
+                /** @description Opaque cursor (applied_at of the last item, RFC3339); omit for the first page */
+                cursor?: string;
+                /** @description Max items to return (default 50, max 100) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSanctionsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-lift-sanction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Sanction UUID to lift */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiftSanctionBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SanctionItem"];
                 };
             };
             /** @description Error */
@@ -2170,6 +4368,42 @@ export interface operations {
             };
         };
     };
+    "ops-list-user-reports": {
+        parameters: {
+            query?: {
+                /** @description Filter by status; omit for all */
+                status?: "pending" | "reviewing" | "resolved" | "dismissed";
+                /** @description Opaque cursor (id of the last item from the previous page); omit for the first page */
+                cursor?: string;
+                /** @description Max items to return (default 50, max 100) */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListUserReportsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-list-users": {
         parameters: {
             query?: {
@@ -2193,6 +4427,180 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListAllUsersResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-grant-badge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantBadgeBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadgesBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-revoke-badge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User UUID */
+                id: string;
+                /** @description Badge to revoke */
+                badge: "selfie_match" | "celebrity" | "club_official" | "federation_athlete" | "beta_tester";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadgesBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-deactivate-user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the user to deactivate */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeactivateUserRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeactivateUserResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-reactivate-user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the soft-deleted user to reactivate */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactivateUserResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-apply-sanction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User UUID being sanctioned */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplySanctionBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SanctionItem"];
                 };
             };
             /** @description Error */

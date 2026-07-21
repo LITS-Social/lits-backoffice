@@ -10,6 +10,8 @@ import { PlayerLink } from "@/components/ui/player-link";
 import { getApi } from "@/lib/api";
 import type { components } from "@/lib/api/openapi";
 import { DossierBookingsTable } from "./bookings-table";
+import { AccountActions } from "./account-actions";
+import { listUserSanctionsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -38,11 +40,12 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const api = await getApi();
 
-  const [dossierRes, reportsRes] = await Promise.all([
+  const [dossierRes, reportsRes, sanctions] = await Promise.all([
     api.GET("/v1/ops/users/{user_id}", { params: { path: { user_id: id } } }),
     api.GET("/v1/ops/reports", {
       params: { query: { limit: REPORT_SCAN_LIMIT, offset: 0 } },
     }),
+    listUserSanctionsAction(id),
   ]);
 
   if (dossierRes.error) {
@@ -103,6 +106,16 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
           openReports={openAgainst.length}
           reportsConclusive={reportsComplete}
         />
+
+        <Section title="Ações">
+          <AccountActions
+            userId={id}
+            isActive={!d.account.deleted_at}
+            badges={d.profile?.verified_badges ?? []}
+            sanctions={sanctions.sanctions}
+            sanctionsIncomplete={sanctions.incomplete}
+          />
+        </Section>
 
         <Identity account={d.account} userId={id} />
 
