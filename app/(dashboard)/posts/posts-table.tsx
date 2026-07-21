@@ -1,22 +1,49 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { AlertCircle, Trash2, ImageIcon, Flag } from "lucide-react";
+import { AlertCircle, Trash2, ImageIcon, Flag, EyeOff, MessageSquare, X } from "lucide-react";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/api/openapi";
 import { Absent, Avatar, When } from "../_components/cells";
-import { listPostsAction, deletePostAction, type PostsPage } from "./actions";
+import {
+  listPostsAction,
+  deletePostAction,
+  redactPostAction,
+  listPostCommentsAction,
+  deletePostCommentAction,
+  type PostsPage,
+} from "./actions";
 
 type OpsPostRow = components["schemas"]["OpsPostRow"];
 type OpsPostAuthor = components["schemas"]["OpsPostAuthor"];
+type OpsComment = components["schemas"]["OpsComment"];
 
 const GRID =
-  "minmax(0,1.6fr) 96px minmax(0,2fr) 88px 132px 92px";
+  "minmax(0,1.6fr) 96px minmax(0,2fr) 88px 132px 152px";
 
 const HEADS = ["Autor", "Tipo", "Legenda", "Engajamento", "Publicado", ""];
+
+/**
+ * feed-service's RedactPost/DeleteComment require a real LITS `users.id` UUID
+ * for staff identity, not the Cloudflare Access email this backoffice
+ * otherwise relies on — there is no mapping between the two yet. Ask once per
+ * browser (localStorage), not once per click.
+ */
+const STAFF_UUID_KEY = "lits-backoffice-staff-user-id";
+
+function useStaffUserId(): [string, (v: string) => void] {
+  const [value, setValue] = useState(() =>
+    typeof window === "undefined" ? "" : (localStorage.getItem(STAFF_UUID_KEY) ?? ""),
+  );
+  const update = (v: string) => {
+    setValue(v);
+    localStorage.setItem(STAFF_UUID_KEY, v);
+  };
+  return [value, update];
+}
 
 const TYPE_LABEL: Record<string, string> = {
   photo: "Foto",
@@ -48,6 +75,17 @@ export function PostsView({ initial }: { initial: PostsPage }) {
   const [confirming, setConfirming] = useState<OpsPostRow | null>(null);
   const [reason, setReason] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Redact flow (softer than delete) — separate queue/state from delete.
+  const [redacting, setRedacting] = useState<OpsPostRow | null>(null);
+  const [redactReason, setRedactReason] = useState("");
+  const [redactingId, setRedactingId] = useState<string | null>(null);
+  const [redactError, setRedactError] = useState("");
+
+  // Comments moderation drawer for one post at a time.
+  const [commentsFor, setCommentsFor] = useState<OpsPostRow | null>(null);
+
+  const [staffUserId, setStaffUserId] = useStaffUserId();
 
   const reqId = useRef(0);
   const didMount = useRef(false);
@@ -252,21 +290,44 @@ export function PostsView({ initial }: { initial: PostsPage }) {
                   {/* Publicado */}
                   {p.created_at ? <When iso={p.created_at} /> : <Absent />}
 
-                  {/* Ação — apagar (oculto se já deletado). */}
-                  <span className="flex justify-end">
+                  {/* Ações — comentários sempre, redigir/apagar ocultos se já deletado. */}
+                  <span className="flex justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCommentsFor(p)}
+                      title="Ver comentários"
+                      className="flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[10.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+                    >
+                      <MessageSquare size={12} /> {p.comments_count}
+                    </button>
                     {!deleted && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setReason("");
-                          setConfirming(p);
-                        }}
-                        disabled={deletingId === p.id}
-                        title="Remover post"
-                        className="flex items-center gap-1 rounded-md border border-[var(--color-error)]/25 px-2 py-1 text-[10.5px] text-[var(--color-error)] transition-colors hover:bg-[var(--color-error-bg)] disabled:opacity-50"
-                      >
-                        <Trash2 size={12} /> Apagar
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRedactError("");
+                            setRedactReason("");
+                            setRedacting(p);
+                          }}
+                          disabled={redactingId === p.id}
+                          title="Redigir conteúdo"
+                          className="flex items-center gap-1 rounded-md border border-[var(--color-clay)]/30 px-2 py-1 text-[10.5px] text-[var(--color-clay)] transition-colors hover:bg-[var(--color-warning-bg)] disabled:opacity-50"
+                        >
+                          <EyeOff size={12} /> Redigir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReason("");
+                            setConfirming(p);
+                          }}
+                          disabled={deletingId === p.id}
+                          title="Remover post"
+                          className="flex items-center gap-1 rounded-md border border-[var(--color-error)]/25 px-2 py-1 text-[10.5px] text-[var(--color-error)] transition-colors hover:bg-[var(--color-error-bg)] disabled:opacity-50"
+                        >
+                          <Trash2 size={12} /> Apagar
+                        </button>
+                      </>
                     )}
                   </span>
                 </div>
@@ -338,6 +399,253 @@ export function PostsView({ initial }: { initial: PostsPage }) {
           </div>
         </div>
       )}
+
+      {/* Confirmação de redação (mais branda que apagar). */}
+      {redacting && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => redactingId === null && setRedacting(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[15px] font-600 text-[var(--text-primary)]">Redigir este post?</h3>
+            <p className="mt-1.5 text-[12px] text-[var(--text-secondary)]">
+              {authorLine(redacting.authors)} · {TYPE_LABEL[redacting.post_type] ?? redacting.post_type}.
+              Marca o conteúdo como redigido (mais brando que apagar) — registrado no audit log.
+            </p>
+            <label className="mt-3 block text-[10.5px] font-500 text-[var(--text-tertiary)]">
+              Seu user_id LITS (necessário para atribuir a ação — sem mapeamento
+              automático de e-mail ainda)
+            </label>
+            <input
+              value={staffUserId}
+              onChange={(e) => setStaffUserId(e.target.value)}
+              placeholder="uuid do seu usuário LITS"
+              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-mono text-[11.5px] text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
+            />
+            <textarea
+              value={redactReason}
+              onChange={(e) => setRedactReason(e.target.value)}
+              maxLength={500}
+              rows={2}
+              placeholder="Motivo (obrigatório)"
+              className="mt-2 w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[12.5px] text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
+            />
+            {redactError && (
+              <p className="mt-2 text-[11.5px] text-[var(--color-error)]">{redactError}</p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRedacting(null)}
+                disabled={redactingId !== null}
+                className="rounded-lg border border-[var(--border)] px-4 py-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!redacting) return;
+                  if (!staffUserId.trim() || !redactReason.trim()) {
+                    setRedactError("Preencha o user_id e o motivo.");
+                    return;
+                  }
+                  const target = redacting;
+                  setRedactingId(target.id);
+                  const res = await redactPostAction({
+                    id: target.id,
+                    staffUserId: staffUserId.trim(),
+                    reason: redactReason.trim(),
+                  });
+                  setRedactingId(null);
+                  if (!res.ok) {
+                    setRedactError(res.error);
+                    return;
+                  }
+                  setRedacting(null);
+                }}
+                disabled={redactingId !== null}
+                className="flex items-center gap-1.5 rounded-lg bg-[var(--color-clay)] px-4 py-2 text-[12px] font-500 text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                <EyeOff size={13} />
+                {redactingId !== null ? "Redigindo…" : "Redigir post"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Comentários do post — leitura + apagar individual. */}
+      {commentsFor && (
+        <CommentsDrawer
+          key={commentsFor.id}
+          post={commentsFor}
+          staffUserId={staffUserId}
+          onStaffUserIdChange={setStaffUserId}
+          onClose={() => setCommentsFor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CommentsDrawer({
+  post,
+  staffUserId,
+  onStaffUserIdChange,
+  onClose,
+}: {
+  post: OpsPostRow;
+  staffUserId: string;
+  onStaffUserIdChange: (v: string) => void;
+  onClose: () => void;
+}) {
+  const [comments, setComments] = useState<OpsComment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState("");
+  // A SET of in-flight comment ids, not a single scalar: several delete
+  // buttons are independently clickable in this list (no blocking modal like
+  // the post-delete flow has), so a single "deletingId" would re-enable an
+  // earlier delete's button the moment a second one starts.
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    // No setLoading(true) here: the parent mounts a fresh instance per post
+    // (key={post.id}), so `loading`'s useState(true) initializer already
+    // covers "just switched posts" without a synchronous effect-body setState.
+    listPostCommentsAction(post.id).then((res) => {
+      if (cancelled) return;
+      setLoading(false);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setComments(res.comments);
+      setHasMore(res.hasMore);
+      setCursor(res.nextCursor);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [post.id]);
+
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    const res = await listPostCommentsAction(post.id, cursor);
+    setLoadingMore(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setComments((prev) => [...prev, ...res.comments]);
+    setHasMore(res.hasMore);
+    setCursor(res.nextCursor);
+  }
+
+  async function handleDelete(commentId: number) {
+    if (!staffUserId.trim()) {
+      setError("Informe seu user_id LITS abaixo antes de apagar.");
+      return;
+    }
+    setDeletingIds((cur) => new Set(cur).add(commentId));
+    const res = await deletePostCommentAction({
+      postId: post.id,
+      commentId,
+      deleterUserId: staffUserId.trim(),
+    });
+    setDeletingIds((cur) => {
+      const next = new Set(cur);
+      next.delete(commentId);
+      return next;
+    });
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setComments((prev) => prev.filter((c) => c.comment_id !== commentId));
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-[15px] font-600 text-[var(--text-primary)]">
+            Comentários — {authorLine(post.authors)}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <input
+          value={staffUserId}
+          onChange={(e) => onStaffUserIdChange(e.target.value)}
+          placeholder="Seu user_id LITS (para apagar comentários)"
+          className="mb-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 font-mono text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
+        />
+
+        {error && (
+          <p className="mb-2 flex items-start gap-2 rounded-lg border border-[var(--color-error)]/25 bg-[var(--color-error-bg)] px-3 py-2 text-[11.5px] text-[var(--color-error)]">
+            <AlertCircle size={13} className="mt-px shrink-0" />
+            {error}
+          </p>
+        )}
+
+        <div className="min-h-[100px] flex-1 overflow-y-auto">
+          {loading ? (
+            <p className="py-8 text-center text-[12px] text-[var(--text-tertiary)]">Carregando…</p>
+          ) : comments.length === 0 ? (
+            <EmptyState message="Nenhum comentário neste post." tone="neutral" />
+          ) : (
+            <ul className="divide-y divide-[var(--border)]">
+              {comments.map((c) => (
+                <li key={c.comment_id} className="flex items-start justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="font-mono text-[10.5px] text-[var(--text-tertiary)]">{c.user_id.slice(0, 8)}</p>
+                    <p className="text-[12.5px] text-[var(--text-secondary)]">{c.content}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(c.comment_id)}
+                    disabled={deletingIds.has(c.comment_id)}
+                    title="Apagar comentário"
+                    className="shrink-0 rounded-md p-1.5 text-[var(--color-error)] transition-colors hover:bg-[var(--color-error-bg)] disabled:opacity-50"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {hasMore && (
+            <div className="flex justify-center py-2">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-1.5 font-colus text-[8.5px] uppercase tracking-[0.16em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+              >
+                {loadingMore ? "Carregando…" : "Carregar mais"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
