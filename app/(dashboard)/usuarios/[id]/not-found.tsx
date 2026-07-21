@@ -16,7 +16,7 @@ export default function UserNotFound() {
         </span>
 
         <div>
-          <h1 className="mb-2 font-display text-[20px] italic leading-tight text-[var(--text-primary)]">
+          <h1 className="mb-2 font-display text-[20px] leading-tight text-[var(--text-primary)]">
             Jogador não encontrado
           </h1>
           <p className="text-[13px] font-300 leading-relaxed text-[var(--text-secondary)]">

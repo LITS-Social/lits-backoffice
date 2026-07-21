@@ -114,7 +114,7 @@ export function AudiencesTable({ initial }: { initial: Audience[] }) {
         <button
           type="button"
           onClick={() => setEditing({ mode: "create" })}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
+          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
         >
           <Plus size={12} strokeWidth={2.5} />
           Novo público
@@ -251,7 +251,7 @@ export function AudiencesTable({ initial }: { initial: Audience[] }) {
                 <p className="eyebrow mb-2.5">Apagar público</p>
                 <h2
                   id="delete-audience-title"
-                  className="font-display text-[21px] italic leading-tight tracking-[-0.02em] text-[var(--text-primary)]"
+                  className="font-display text-[21px] leading-tight tracking-[-0.01em] text-[var(--text-primary)]"
                 >
                   Apagar “{deleting.name}”?
                 </h2>
@@ -287,7 +287,7 @@ export function AudiencesTable({ initial }: { initial: Audience[] }) {
                 type="button"
                 onClick={confirmDelete}
                 disabled={isPending}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-error)] px-4 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-error)] px-4 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 <Trash2 size={12} strokeWidth={2.5} />
                 {isPending ? "Apagando…" : "Apagar"}

@@ -209,7 +209,7 @@ export function UsersTable({ initial }: { initial: UsersPage }) {
             type="button"
             onClick={loadMore}
             disabled={loadingMore || isPending}
-            className="rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-5 py-2 font-colus text-[9px] uppercase tracking-[0.16em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+            className="rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-5 py-2 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
           >
             {loadingMore ? "Carregando…" : "Carregar mais"}
           </button>

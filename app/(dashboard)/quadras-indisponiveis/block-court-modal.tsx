@@ -66,7 +66,7 @@ export function BlockCourtModal() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
+        className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
       >
         <Plus size={12} strokeWidth={2.5} />
         Bloquear quadra
@@ -89,7 +89,7 @@ export function BlockCourtModal() {
                 <p className="eyebrow mb-2.5">Painel 07</p>
                 <h2
                   id="block-court-title"
-                  className="font-display text-[21px] italic leading-tight tracking-[-0.02em] text-[var(--text-primary)]"
+                  className="font-display text-[21px] leading-tight tracking-[-0.01em] text-[var(--text-primary)]"
                 >
                   Bloquear horário de quadra
                 </h2>
@@ -180,7 +180,7 @@ export function BlockCourtModal() {
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="rounded-full bg-[var(--primary)] px-4 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                  className="rounded-full bg-[var(--primary)] px-4 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
                   {isPending ? "Bloqueando…" : "Bloquear"}
                 </button>

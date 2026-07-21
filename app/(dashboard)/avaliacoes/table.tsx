@@ -224,7 +224,7 @@ export function PlayerEvaluationsTable({ evaluations }: { evaluations: PlayerEva
                     )}
 
                     {r.comment && (
-                      <p className="mt-2 border-t border-[var(--border)] pt-2 font-display text-[13px] italic leading-relaxed text-[var(--text-secondary)]">
+                      <p className="mt-2 border-t border-[var(--border)] pt-2 font-300 text-[13px] italic leading-relaxed text-[var(--text-secondary)]">
                         &ldquo;{r.comment}&rdquo;
                       </p>
                     )}

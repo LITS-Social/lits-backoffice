@@ -6,9 +6,9 @@ interface PageHeaderProps {
 }
 
 /**
- * The masthead of every panel. Colus eyebrow with its leading rule, the panel's
- * folio number set as an oversized serif watermark, then the title in italic
- * display. This is the landing's editorial grammar, applied to an ops console.
+ * The masthead of every panel. Tracked Nikkei eyebrow with its leading rule,
+ * the panel's folio number set as an oversized Colus watermark, then the title
+ * in upright Colus — the design system's editorial grammar on an ops console.
  */
 export function PageHeader({ eyebrow, title, description, action }: PageHeaderProps) {
   const num = eyebrow.replace("#", "");
@@ -19,7 +19,7 @@ export function PageHeader({ eyebrow, title, description, action }: PageHeaderPr
           are standing in from across the room. */}
       <span
         aria-hidden
-        className="pointer-events-none absolute right-5 bottom-0 select-none font-display italic leading-none text-[var(--text-primary)] opacity-[0.05] translate-y-[22%]"
+        className="pointer-events-none absolute right-5 bottom-0 select-none font-display leading-none text-[var(--text-primary)] opacity-[0.05] translate-y-[22%]"
         style={{ fontSize: "clamp(100px, 13vw, 172px)" }}
       >
         {num}
@@ -33,7 +33,7 @@ export function PageHeader({ eyebrow, title, description, action }: PageHeaderPr
 
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
-            <h1 className="mb-2 font-display text-[30px] italic leading-[1.1] tracking-[-0.03em] text-[var(--text-primary)]">
+            <h1 className="mb-2 font-display text-[30px] leading-[1.1] tracking-[-0.01em] text-[var(--text-primary)]">
               {title}
             </h1>
             {description && (

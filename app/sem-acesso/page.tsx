@@ -95,7 +95,7 @@ export default function SemAcessoPage() {
           <a
             href={accessLogoutUrl()}
             className="flex w-full items-center justify-center gap-2 rounded-md px-5 py-3.5 text-[13.5px] font-600 transition-transform duration-200 hover:-translate-y-px"
-            style={{ background: OFF, color: "#2A1A12" }}
+            style={{ background: OFF, color: "#37241D" }}
           >
             <LogOut size={14} strokeWidth={2} />
             Sair e entrar com outra conta

@@ -323,7 +323,7 @@ export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
             <button
               type="submit"
               disabled={!canSend}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-40"
             >
               <Send size={12} strokeWidth={2.5} />
               Enviar
@@ -350,7 +350,7 @@ export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
                 <p className="eyebrow mb-2.5">Confirmar envio</p>
                 <h2
                   id="confirm-announcement-title"
-                  className="font-display text-[21px] italic leading-tight tracking-[-0.02em] text-[var(--text-primary)]"
+                  className="font-display text-[21px] leading-tight tracking-[-0.01em] text-[var(--text-primary)]"
                 >
                   {confirmTitle}
                 </h2>
@@ -408,7 +408,7 @@ export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
                 type="button"
                 onClick={send}
                 disabled={isPending}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 <Send size={12} strokeWidth={2.5} />
                 {isPending ? "Enviando…" : "Confirmar envio"}

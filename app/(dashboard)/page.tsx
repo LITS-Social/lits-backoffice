@@ -1,363 +1,562 @@
 import Link from "next/link";
-import { ArrowUpRight, Clock, Mail, XCircle, CreditCard, AlertTriangle, Star, Flag } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { PaymentLegs } from "@/components/ui/payment-legs";
-import { getOpsSummary } from "@/lib/ops";
-import { getApi } from "@/lib/api";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import { WeekChart, type WeekMatch } from "./_components/week-chart";
-import { CountdownTimer } from "./convites/countdown-timer";
-import { Player } from "./_components/cells";
+import { getProductMetrics } from "@/lib/metrics";
+import { cn } from "@/lib/utils";
+import {
+  CompletionGauge,
+  EngagementDonut,
+  GrowthChart,
+  PaceChart,
+} from "./_components/metric-charts";
 
-// The seven panels with a backend, ordered the way they matter when something is
-// on fire: money and moderation first, housekeeping last. #02 and #04 are absent
-// — they have no data source, and a card reading "0" would be a lie.
-const panels = [
-  { id: "06", label: "Problemas de Pagamento", href: "/pagamentos", icon: CreditCard, hint: "Pix preso, sem confirmação", urgent: true },
-  { id: "09", label: "Denúncias", href: "/denuncias", icon: Flag, hint: "posts aguardando moderação", urgent: true },
-  { id: "07", label: "Quadras Indisponíveis", href: "/quadras-indisponiveis", icon: AlertTriangle, hint: "bloqueadas ou em manutenção", urgent: true },
-  { id: "03", label: "Convites em Aberto", href: "/convites", icon: Mail, hint: "aguardando o convidado aceitar" },
-  { id: "01", label: "Aguardando Jogo", href: "/partidas-aguardando", icon: Clock, hint: "confirmadas, ainda por acontecer" },
-  { id: "05", label: "Cancelamentos", href: "/cancelamentos", icon: XCircle, hint: "reservas canceladas recentemente" },
-  { id: "08", label: "Avaliações", href: "/avaliacoes", icon: Star, hint: "notas dadas após a partida" },
-];
+export const dynamic = "force-dynamic";
 
-const DAY_MS = 24 * 3600_000;
+/**
+ * Metas da fase (beta fechado). Quando a fase virar, os alvos mudam AQUI e em
+ * lugar nenhum mais — barras, percentuais e status recalculam sozinhos.
+ */
+const META_FASE = {
+  usuarios: 200,
+  partidas: 300,
+};
+const META_CONCLUSAO = 0.7;
 
-export default async function DashboardPage() {
-  const api = await getApi();
+const pct = (x: number) => `${Math.round(x * 100)}%`;
 
-  // getOpsSummary is React-cached and the layout already called it, so this is
-  // free — it gives us every panel's true server-side `total`.
-  //
-  // The three extra fetches are the ones the founder actually opens this screen
-  // to see: the week ahead, the money stuck, and the invites about to lapse. They
-  // are the same endpoints the panels use; nothing here is derived from anything
-  // but rows that came off the wire.
-  const [summary, upcoming, payments, invites] = await Promise.all([
-    getOpsSummary(),
-    api.GET("/v1/ops/upcoming-matches", { params: { query: { limit: 500, offset: 0 } } }),
-    // Ask for the whole set, not a page: this card sums money, and a sum over a
-    // page is a smaller number wearing the clothes of a total. The endpoint grew
-    // limit/offset for exactly this. `issuesTruncated` below still guards the case
-    // where the cap bites anyway — it tells the truth instead of quietly under-reporting.
-    api.GET("/v1/ops/payment-issues", { params: { query: { limit: 500, offset: 0 } } }),
-    api.GET("/v1/ops/open-invites"),
-  ]);
+/* ── KPI tile: one number, its weekly delta, nothing else ──────────────────── */
 
-  const broken = panels.filter((p) => summary[p.id]?.failed);
+function Kpi({
+  label,
+  value,
+  delta,
+  deltaGood,
+  context,
+}: {
+  label: string;
+  value: string;
+  /** WoW movement, already formatted ("+19", "-3pp"). Omit when unknowable. */
+  delta?: string;
+  deltaGood?: boolean;
+  context: string;
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">{label}</p>
+      <div className="mt-2.5 flex items-baseline justify-between gap-2">
+        <span className="numeral text-[32px] text-[var(--text-primary)]">{value}</span>
+        {delta && (
+          <span
+            className={cn(
+              "flex items-center gap-1 text-[11px] font-600 tabular-nums",
+              deltaGood ? "text-[var(--color-success)]" : "text-[var(--color-clay)]",
+            )}
+          >
+            {deltaGood ? <TrendingUp size={12} strokeWidth={2} /> : <TrendingDown size={12} strokeWidth={2} />}
+            {delta}
+          </span>
+        )}
+      </div>
+      <p className="mt-1.5 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+        {context}
+      </p>
+    </div>
+  );
+}
 
-  // ── The week ahead ────────────────────────────────────────────────────────────
-  const matches = upcoming.data?.matches ?? [];
-  const matchesTotal = upcoming.data?.total ?? matches.length;
-  // A histogram over page 1 of 2 is not an approximate shape, it is a wrong one.
-  // The chart only exists when we are certain we are holding every row.
-  const matchesComplete = !upcoming.error && matches.length >= matchesTotal;
-  const weekMatches: WeekMatch[] = matches.map((m) => ({
-    starts_at: m.starts_at,
-    payment_settled: m.payment_settled,
-  }));
+/* ── Progress tracker: where we are against the phase goal ─────────────────── */
 
-  const now = Date.now();
-  const nextUp = [...matches]
-    .filter((m) => new Date(m.starts_at).getTime() >= now)
-    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())
-    .slice(0, 5);
+function ProgressCard({
+  eyebrow,
+  value,
+  target,
+  footer,
+  failed,
+  truncated,
+}: {
+  eyebrow: string;
+  value: number;
+  target: number;
+  footer: React.ReactNode;
+  failed: boolean;
+  truncated?: boolean;
+}) {
+  const ratio = Math.min(value / target, 1);
 
-  // ── Money stuck ───────────────────────────────────────────────────────────────
-  const issues = payments.data?.issues ?? [];
-  const issuesTotal = payments.data?.total ?? issues.length;
-  const issuesTruncated = issues.length < issuesTotal;
-  const stuckCents = issues.reduce((sum, i) => sum + i.amount_cents, 0);
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+      <p className="eyebrow">{eyebrow}</p>
 
-  // ── Invites on the clock ──────────────────────────────────────────────────────
-  const openInvites = invites.data?.invites ?? [];
-  const closingSoon = [...openInvites]
-    .filter((i) => new Date(i.expires_at).getTime() > now)
-    .sort((a, b) => new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime())
-    .slice(0, 4);
+      {failed ? (
+        <p className="mt-4 text-[13px] text-[var(--color-warning)]">
+          Não foi possível carregar este número.
+        </p>
+      ) : (
+        <>
+          <p className="mt-3 flex items-baseline gap-2.5">
+            <span className="numeral text-[40px] text-[var(--text-primary)]">
+              {truncated ? `${value}+` : value}
+            </span>
+            <span className="text-[12px] font-300 text-[var(--text-tertiary)]">
+              de {target} · meta da fase
+            </span>
+            <span className="ml-auto numeral text-[15px] text-[var(--primary)]">{pct(ratio)}</span>
+          </p>
+
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-raised)]">
+            <div
+              className="h-full rounded-full bg-[var(--primary)]"
+              style={{ width: pct(ratio) }}
+            />
+          </div>
+
+          <p className="mt-3 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+            {footer}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ── Chart card shell ──────────────────────────────────────────────────────── */
+
+function ChartCard({
+  eyebrow,
+  hint,
+  className,
+  children,
+}: {
+  eyebrow: string;
+  hint?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={cn("rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5", className)}>
+      <div className="mb-4">
+        <p className="eyebrow">{eyebrow}</p>
+        {hint && (
+          <p className="mt-2 text-[11px] font-300 text-[var(--text-tertiary)]">{hint}</p>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ChartUnavailable({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex h-[220px] items-center justify-center px-6 text-center text-[12px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+      {children}
+    </p>
+  );
+}
+
+/** A linha da planilha de métricas. `value === undefined` significa "o backend
+    ainda não instrumenta isso" — a linha fica na página mesmo assim, porque a
+    meta e a ação continuam sendo o checklist diário do fundador. */
+type MetricRow = {
+  metric: string;
+  meta: string;
+  value?: string;
+  ok?: boolean;
+  note?: string;
+  action: string;
+};
+
+function StatusDot({ ok }: { ok?: boolean }) {
+  if (ok === undefined) {
+    return (
+      <span
+        aria-hidden
+        className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full border border-[var(--border-strong)]"
+        title="Sem instrumentação ainda"
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full",
+        ok ? "bg-[var(--color-success)]" : "bg-[var(--color-clay)]",
+      )}
+    />
+  );
+}
+
+function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+      <p className="label-colus border-b border-[var(--border)] bg-[var(--surface-raised)] px-5 py-3 text-[9.5px] text-[var(--text-secondary)]">
+        {title}
+      </p>
+
+      <ul className="divide-y divide-[var(--border)]">
+        {rows.map((row) => {
+          const semDado = row.value === undefined;
+          return (
+            <li
+              key={row.metric}
+              className="grid grid-cols-1 gap-x-6 gap-y-1.5 px-5 py-3.5 sm:grid-cols-[minmax(0,1.2fr)_150px_minmax(0,1fr)] lg:grid-cols-[minmax(0,1.2fr)_150px_170px_minmax(0,1.3fr)]"
+            >
+              <span className="flex items-start gap-2.5">
+                <StatusDot ok={row.ok} />
+                <span
+                  className={cn(
+                    "text-[13px] font-500 leading-snug",
+                    semDado ? "text-[var(--text-tertiary)]" : "text-[var(--text-primary)]",
+                  )}
+                >
+                  {row.metric}
+                </span>
+              </span>
+
+              <span className="pl-[16px] text-[12px] font-600 leading-snug text-[var(--color-success)] sm:pl-0">
+                {row.meta}
+              </span>
+
+              <span className="pl-[16px] sm:pl-0">
+                {semDado ? (
+                  <span className="label-colus text-[8.5px] text-[var(--text-tertiary)]">
+                    sem dado
+                  </span>
+                ) : (
+                  <>
+                    <span
+                      className={cn(
+                        "numeral text-[15px]",
+                        row.ok ? "text-[var(--text-primary)]" : "text-[var(--color-clay)]",
+                      )}
+                    >
+                      {row.value}
+                    </span>
+                    {row.note && (
+                      <span className="mt-0.5 block text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+                        {row.note}
+                      </span>
+                    )}
+                  </>
+                )}
+              </span>
+
+              <span className="hidden pl-[16px] text-[12px] font-300 italic leading-snug text-[var(--text-secondary)] sm:col-span-2 sm:block sm:pl-0 lg:col-span-1">
+                {row.action}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+export default async function MetricsPage() {
+  const { users, matches, completion, partnerRating } = await getProductMetrics();
+
+  const broken = [
+    users.failed && "Usuários",
+    matches.failed && "Partidas concluídas",
+  ].filter(Boolean) as string[];
+
+  const wow = !matches.failed
+    ? { ok: matches.last7 >= matches.prev7, delta: matches.last7 - matches.prev7 }
+    : null;
+  const wau = users.activity.hoje + users.activity.semana;
+
+  // ── Ação imediata — a metade diária da planilha ──────────────────────────────
+  const daily: MetricRow[] = [
+    {
+      metric: "Partidas concluídas",
+      meta: "Cresce semana a semana",
+      ...(wow
+        ? {
+            value: `${matches.last7} × ${matches.prev7}`,
+            ok: wow.ok,
+            note: "últimos 7 dias × 7 anteriores",
+          }
+        : {}),
+      action: "Investiga qualquer queda sem motivo óbvio",
+    },
+    {
+      metric: "Taxa de conclusão",
+      meta: "≥ 70%",
+      ...(completion
+        ? {
+            value: pct(completion.rate),
+            ok: completion.rate >= META_CONCLUSAO,
+            note: `${completion.finished} concluídas · ${completion.cancelled} canceladas`,
+          }
+        : {}),
+      action: "Liga para quem deu W.O. e entende por quê",
+    },
+    {
+      metric: "W.O. no dia",
+      meta: "0–1 por dia",
+      action: "Se ≥ 3: investiga padrão — horário, clube, categoria",
+    },
+    {
+      metric: "Convites enviados",
+      meta: "Cresce com a base",
+      action: "Queda brusca = algo mudou no matchmaking",
+    },
+    {
+      metric: "Taxa de aceitação de convite",
+      meta: "≥ 50%",
+      action: "Se < 30%: revisa qualidade dos matches gerados",
+    },
+    {
+      metric: "Novos usuários ativos",
+      meta: "Conforme fase",
+      ...(!users.failed
+        ? {
+            value: `+${users.newLast7}`,
+            ok: users.newLast2 > 0,
+            note:
+              users.newLast2 > 0
+                ? `em 7 dias · ${users.newPrev7} nos 7 anteriores`
+                : "zero novas contas há 2 dias",
+          }
+        : {}),
+      action: "Zero por 2 dias seguidos = ação de aquisição necessária",
+    },
+    {
+      metric: "App aberto sem ação",
+      meta: "< 30% dos DAU",
+      action: "Se > 50%: push notification ou problema de UX",
+    },
+  ];
+
+  // ── Saúde do produto — a metade semanal ──────────────────────────────────────
+  const weeklyRows: MetricRow[] = [
+    {
+      metric: "Onboarding → 1ª partida",
+      meta: "≥ 50% em 7 dias",
+      action: "Mapeia onde o fluxo é abandonado",
+    },
+    {
+      metric: "Matches válidos por usuário",
+      meta: "≥ 8 por semana",
+      action: "Se < 4 para algum perfil: densidade insuficiente",
+    },
+    {
+      metric: "Nota de equilíbrio média",
+      meta: "≥ 3.5",
+      action: "Se < 2.5: recalibra ELO seed por categoria",
+    },
+    {
+      metric: "Nota de parceiro média",
+      meta: "≥ 3.5",
+      ...(partnerRating
+        ? {
+            value: partnerRating.avg.toFixed(1),
+            ok: partnerRating.avg >= 3.5,
+            note: `${partnerRating.count} avaliações recebidas`,
+          }
+        : {}),
+      action: "Se < 3.0 com equilíbrio ok: sobe peso perfil social",
+    },
+    {
+      metric: "Retenção semana 2",
+      meta: "≥ 50%",
+      ...(users.retention
+        ? {
+            value: pct(users.retention.rate),
+            ok: users.retention.rate >= 0.5,
+            note: `aproximação via last_seen · coorte de ${users.retention.cohort}`,
+          }
+        : {}),
+      action: "Entrevista quem não voltou — busca padrão",
+    },
+    {
+      metric: "Códigos de indicação usados",
+      meta: "≥ 1 por dia",
+      action: "Zero por 3 dias: MGM não está rodando",
+    },
+  ];
 
   return (
     <div>
       <PageHeader
-        eyebrow="Painel"
-        title="Visão Geral"
-        description="O estado operacional do beta fechado, agora."
+        eyebrow="Métricas"
+        title="Norte do Produto"
+        description="As metas do beta e onde estamos agora. O que o backend ainda não mede fica marcado como sem dado — nunca como zero."
       />
 
       <div className="space-y-6 px-8 py-6">
-        {/* A panel that failed to load is worth saying out loud: the cards below
-            would otherwise just be missing a number, which reads as "nothing to do"
-            rather than "we don't know". */}
         {broken.length > 0 && (
           <div className="flex items-start gap-2.5 rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning-bg)] px-4 py-3">
             <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[var(--color-clay)]" />
             <p className="text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
               Não foi possível carregar{" "}
-              {broken.length === 1 ? "o painel" : "os painéis"}{" "}
-              <span className="font-600 text-[var(--text-primary)]">
-                {broken.map((p) => p.label).join(", ")}
-              </span>
-              . Os números abaixo estão incompletos — não os leia como zero.
+              <span className="font-600 text-[var(--text-primary)]">{broken.join(" e ")}</span>. Os
+              números abaixo estão incompletos — não os leia como zero.
             </p>
           </div>
         )}
 
-        {/* ── The two numbers that cost money ─────────────────────────────────── */}
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-1">
-            <p className="eyebrow mb-4">Dinheiro parado</p>
-
-            {payments.error ? (
-              <p className="text-[13px] text-[var(--color-warning)]">
-                Não foi possível ler os pagamentos.
-              </p>
-            ) : (
-              <>
-                <p className="numeral text-[38px] text-[var(--color-error)]">
-                  {formatCurrency(stuckCents)}
-                </p>
-                {/*
-                  The denominator, in the open.
-
-                  This sums the rows it actually holds. Normally that is all of them —
-                  the endpoint takes limit/offset and we ask for the lot. But if the set
-                  ever outgrows the request, presenting a partial sum as "o valor preso
-                  no beta" would be a lie of exactly the kind this console was scrubbed
-                  of. So it names its own denominator and admits when it cannot see the rest.
-                */}
-                <p className="mt-2.5 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-                  {issuesTruncated ? (
-                    <>
-                      Soma de <span className="font-600 text-[var(--text-secondary)]">{issues.length}</span>{" "}
-                      das{" "}
-                      <span className="font-600 text-[var(--text-secondary)]">{issuesTotal}</span>{" "}
-                      reservas presas. O valor real é maior — a API não pagina esse endpoint.
-                    </>
-                  ) : (
-                    <>
-                      Soma das{" "}
-                      <span className="font-600 text-[var(--text-secondary)]">{issuesTotal}</span>{" "}
-                      reservas com Pix pendente ou rejeitado.
-                    </>
-                  )}
-                </p>
-                <Link
-                  href="/pagamentos"
-                  className="mt-4 inline-flex items-center gap-1 font-colus text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
-                >
-                  Ver pagamentos <ArrowUpRight size={11} />
-                </Link>
-              </>
-            )}
-          </div>
-
-          {/* ── The week ahead ───────────────────────────────────────────────── */}
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <p className="eyebrow mb-2">Próximos 7 dias</p>
-                <p className="text-[11.5px] font-300 text-[var(--text-tertiary)]">
-                  Partidas confirmadas por dia. Em vermelho, as que ainda têm pagamento em aberto.
-                </p>
-              </div>
-              <Link
-                href="/partidas-aguardando"
-                className="shrink-0 font-colus text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
-              >
-                Ver todas
-              </Link>
-            </div>
-
-            {upcoming.error ? (
-              <p className="py-12 text-center text-[13px] text-[var(--color-warning)]">
-                Não foi possível carregar as partidas.
-              </p>
-            ) : matchesComplete ? (
-              <WeekChart matches={weekMatches} />
-            ) : (
-              // Rather than draw a plausible-looking shape from a partial page.
-              <p className="py-12 text-center text-[12.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-                Gráfico omitido: o painel carregou {matches.length} de {matchesTotal} partidas,
-                e um histograma sobre parte da base mostraria uma semana que não existe.
-              </p>
-            )}
-          </div>
+        {/* ── A linha de cima: os quatro números da semana ─────────────────────── */}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Kpi
+            label="Usuários"
+            value={users.failed ? "—" : users.truncated ? `${users.total}+` : String(users.total)}
+            {...(!users.failed
+              ? { delta: `+${users.newLast7}`, deltaGood: users.newLast7 >= users.newPrev7 }
+              : {})}
+            context={
+              users.failed
+                ? "falha ao carregar"
+                : `novos na semana · ${users.newPrev7} na anterior`
+            }
+          />
+          <Kpi
+            label="Partidas concretizadas"
+            value={matches.failed ? "—" : String(matches.total)}
+            {...(wow ? { delta: `+${matches.last7}`, deltaGood: wow.ok } : {})}
+            context={
+              matches.failed
+                ? "falha ao carregar"
+                : `na semana · ${matches.prev7} na anterior`
+            }
+          />
+          <Kpi
+            label="Ativos na semana"
+            value={users.failed ? "—" : String(wau)}
+            context={
+              users.failed || users.total === 0
+                ? "falha ao carregar"
+                : `${pct(wau / users.total)} da base viva nos últimos 7 dias`
+            }
+          />
+          <Kpi
+            label="Taxa de conclusão"
+            value={completion ? pct(completion.rate) : "—"}
+            {...(completion
+              ? {
+                  delta: completion.rate >= META_CONCLUSAO ? "na meta" : "abaixo",
+                  deltaGood: completion.rate >= META_CONCLUSAO,
+                }
+              : {})}
+            context={
+              completion
+                ? `meta ≥ ${pct(META_CONCLUSAO)} · ${completion.cancelled} canceladas`
+                : "sem dado de cancelamentos"
+            }
+          />
         </div>
 
-        {/* ── The next five, and who owes ─────────────────────────────────────── */}
+        {/* ── Onde estamos contra a meta da fase ───────────────────────────────── */}
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-            <p className="eyebrow mb-4">A seguir na quadra</p>
+          <ProgressCard
+            eyebrow="Usuários · meta da fase"
+            value={users.total}
+            target={META_FASE.usuarios}
+            failed={users.failed}
+            truncated={users.truncated}
+            footer={
+              <>
+                <span className="font-600 text-[var(--text-secondary)]">+{users.newLast7}</span>{" "}
+                nos últimos 7 dias ·{" "}
+                <span className="font-600 text-[var(--text-secondary)]">{users.active7}</span>{" "}
+                ativos na semana
+              </>
+            }
+          />
 
-            {nextUp.length === 0 ? (
-              <p className="py-6 text-[12.5px] font-300 text-[var(--text-tertiary)]">
-                Nenhuma partida confirmada pela frente.
-              </p>
-            ) : (
-              <ul className="divide-y divide-[var(--border)]">
-                {nextUp.map((m) => {
-                  const soon = new Date(m.starts_at).getTime() - now < DAY_MS;
-                  return (
-                    <li key={m.booking_id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                      <span className="w-[74px] shrink-0">
-                        <span className="block whitespace-nowrap text-[12px] tabular-nums text-[var(--text-primary)]">
-                          {formatDate(new Date(m.starts_at))}
-                        </span>
-                      </span>
-
-                      {/* No "— sem convidado" here: PaymentLegs already says it, in the
-                          column where the absence actually means something. Saying it
-                          twice on one line is noise dressed up as thoroughness. */}
-                      <span className="min-w-0 flex-1">
-                        <span className="flex min-w-0 items-baseline gap-1.5">
-                          <Player name={m.host.name} id={m.host.user_id} strong />
-                          {m.guest && (
-                            <>
-                              <span className="shrink-0 text-[11px] text-[var(--text-tertiary)]">e</span>
-                              <Player name={m.guest.name} id={m.guest.user_id} />
-                            </>
-                          )}
-                        </span>
-                      </span>
-
-                      <span className="shrink-0">
-                        <PaymentLegs
-                          priceCents={m.price_cents}
-                          host={m.host_payment}
-                          guest={m.guest_payment}
-                          hasGuest={!!m.guest}
-                        />
-                      </span>
-
-                      {soon && (
-                        <span
-                          aria-hidden
-                          className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-clay)]"
-                          title="Nas próximas 24h"
-                        />
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-
-          {/* ── Invites on the clock ─────────────────────────────────────────── */}
-          <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <p className="eyebrow">Convites fechando</p>
-              <Link
-                href="/convites"
-                className="shrink-0 font-colus text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
-              >
-                Ver todos
-              </Link>
-            </div>
-
-            {closingSoon.length === 0 ? (
-              <p className="py-6 text-[12.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-                {openInvites.length === 0
-                  ? "Nenhum convite em aberto."
-                  : "Nenhum convite com a janela ainda correndo — os que restam já expiraram."}
-              </p>
-            ) : (
-              <ul className="divide-y divide-[var(--border)]">
-                {closingSoon.map((i) => (
-                  <li key={i.booking_id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                    <span className="w-[74px] shrink-0">
-                      <CountdownTimer expiresAt={i.expires_at} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <Player name={i.guest.name} id={i.guest.user_id} strong />
-                      <span className="block truncate text-[11px] text-[var(--text-tertiary)]">
-                        convidado por {i.host.name}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <ProgressCard
+            eyebrow="Partidas · meta da fase"
+            value={matches.total}
+            target={META_FASE.partidas}
+            failed={matches.failed}
+            footer={
+              <>
+                <span className="font-600 text-[var(--text-secondary)]">+{matches.last7}</span>{" "}
+                nos últimos 7 dias ·{" "}
+                <span className="font-600 text-[var(--text-secondary)]">{matches.prev7}</span>{" "}
+                na semana anterior
+              </>
+            }
+          />
         </div>
 
-        {/* ── Every panel, with its real total ────────────────────────────────── */}
-        <div>
-          <p className="eyebrow mb-4">Painéis</p>
+        {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão ──────────── */}
+        <div className="grid gap-4 lg:grid-cols-3">
+          <ChartCard
+            eyebrow="Crescimento da base"
+            hint="Usuários acumulados por semana, últimas 12 semanas."
+            className="lg:col-span-2"
+          >
+            {users.series ? (
+              <GrowthChart points={users.series} target={META_FASE.usuarios} />
+            ) : (
+              <ChartUnavailable>
+                {users.failed
+                  ? "Não foi possível carregar os usuários."
+                  : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."}
+              </ChartUnavailable>
+            )}
+          </ChartCard>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {panels.map((panel) => {
-              const Icon = panel.icon;
-              const stat = summary[panel.id];
-              const failed = stat?.failed === true;
-              const count = stat?.count;
-              const hot = panel.urgent && (count ?? 0) > 0;
+          <ChartCard
+            eyebrow="Engajamento da base"
+            hint="Toda a base, por último acesso."
+          >
+            {!users.failed ? (
+              <EngagementDonut slices={users.activity} />
+            ) : (
+              <ChartUnavailable>Não foi possível carregar os usuários.</ChartUnavailable>
+            )}
+          </ChartCard>
 
-              return (
-                <Link
-                  key={panel.id}
-                  href={panel.href}
-                  className={cn(
-                    "group rounded-xl border bg-[var(--surface)] p-4 transition-colors hover:bg-[var(--surface-raised)]",
-                    hot
-                      ? "border-[var(--color-error)]/30"
-                      : "border-[var(--border)] hover:border-[var(--border-strong)]"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="flex items-center gap-2">
-                      <Icon
-                        size={13}
-                        strokeWidth={1.75}
-                        className={cn(
-                          "shrink-0",
-                          hot ? "text-[var(--color-error)]" : "text-[var(--text-tertiary)]"
-                        )}
-                      />
-                      <span className="label-colus text-[9px] leading-none text-[var(--text-tertiary)]">
-                        {panel.id}
-                      </span>
-                    </span>
+          <ChartCard
+            eyebrow="Ritmo de partidas"
+            hint="Partidas concluídas por semana, últimas 12 semanas."
+            className="lg:col-span-2"
+          >
+            {matches.weekly ? (
+              <PaceChart points={matches.weekly} />
+            ) : (
+              <ChartUnavailable>
+                {matches.failed
+                  ? "Não foi possível carregar as partidas."
+                  : "Série omitida: a página carregada não cobre o total, e um histograma parcial mostraria semanas que não existem."}
+              </ChartUnavailable>
+            )}
+          </ChartCard>
 
-                    {failed ? (
-                      // Never a number, never a zero. "We could not ask" and "there is
-                      // nothing there" are opposite facts.
-                      <span
-                        title="Falha ao carregar este painel"
-                        className="label-colus text-[9px] text-[var(--color-warning)]"
-                      >
-                        Erro
-                      </span>
-                    ) : (
-                      <span
-                        className={cn(
-                          "numeral text-[26px]",
-                          hot ? "text-[var(--color-error)]" : "text-[var(--text-primary)]"
-                        )}
-                      >
-                        {count ?? 0}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="mt-3 text-[13px] font-600 text-[var(--text-primary)] transition-colors group-hover:text-[var(--primary)]">
-                    {panel.label}
-                  </p>
-                  <p className="mt-0.5 text-[11px] font-300 leading-snug text-[var(--text-tertiary)]">
-                    {panel.hint}
-                  </p>
-                </Link>
-              );
-            })}
-          </div>
+          <ChartCard
+            eyebrow="Taxa de conclusão"
+            hint="Concluídas sobre concluídas + canceladas."
+          >
+            {completion ? (
+              <CompletionGauge
+                rate={completion.rate}
+                target={META_CONCLUSAO}
+                caption={`${completion.finished} concluídas · ${completion.cancelled} canceladas`}
+              />
+            ) : (
+              <ChartUnavailable>Sem dado de cancelamentos para compor a taxa.</ChartUnavailable>
+            )}
+          </ChartCard>
         </div>
 
-        <p className="border-t border-[var(--border)] pt-4 text-[11px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Os painéis <span className="font-600 text-[var(--text-secondary)]">02 Finalizadas</span> e{" "}
-          <span className="font-600 text-[var(--text-secondary)]">04 Sem Recomendação</span> não
-          aparecem aqui: o backend ainda não captura placar de partida nem telemetria de
-          zero-candidato, então não há o que contar.
+        {/* ── A planilha, viva ─────────────────────────────────────────────────── */}
+        <MetricsTable title="Ação imediata — verificar todo dia" rows={daily} />
+        <MetricsTable title="Saúde do produto — verificar toda semana" rows={weeklyRows} />
+
+        <p className="flex items-center justify-between gap-4 border-t border-[var(--border)] pt-4 text-[11px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          <span>
+            Linhas <span className="font-600 text-[var(--text-secondary)]">sem dado</span> ainda não
+            têm instrumentação no backend — a meta e a ação ficam aqui porque o checklist vale
+            mesmo medido à mão.
+          </span>
+          <Link
+            href="/visao-geral"
+            className="inline-flex shrink-0 items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
+          >
+            Visão operacional <ArrowUpRight size={11} />
+          </Link>
         </p>
       </div>
     </div>
