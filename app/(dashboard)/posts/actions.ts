@@ -91,3 +91,73 @@ export async function deletePostAction({
 
   return { ok: true, deletedAt: data.deleted_at };
 }
+
+export type RedactResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Softer than deletePostAction: marks the post redacted (content-level
+ * moderation) without a hard soft-delete. feed-service's RedactPostRequest
+ * requires `staff_user_id` as a UUID FK into users — a real LITS account id,
+ * not the operator's Cloudflare Access email. There is no mapping from CF
+ * Access identity to a users.id yet, so the caller supplies their own LITS
+ * user_id explicitly (surfaced in the UI as a one-time-per-session input).
+ */
+export async function redactPostAction({
+  id,
+  staffUserId,
+  reason,
+}: {
+  id: string;
+  staffUserId: string;
+  reason: string;
+}): Promise<RedactResult> {
+  const api = await getApi();
+  const { error } = await api.POST("/v1/ops/posts/{id}/redact", {
+    params: { path: { id } },
+    body: { staff_user_id: staffUserId, reason },
+  });
+  if (error) {
+    return { ok: false, error: error.detail || error.title || "Falha ao redigir o post." };
+  }
+  return { ok: true };
+}
+
+type OpsComment = components["schemas"]["OpsComment"];
+
+export type CommentsResult =
+  | { ok: true; comments: OpsComment[]; hasMore: boolean; nextCursor?: string }
+  | { ok: false; error: string };
+
+export async function listPostCommentsAction(postId: string, cursor?: string): Promise<CommentsResult> {
+  const api = await getApi();
+  const { data, error } = await api.GET("/v1/ops/posts/{id}/comments", {
+    params: { path: { id: postId }, query: { limit: 50, ...(cursor ? { cursor } : {}) } },
+  });
+  if (error) {
+    return { ok: false, error: error.detail || error.title || "Falha ao carregar comentários." };
+  }
+  return { ok: true, comments: data.comments ?? [], hasMore: data.has_more, nextCursor: data.next_cursor };
+}
+
+export type DeleteCommentResult = { ok: true } | { ok: false; error: string };
+
+/** Same staff-identity caveat as redactPostAction — see its doc comment. */
+export async function deletePostCommentAction({
+  postId,
+  commentId,
+  deleterUserId,
+}: {
+  postId: string;
+  commentId: number;
+  deleterUserId: string;
+}): Promise<DeleteCommentResult> {
+  const api = await getApi();
+  const { error } = await api.DELETE("/v1/ops/posts/{id}/comments/{comment_id}", {
+    params: { path: { id: postId, comment_id: commentId } },
+    body: { deleter_user_id: deleterUserId },
+  });
+  if (error) {
+    return { ok: false, error: error.detail || error.title || "Falha ao apagar o comentário." };
+  }
+  return { ok: true };
+}
