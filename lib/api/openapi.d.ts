@@ -960,6 +960,18 @@ export interface components {
             /** Format: date-time */
             starts_at: string;
         };
+        AppOpenNoAction: {
+            /**
+             * Format: int64
+             * @description Users whose last_seen_at falls inside today (America/Sao_Paulo day). The BFF heartbeat stamps last_seen_at on any authenticated request (15-min throttle), so this is 'opened the app today'
+             */
+            dau: number;
+            /**
+             * Format: int64
+             * @description Of those, users with NO product action today (SP day): no booking created (host or guest side), no accepted-state booking of theirs updated as guest (accept proxy — updated_at moves on any write, so payment/live updates also clear the flag; over-detecting action, never under), no game_feedback authored, no feed post authored (lits.posts author_ids)
+             */
+            no_action: number;
+        };
         ApplySanctionBody: {
             /**
              * Format: uri
@@ -1212,6 +1224,15 @@ export interface components {
             cancellations: components["schemas"]["CancellationItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        CategoryDensity: {
+            /** @description profiles.category (enum projected as text) */
+            category: string;
+            /**
+             * Format: int64
+             * @description Active+onboarded users currently in this category
+             */
+            users: number;
         };
         ConnectorItem: {
             /**
@@ -2559,6 +2580,8 @@ export interface components {
              * @example https://example.com/schemas/ProductMetricsBody.json
              */
             readonly $schema?: string;
+            /** @description Today's (SP day) DAU vs users who opened the app but took no action; frontend computes the % */
+            app_open_no_action: components["schemas"]["AppOpenNoAction"];
             /**
              * Format: double
              * @description Always null: game_feedback has only a 1–5 partner rating, no balance/equilíbrio field. Partner rating lives in GET /v1/ops/player-evaluations
@@ -2590,9 +2613,11 @@ export interface components {
             referral_codes_used_7d: number | null;
             /** @description Users created 14–21 days ago vs those seen in the last 7 days */
             retention_week2: components["schemas"]["RetentionWeek2"];
+            /** @description Quick Match audience density per the category-broadcast predicate (active + onboarded, same category, no region/gender filter). Null when there are no active+onboarded users at all. NOTE: the real broadcast caps at 1000 recipients — irrelevant at current scale */
+            valid_matches_per_user: components["schemas"]["ValidMatchesPerUser"];
             /**
              * Format: int64
-             * @description Always null: booking_status 'no_show' has no write path anywhere in the backend, so W.O.s are not tracked yet. Reserved for when MarkNoShow exists
+             * @description PROXY de W.O. — partidas de hoje sem resultado registrado: bookings com guest que TERMINARAM hoje (dia America/Sao_Paulo, slot_at+duration_min já no passado) ainda em status 'confirmed' (nunca viraram 'played' — só um post de placar faz essa transição), sem relógio de live match iniciado, sem game_feedback de nenhum jogador e sem post de placar anexado. Não é um status rastreado: é a melhor aproximação honesta de 'partida marcada em que ninguém registrou nada'
              */
             wo_today: number | null;
         };
@@ -2943,6 +2968,20 @@ export interface components {
             resolved_by: string | null;
             /** @description pending | reviewing | resolved | dismissed */
             status: string;
+        };
+        ValidMatchesPerUser: {
+            /**
+             * Format: double
+             * @description Average, across all active+onboarded users, of how many other such users share their category
+             */
+            avg_candidates: number;
+            /** @description Per-category user counts, largest first; a user's candidate pool is their category's count minus 1 */
+            categories: components["schemas"]["CategoryDensity"][] | null;
+            /**
+             * Format: int64
+             * @description Worst case: the smallest candidate pool any user has (users in the thinnest category, minus themselves). 0 = someone broadcasts into the void
+             */
+            min_candidates: number;
         };
     };
     responses: never;

@@ -29,6 +29,10 @@ const MATCHES_LIMIT = 1000;
 /** Rolling-window series depth for the charts. */
 const SERIES_WEEKS = 12;
 
+/** Daily pace depth — the beta is ~2 weeks old, so 12 daily bars carry real
+    shape while 12 weekly buckets are still one lonely bar. */
+const SERIES_DAYS = 12;
+
 export type WeekPoint = {
   /** End of the 7-day window, dd/MM. */
   label: string;
@@ -74,6 +78,9 @@ export type MatchesMetrics = {
   /** Matches per rolling week, oldest→newest, ending today. Null when the
       page we hold is smaller than the server's total. */
   weekly: WeekPoint[] | null;
+  /** Matches per rolling day, oldest→newest, ending today — same completeness
+      contract as `weekly`. */
+  daily: WeekPoint[] | null;
 };
 
 /**
@@ -95,6 +102,17 @@ export type NorthMetrics = {
   retentionWeek2: { cohort: number; returned: number } | null;
   /** Signup code redemptions in the last 7 days — 0 here is a real, measured 0. */
   referralCodesUsed7d: number | null;
+  /** PROXY: guest matches that ended today (SP day) still 'confirmed' — no
+      placar post, no live clock, no feedback. Nobody recorded anything. */
+  woToday: number | null;
+  /** Today's DAU (last_seen_at inside the SP day) vs those with no product action. */
+  appOpenNoAction: { dau: number; no_action: number } | null;
+  /** Quick Match audience density: candidate pool per active+onboarded user. */
+  validMatchesPerUser: {
+    avg_candidates: number;
+    min_candidates: number;
+    categories: { category: string; users: number }[] | null;
+  } | null;
 };
 
 export type ProductMetrics = {
@@ -211,7 +229,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, weekly: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, weekly: null, daily: null };
   }
 
   const matches = data.matches;
@@ -234,12 +252,23 @@ async function fetchMatches(): Promise<MatchesMetrics> {
       })
     : null;
 
+  const daily = complete
+    ? Array.from({ length: SERIES_DAYS }, (_, i) => {
+        const end = now - (SERIES_DAYS - 1 - i) * DAY_MS;
+        return {
+          label: new Date(end).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+          count: inWindow(end - DAY_MS, end),
+        };
+      })
+    : null;
+
   return {
     failed: false,
     total,
     last7: inWindow(now - WEEK_MS, now),
     prev7: inWindow(now - 2 * WEEK_MS, now - WEEK_MS),
     weekly,
+    daily,
   };
 }
 
@@ -248,6 +277,7 @@ async function fetchNorth(): Promise<NorthMetrics> {
     failed: true,
     invitesSent7d: null, inviteAcceptance: null, newActive7d: null,
     onboarding: null, retentionWeek2: null, referralCodesUsed7d: null,
+    woToday: null, appOpenNoAction: null, validMatchesPerUser: null,
   };
 
   try {
@@ -262,6 +292,9 @@ async function fetchNorth(): Promise<NorthMetrics> {
       onboarding: data.onboarding_to_first_match,
       retentionWeek2: data.retention_week2,
       referralCodesUsed7d: data.referral_codes_used_7d,
+      woToday: data.wo_today,
+      appOpenNoAction: data.app_open_no_action ?? null,
+      validMatchesPerUser: data.valid_matches_per_user ?? null,
     };
   } catch {
     return failed;

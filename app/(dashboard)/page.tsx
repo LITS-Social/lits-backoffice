@@ -291,6 +291,16 @@ export default async function MetricsPage() {
     north.retentionWeek2 && north.retentionWeek2.cohort > 0
       ? { rate: north.retentionWeek2.returned / north.retentionWeek2.cohort, ...north.retentionWeek2 }
       : null;
+  const appOpen =
+    north.appOpenNoAction && north.appOpenNoAction.dau > 0
+      ? { rate: north.appOpenNoAction.no_action / north.appOpenNoAction.dau, ...north.appOpenNoAction }
+      : null;
+  const density = north.validMatchesPerUser;
+  // Categories come largest-first from the backend; the thinnest one is where
+  // a Quick Match broadcast shouts into the void.
+  const thinnest = density?.categories?.length
+    ? density.categories.reduce((a, b) => (b.users < a.users ? b : a))
+    : null;
 
   // ── Ação imediata — a metade diária da planilha ──────────────────────────────
   const daily: MetricRow[] = [
@@ -321,6 +331,13 @@ export default async function MetricsPage() {
     {
       metric: "W.O. no dia",
       meta: "0–1 por dia",
+      ...(north.woToday != null
+        ? {
+            value: String(north.woToday),
+            ok: north.woToday <= 1,
+            note: "proxy — partidas encerradas hoje sem placar, relógio ou avaliação",
+          }
+        : {}),
       action: "Se ≥ 3: investiga padrão — horário, clube, categoria",
     },
     {
@@ -374,6 +391,13 @@ export default async function MetricsPage() {
     {
       metric: "App aberto sem ação",
       meta: "< 30% dos DAU",
+      ...(appOpen
+        ? {
+            value: pct(appOpen.rate),
+            ok: appOpen.rate < 0.3,
+            note: `${appOpen.no_action} de ${appOpen.dau} DAU hoje`,
+          }
+        : {}),
       action: "Se > 50%: push notification ou problema de UX",
     },
   ];
@@ -395,6 +419,15 @@ export default async function MetricsPage() {
     {
       metric: "Matches válidos por usuário",
       meta: "≥ 8 por semana",
+      ...(density
+        ? {
+            value: density.avg_candidates.toFixed(1),
+            ok: density.avg_candidates >= 8,
+            note: thinnest
+              ? `mínimo ${density.min_candidates} — categoria mais rasa: ${thinnest.category} com ${thinnest.users} ${thinnest.users === 1 ? "usuário" : "usuários"}`
+              : `mínimo ${density.min_candidates} — densidade por categoria`,
+          }
+        : {}),
       action: "Se < 4 para algum perfil: densidade insuficiente",
     },
     {
@@ -481,7 +514,7 @@ export default async function MetricsPage() {
             }
           />
           <Kpi
-            label="Partidas concretizadas"
+            label="Partidas com placar"
             value={matches.failed ? "—" : String(matches.total)}
             {...(wow ? { delta: `+${matches.last7}`, deltaGood: wow.ok } : {})}
             context={
@@ -581,11 +614,11 @@ export default async function MetricsPage() {
 
           <ChartCard
             eyebrow="Ritmo de partidas"
-            hint="Partidas concluídas por semana, últimas 12 semanas."
+            hint="Partidas com placar publicado, por dia — últimos 12 dias; visão semanal no toggle."
             className="lg:col-span-2"
           >
-            {matches.weekly ? (
-              <PaceChart points={matches.weekly} />
+            {matches.daily || matches.weekly ? (
+              <PaceChart daily={matches.daily} weekly={matches.weekly} />
             ) : (
               <ChartUnavailable>
                 {matches.failed

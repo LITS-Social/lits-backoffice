@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   Area,
   AreaChart,
@@ -119,52 +119,93 @@ export function GrowthChart({ points, target }: { points: GrowthPoint[]; target:
   );
 }
 
-/* ── Pace: matches per rolling week, current week in terracotta ────────────── */
+/* ── Pace: matches per rolling day/week, current bucket in terracotta ──────── */
 
 export type PacePoint = { label: string; count: number };
 
-export function PaceChart({ points }: { points: PacePoint[] }) {
+/** Daily is the default — two weeks into the beta, 12 daily bars have shape
+    where 12 weekly buckets are one lonely bar. The weekly series stays a
+    toggle away for when the phase outgrows days. */
+export function PaceChart({
+  daily,
+  weekly,
+}: {
+  daily: PacePoint[] | null;
+  weekly: PacePoint[] | null;
+}) {
   const mounted = useMounted();
+  const [mode, setMode] = useState<"daily" | "weekly">(daily ? "daily" : "weekly");
   if (!mounted) return <div className="h-[220px]" aria-hidden />;
 
+  const points = (mode === "daily" ? daily : weekly) ?? [];
+  const tooltipLabel = (label: string) =>
+    mode === "daily" ? `dia ${label}` : `semana até ${label}`;
+
   return (
-    <div className="h-[220px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -4 }} barCategoryGap="32%">
-          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" opacity={0.7} />
-          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} dy={6} interval="preserveStartEnd" />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            width={44}
-            allowDecimals={false}
-            tick={{ ...AXIS_TICK, fontFamily: "var(--font-display)", fontSize: 10, fontWeight: 400 }}
-          />
-          <Tooltip
-            cursor={{ fill: "var(--surface-raised)", opacity: 0.6 }}
-            content={({ active, payload }) =>
-              active && payload?.length ? (
-                <CardTooltip
-                  label={`semana até ${(payload[0].payload as PacePoint).label}`}
-                  lines={[
-                    `${(payload[0].payload as PacePoint).count} ${
-                      (payload[0].payload as PacePoint).count === 1 ? "partida" : "partidas"
-                    }`,
-                  ]}
+    <div className="w-full">
+      {daily && weekly && (
+        <div className="-mt-1 mb-2 flex justify-end gap-1">
+          {(
+            [
+              { key: "daily", name: "12 dias" },
+              { key: "weekly", name: "12 semanas" },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              aria-pressed={mode === m.key}
+              onClick={() => setMode(m.key)}
+              className={
+                mode === m.key
+                  ? "rounded-md bg-[var(--surface-raised)] px-2 py-1 text-[9px] font-700 uppercase tracking-[0.1em] text-[var(--text-primary)]"
+                  : "rounded-md px-2 py-1 text-[9px] font-700 uppercase tracking-[0.1em] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+              }
+            >
+              {m.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="h-[196px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -4 }} barCategoryGap="32%">
+            <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" opacity={0.7} />
+            <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} dy={6} interval="preserveStartEnd" />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              width={44}
+              allowDecimals={false}
+              tick={{ ...AXIS_TICK, fontFamily: "var(--font-display)", fontSize: 10, fontWeight: 400 }}
+            />
+            <Tooltip
+              cursor={{ fill: "var(--surface-raised)", opacity: 0.6 }}
+              content={({ active, payload }) =>
+                active && payload?.length ? (
+                  <CardTooltip
+                    label={tooltipLabel((payload[0].payload as PacePoint).label)}
+                    lines={[
+                      `${(payload[0].payload as PacePoint).count} ${
+                        (payload[0].payload as PacePoint).count === 1 ? "partida" : "partidas"
+                      }`,
+                    ]}
+                  />
+                ) : null
+              }
+            />
+            <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+              {points.map((p, i) => (
+                <Cell
+                  key={p.label}
+                  fill={i === points.length - 1 ? "var(--primary)" : "var(--border-strong)"}
                 />
-              ) : null
-            }
-          />
-          <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false}>
-            {points.map((p, i) => (
-              <Cell
-                key={p.label}
-                fill={i === points.length - 1 ? "var(--primary)" : "var(--border-strong)"}
-              />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
