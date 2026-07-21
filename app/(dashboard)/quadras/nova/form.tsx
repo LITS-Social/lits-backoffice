@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { AlertCircle, Check, ChevronRight, Plus } from "lucide-react";
 import { cn, reaisToCents } from "@/lib/utils";
@@ -26,6 +27,7 @@ const fieldClass =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--text-primary)] transition-colors placeholder:font-300 placeholder:text-[var(--text-tertiary)] hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:bg-[var(--surface)] focus:outline-none";
 
 const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
+const labelInlineClass = "label-colus block text-[8.5px] text-[var(--text-tertiary)]";
 
 function ErrorBanner({ message }: { message: string }) {
   return (
@@ -33,6 +35,28 @@ function ErrorBanner({ message }: { message: string }) {
       <AlertCircle size={13} className="mt-px shrink-0" />
       {message}
     </p>
+  );
+}
+
+/**
+ * "Grátis" pill that clamps a price field to R$ 0,00. Beta partner clubs (not
+ * just public parks) can be free, so the free choice has to be explicit — a
+ * blank field means "use the default", whereas this means "charge nothing".
+ */
+function GratisToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-600 transition-colors ${
+        active
+          ? "bg-[var(--primary)] text-[var(--primary-fg)]"
+          : "bg-[var(--surface-raised)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+      }`}
+    >
+      Grátis
+    </button>
   );
 }
 
@@ -124,6 +148,7 @@ function FranchiseStep({
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"partner" | "public">("partner");
   const [defaultPrice, setDefaultPrice] = useState("");
+  const [freeFranchise, setFreeFranchise] = useState(false);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -134,8 +159,8 @@ function FranchiseStep({
       const f = franchises.find((f) => f.id === selectedId);
       onNext(selectedId, f?.name ?? selectedId);
     } else {
-      const defaultPriceCents = reaisToCents(defaultPrice);
-      if (defaultPrice.trim() !== "" && defaultPriceCents === null) {
+      const defaultPriceCents = freeFranchise ? 0 : reaisToCents(defaultPrice);
+      if (!freeFranchise && defaultPrice.trim() !== "" && defaultPriceCents === null) {
         setError("Preço padrão inválido. Use ex: 220 ou 220,50.");
         return;
       }
@@ -244,19 +269,25 @@ function FranchiseStep({
             </div>
           </div>
           <div>
-            <label htmlFor="default_price" className={labelClass}>
-              Preço padrão da academia (R$)
-            </label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label htmlFor="default_price" className={labelInlineClass}>
+                Preço padrão da academia (R$)
+              </label>
+              <GratisToggle active={freeFranchise} onToggle={() => setFreeFranchise((v) => !v)} />
+            </div>
             <input
               id="default_price"
               inputMode="decimal"
-              value={defaultPrice}
+              value={freeFranchise ? "" : defaultPrice}
               onChange={(e) => setDefaultPrice(e.target.value)}
-              placeholder="ex: 220"
-              className={fieldClass}
+              disabled={freeFranchise}
+              placeholder={freeFranchise ? "Grátis — R$ 0,00" : "ex: 220"}
+              className={cn(fieldClass, freeFranchise && "opacity-60")}
             />
             <p className="mt-1 text-[10.5px] font-300 text-[var(--text-tertiary)]">
-              Opcional. Aplicado às quadras desta academia quando não houver preço próprio.
+              {freeFranchise
+                ? "Academia gratuita: quadras sem preço próprio ficam R$ 0,00 (parceiro pode ser grátis no beta)."
+                : "Opcional. Aplicado às quadras desta academia quando não houver preço próprio."}
             </p>
           </div>
         </div>
@@ -291,19 +322,23 @@ function CourtStep({
   const [name, setName] = useState("");
   const [surface, setSurface] = useState<Surface>("clay");
   const [indoor, setIndoor] = useState(false);
+  const [availabilityMode, setAvailabilityMode] = useState<"auto" | "manual">("auto");
   const [daysForward, setDaysForward] = useState(90);
   const [startHour, setStartHour] = useState(6);
   const [endHour, setEndHour] = useState(22);
   const [price, setPrice] = useState("");
+  const [freeCourt, setFreeCourt] = useState(false);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
+
+  const manual = availabilityMode === "manual";
 
   function handleSubmit() {
     setError("");
     if (!name.trim()) { setError("Informe o nome da quadra."); return; }
-    if (startHour >= endHour) { setError("Hora de início deve ser menor que a hora de fim."); return; }
-    const priceCents = reaisToCents(price);
-    if (price.trim() !== "" && priceCents === null) {
+    if (!manual && startHour >= endHour) { setError("Hora de início deve ser menor que a hora de fim."); return; }
+    const priceCents = freeCourt ? 0 : reaisToCents(price);
+    if (!freeCourt && price.trim() !== "" && priceCents === null) {
       setError("Preço da quadra inválido. Use ex: 250 ou 250,50.");
       return;
     }
@@ -317,6 +352,7 @@ function CourtStep({
         startHour,
         endHour,
         priceCents,
+        autoGenerate: !manual,
       });
       if (!result.ok) {
         setError(result.error ?? "Falha ao criar quadra.");
@@ -383,68 +419,112 @@ function CourtStep({
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label htmlFor="days_forward" className={labelClass}>
-            Dias à frente
-          </label>
-          <input
-            id="days_forward"
-            type="number"
-            min={1}
-            max={365}
-            value={daysForward}
-            onChange={(e) => setDaysForward(Number(e.target.value))}
-            className={fieldClass}
-          />
-        </div>
-        <div>
-          <label htmlFor="start_hour" className={labelClass}>
-            Hora início
-          </label>
-          <input
-            id="start_hour"
-            type="number"
-            min={0}
-            max={22}
-            value={startHour}
-            onChange={(e) => setStartHour(Number(e.target.value))}
-            className={fieldClass}
-          />
-        </div>
-        <div>
-          <label htmlFor="end_hour" className={labelClass}>
-            Hora fim
-          </label>
-          <input
-            id="end_hour"
-            type="number"
-            min={1}
-            max={23}
-            value={endHour}
-            onChange={(e) => setEndHour(Number(e.target.value))}
-            className={fieldClass}
-          />
+      <div>
+        <p className={labelClass}>Disponibilidade</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(
+            [
+              ["auto", "Gerar automático", "Janela de horários por dia"],
+              ["manual", "Adiciono na mão", "Cadastro os horários depois"],
+            ] as const
+          ).map(([m, title, sub]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setAvailabilityMode(m)}
+              className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                availabilityMode === m
+                  ? "border-[var(--primary)] bg-[var(--primary)]/8"
+                  : "border-[var(--border)] hover:border-[var(--border-strong)]"
+              }`}
+            >
+              <p
+                className={`text-[12.5px] font-600 ${
+                  availabilityMode === m ? "text-[var(--primary)]" : "text-[var(--text-primary)]"
+                }`}
+              >
+                {title}
+              </p>
+              <p className="mt-0.5 text-[10.5px] font-300 text-[var(--text-tertiary)]">{sub}</p>
+            </button>
+          ))}
         </div>
       </div>
 
+      {!manual && (
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label htmlFor="days_forward" className={labelClass}>
+              Dias à frente
+            </label>
+            <input
+              id="days_forward"
+              type="number"
+              min={1}
+              max={365}
+              value={daysForward}
+              onChange={(e) => setDaysForward(Number(e.target.value))}
+              className={fieldClass}
+            />
+          </div>
+          <div>
+            <label htmlFor="start_hour" className={labelClass}>
+              Hora início
+            </label>
+            <input
+              id="start_hour"
+              type="number"
+              min={0}
+              max={22}
+              value={startHour}
+              onChange={(e) => setStartHour(Number(e.target.value))}
+              className={fieldClass}
+            />
+          </div>
+          <div>
+            <label htmlFor="end_hour" className={labelClass}>
+              Hora fim
+            </label>
+            <input
+              id="end_hour"
+              type="number"
+              min={1}
+              max={23}
+              value={endHour}
+              onChange={(e) => setEndHour(Number(e.target.value))}
+              className={fieldClass}
+            />
+          </div>
+        </div>
+      )}
+
       <div>
-        <label htmlFor="court_price" className={labelClass}>
-          Preço da quadra (R$) — opcional, sobrepõe o padrão
-        </label>
+        <div className="mb-1.5 flex items-center justify-between">
+          <label htmlFor="court_price" className={labelInlineClass}>
+            Preço da quadra (R$) — opcional, sobrepõe o padrão
+          </label>
+          <GratisToggle active={freeCourt} onToggle={() => setFreeCourt((v) => !v)} />
+        </div>
         <input
           id="court_price"
           inputMode="decimal"
-          value={price}
+          value={freeCourt ? "" : price}
           onChange={(e) => setPrice(e.target.value)}
-          placeholder="ex: 250"
-          className={fieldClass}
+          disabled={freeCourt}
+          placeholder={freeCourt ? "Grátis — R$ 0,00" : "ex: 250"}
+          className={cn(fieldClass, freeCourt && "opacity-60")}
         />
       </div>
 
       <p className="text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-        Gera slots das {String(startHour).padStart(2, "0")}h às {String(endHour).padStart(2, "0")}h para os próximos {daysForward} dias.
-        Preço personalizado (quadra ou padrão da academia) sobrepõe a fórmula 10h–17h59 → R$&nbsp;220; demais → R$&nbsp;280; quadras públicas → R$&nbsp;0.
+        {manual ? (
+          "A quadra é criada sem horários. Adicione os horários manualmente na edição da quadra."
+        ) : (
+          <>
+            Gera slots das {String(startHour).padStart(2, "0")}h às {String(endHour).padStart(2, "0")}h para os próximos {daysForward} dias.
+            Preço personalizado (quadra ou padrão da academia) sobrepõe a fórmula 10h–17h59 → R$&nbsp;220; demais → R$&nbsp;280; quadras públicas → R$&nbsp;0.
+          </>
+        )}
       </p>
 
       {error && <ErrorBanner message={error} />}
@@ -480,20 +560,31 @@ function DoneStep({ courtId, slotsCreated, onNew }: { courtId: string; slotsCrea
       <div>
         <p className="text-[17px] font-600 text-[var(--text-primary)]">Quadra criada</p>
         <p className="mt-1 text-[12.5px] font-300 text-[var(--text-tertiary)]">
-          {slotsCreated.toLocaleString("pt-BR")} slots de disponibilidade gerados.
+          {slotsCreated > 0
+            ? `${slotsCreated.toLocaleString("pt-BR")} slots de disponibilidade gerados.`
+            : "Criada sem horários. Adicione os horários manualmente na edição."}
         </p>
       </div>
       <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3 text-left">
         <p className="text-[10px] font-colus uppercase tracking-widest text-[var(--text-tertiary)]">ID da quadra</p>
         <p className="mt-1 font-mono text-[12px] text-[var(--text-primary)]">{courtId}</p>
       </div>
-      <button
-        type="button"
-        onClick={onNew}
-        className="rounded-full bg-[var(--surface-raised)] px-5 py-2 text-[12.5px] font-600 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-      >
-        Criar outra quadra
-      </button>
+      <div className="flex flex-col items-center gap-2">
+        <Link
+          href={`/quadras/${courtId}/editar`}
+          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
+        >
+          {slotsCreated > 0 ? "Editar quadra" : "Adicionar horários"}
+          <ChevronRight size={11} strokeWidth={2.5} />
+        </Link>
+        <button
+          type="button"
+          onClick={onNew}
+          className="rounded-full bg-[var(--surface-raised)] px-5 py-2 text-[12.5px] font-600 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+        >
+          Criar outra quadra
+        </button>
+      </div>
     </div>
   );
 }

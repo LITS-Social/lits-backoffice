@@ -53,6 +53,7 @@ export async function createCourtAction(params: {
   startHour: number;
   endHour: number;
   priceCents?: number | null;
+  autoGenerate?: boolean;
 }): Promise<CreateCourtState> {
   const api = await getApi();
   const { data, error } = await api.POST("/v1/ops/courts", {
@@ -65,6 +66,7 @@ export async function createCourtAction(params: {
       start_hour: params.startHour,
       end_hour: params.endHour,
       ...(params.priceCents != null ? { price_cents: params.priceCents } : {}),
+      auto_generate: params.autoGenerate ?? true,
     },
   });
   if (error) return { ok: false, error: error.detail || error.title || "Falha ao criar quadra." };

@@ -175,7 +175,7 @@ export interface paths {
         put?: never;
         /**
          * Create a court with pre-generated availability slots (ADR-0063 pricing)
-         * @description Inserts the court then generates hourly slots for the requested horizon (default 90 days). Pricing: public courts → free; paid courts 10h–17h59 → R$220; 06h–09h59 and 18h+ → R$280.
+         * @description Inserts the court then generates hourly slots for the requested horizon (default 90 days). Pricing: public courts → free; paid courts 10h–17h59 → R$220; 06h–09h59 and 18h+ → R$280. Set auto_generate=false to create the court with zero slots and hand-enter them via POST /v1/ops/courts/{id}/slots.
          */
         post: operations["ops-create-court"];
         delete?: never;
@@ -258,7 +258,11 @@ export interface paths {
          */
         get: operations["ops-list-court-slots"];
         put?: never;
-        post?: never;
+        /**
+         * Bulk-add arbitrary manual availability slots to a court
+         * @description Hand-enters 1..200 slots for clubs that do not use the auto-generated window. Each slot_start is an absolute RFC3339 instant stored verbatim (no timezone conversion); slot_end defaults to slot_start + 1h and must be after it. When price_cents is omitted, the same precedence as the generated grid applies (franchise default → ADR-0063 hour band; public franchise → free). status defaults to 'available'. Runs in one transaction with ON CONFLICT (court_id, slot_start) DO NOTHING, returning slots_created + slots_skipped. 404 if the court does not exist.
+         */
+        post: operations["ops-add-court-slots"];
         delete?: never;
         options?: never;
         head?: never;
@@ -563,6 +567,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AddCourtSlotsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AddCourtSlotsBody.json
+             */
+            readonly $schema?: string;
+            /** @description Slots to insert (1..200) */
+            slots: components["schemas"]["ManualSlotItem"][] | null;
+        };
+        AddCourtSlotsResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AddCourtSlotsResultBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of slots inserted
+             */
+            slots_created: number;
+            /**
+             * Format: int64
+             * @description Number of slots skipped because a slot already existed at that start (ON CONFLICT)
+             */
+            slots_skipped: number;
+        };
         AffectedBookingItem: {
             booking_id: string;
             /** Format: date-time */
@@ -924,6 +956,11 @@ export interface components {
              */
             readonly $schema?: string;
             /**
+             * @description generate the hourly availability window automatically; set false to add slots manually via POST /slots
+             * @default true
+             */
+            auto_generate: boolean;
+            /**
              * Format: int64
              * @description Days of slots to generate ahead (default 90)
              */
@@ -1247,6 +1284,22 @@ export interface components {
             reservations: components["schemas"]["ManualReservationItem"][] | null;
             /** Format: int32 */
             total: number;
+        };
+        ManualSlotItem: {
+            /**
+             * Format: int64
+             * @description Slot price in cents; falls back to franchise default then ADR-0063 hour band (public → free)
+             */
+            price_cents?: number;
+            /** @description Slot end instant (RFC3339); defaults to slot_start + 1h */
+            slot_end?: string;
+            /** @description Slot start instant (RFC3339 with offset), stored verbatim */
+            slot_start: string;
+            /**
+             * @description Slot status (default available)
+             * @enum {string}
+             */
+            status?: "available" | "blocked";
         };
         OpenInviteItem: {
             /** @description UUIDv7 booking identifier */
@@ -2515,6 +2568,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListCourtSlotsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-add-court-slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AddCourtSlotsBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddCourtSlotsResultBody"];
                 };
             };
             /** @description Error */

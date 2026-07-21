@@ -21,6 +21,14 @@ export type RegenerateState = {
 export type ListSlotsState = { ok: boolean; slots?: CourtSlotItem[]; error?: string };
 export type UpdateSlotState = { ok: boolean; slot?: CourtSlotItem; error?: string };
 export type UpdateFranchiseState = { ok: boolean; franchise?: FranchiseDetail; error?: string };
+export type AddSlotsState = {
+  ok: boolean;
+  slotsCreated?: number;
+  slotsSkipped?: number;
+  error?: string;
+};
+
+export type AddSlotInput = NonNullable<components["schemas"]["AddCourtSlotsBody"]["slots"]>[number];
 
 export async function updateCourtAction(
   id: string,
@@ -97,6 +105,20 @@ export async function updateCourtSlotAction(
   });
   if (error) return { ok: false, error: error.detail || error.title || "Falha ao atualizar horário." };
   return { ok: true, slot: data };
+}
+
+export async function addCourtSlotsAction(
+  id: string,
+  slots: AddSlotInput[]
+): Promise<AddSlotsState> {
+  const api = await getApi();
+  const { data, error } = await api.POST("/v1/ops/courts/{id}/slots", {
+    params: { path: { id } },
+    body: { slots },
+  });
+  if (error) return { ok: false, error: error.detail || error.title || "Falha ao adicionar horários." };
+  revalidatePath("/quadras");
+  return { ok: true, slotsCreated: data.slots_created, slotsSkipped: data.slots_skipped };
 }
 
 export async function updateFranchiseAction(

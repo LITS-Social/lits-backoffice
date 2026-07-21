@@ -1,17 +1,19 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import { AlertCircle, Check, Lock, LockOpen, Pencil, RefreshCw } from "lucide-react";
+import { AlertCircle, Check, Lock, LockOpen, Pencil, Plus, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, reaisToCents } from "@/lib/utils";
+import { cn, formatCurrency, reaisToCents } from "@/lib/utils";
 import type { CourtListItem } from "../../actions";
 import {
+  addCourtSlotsAction,
   regenerateAvailabilityAction,
   repriceCourtAction,
   updateCourtAction,
   updateCourtSlotAction,
   updateFranchiseAction,
   listCourtSlotsAction,
+  type AddSlotInput,
   type CourtSlotItem,
 } from "./actions";
 
@@ -41,6 +43,7 @@ const fieldClass =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--text-primary)] transition-colors placeholder:font-300 placeholder:text-[var(--text-tertiary)] hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:bg-[var(--surface)] focus:outline-none";
 
 const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
+const labelInlineClass = "label-colus block text-[8.5px] text-[var(--text-tertiary)]";
 
 /* ── shared bits ──────────────────────────────────────────────────────────── */
 
@@ -128,6 +131,79 @@ function dayStartISO(y: string): string {
 
 function dayEndISO(y: string): string {
   return new Date(`${y}T23:59:59.999`).toISOString();
+}
+
+/* ── add-slots helpers ────────────────────────────────────────────────────── */
+
+// São Paulo is UTC-3 with no DST, so a fixed offset turns a picked wall-clock
+// date+time into the exact absolute instant the backend stores (RFC3339 Z),
+// independent of whatever timezone the staff's browser is in.
+const SP_OFFSET = "-03:00";
+
+const WEEKDAYS: { idx: number; label: string }[] = [
+  { idx: 0, label: "Dom" },
+  { idx: 1, label: "Seg" },
+  { idx: 2, label: "Ter" },
+  { idx: 3, label: "Qua" },
+  { idx: 4, label: "Qui" },
+  { idx: 5, label: "Sex" },
+  { idx: 6, label: "Sáb" },
+];
+
+/** Epoch ms for a São Paulo wall-clock date (yyyy-mm-dd) + time (HH:mm). */
+function spStartMs(ymd: string, hm: string): number {
+  return new Date(`${ymd}T${hm}:00${SP_OFFSET}`).getTime();
+}
+
+/** São Paulo local yyyy-mm-dd + HH:mm for an instant — used to advance to the next slot. */
+function spParts(ms: number): { ymd: string; hm: string } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(ms));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  return { ymd: `${get("year")}-${get("month")}-${get("day")}`, hm: `${hour}:${get("minute")}` };
+}
+
+/** Midnight-UTC epoch ms for a calendar date — a tz-safe anchor for range iteration. */
+function ymdToUTC(ymd: string): number {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+function utcToYmd(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    d.getUTCDate()
+  ).padStart(2, "0")}`;
+}
+
+/**
+ * "Grátis" pill that clamps a price field to R$ 0,00. A blank price means "use
+ * the court/franchise default"; this means "charge nothing" — the two have to be
+ * distinguishable, since beta partner clubs can be free too.
+ */
+function GratisToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-600 transition-colors ${
+        active
+          ? "bg-[var(--primary)] text-[var(--primary-fg)]"
+          : "bg-[var(--surface-raised)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+      }`}
+    >
+      Grátis
+    </button>
+  );
 }
 
 /* ══ court basics ═════════════════════════════════════════════════════════ */
@@ -868,6 +944,308 @@ function SlotEditorSection({
   );
 }
 
+/* ══ add slots ════════════════════════════════════════════════════════════ */
+
+function AddSlotsSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
+  const today = new Date();
+  const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
+    today.getDate()
+  ).padStart(2, "0")}`;
+
+  const [mode, setMode] = useState<"single" | "range">("single");
+  const [date, setDate] = useState(todayYmd);
+  const [rangeFrom, setRangeFrom] = useState(todayYmd);
+  const [rangeTo, setRangeTo] = useState(todayYmd);
+  const [weekdays, setWeekdays] = useState<Set<number>>(new Set([0, 1, 2, 3, 4, 5, 6]));
+  const [time, setTime] = useState("19:00");
+  const [duration, setDuration] = useState(60);
+  const [price, setPrice] = useState("");
+  const [free, setFree] = useState(false);
+  const [status, setStatus] = useState<"available" | "blocked">("available");
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function toggleWeekday(idx: number) {
+    setWeekdays((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }
+
+  function buildSlots(): { slots: AddSlotInput[]; error?: string } {
+    if (!/^\d{2}:\d{2}$/.test(time)) return { slots: [], error: "Informe a hora de início." };
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return { slots: [], error: "Duração inválida (minutos)." };
+    }
+    const priceCents = free ? 0 : reaisToCents(price);
+    if (!free && price.trim() !== "" && priceCents === null) {
+      return { slots: [], error: "Preço inválido. Use ex: 250 ou 250,50." };
+    }
+
+    const dates: string[] = [];
+    if (mode === "single") {
+      if (!date) return { slots: [], error: "Informe a data." };
+      dates.push(date);
+    } else {
+      if (!rangeFrom || !rangeTo) return { slots: [], error: "Informe o intervalo de datas." };
+      const fromMs = ymdToUTC(rangeFrom);
+      const toMs = ymdToUTC(rangeTo);
+      if (toMs < fromMs) return { slots: [], error: "A data final deve ser igual ou após a inicial." };
+      if (weekdays.size === 0) return { slots: [], error: "Selecione ao menos um dia da semana." };
+      for (let ms = fromMs; ms <= toMs; ms += 86_400_000) {
+        if (weekdays.has(new Date(ms).getUTCDay())) dates.push(utcToYmd(ms));
+      }
+      if (dates.length === 0) {
+        return { slots: [], error: "Nenhuma data no intervalo bate com os dias escolhidos." };
+      }
+      if (dates.length > 366) {
+        return { slots: [], error: "Muitos horários de uma vez (máx. 366). Reduza o intervalo." };
+      }
+    }
+
+    const slots: AddSlotInput[] = dates.map((d) => {
+      const startMs = spStartMs(d, time);
+      return {
+        slot_start: new Date(startMs).toISOString(),
+        slot_end: new Date(startMs + duration * 60_000).toISOString(),
+        ...(priceCents != null ? { price_cents: priceCents } : {}),
+        status,
+      };
+    });
+    return { slots };
+  }
+
+  function submit() {
+    setError("");
+    setResult(null);
+    const built = buildSlots();
+    if (built.error) {
+      setError(built.error);
+      return;
+    }
+    startTransition(async () => {
+      const res = await addCourtSlotsAction(courtId, built.slots);
+      if (!res.ok) {
+        setError(res.error ?? "Falha ao adicionar horários.");
+        return;
+      }
+      setResult({ created: res.slotsCreated ?? 0, skipped: res.slotsSkipped ?? 0 });
+      onDone();
+      // Keep the form primed for the next add; in single mode advance to the slot
+      // that starts where this one ended, so consecutive hours go in fast.
+      if (mode === "single") {
+        const next = spParts(spStartMs(date, time) + duration * 60_000);
+        setDate(next.ymd);
+        setTime(next.hm);
+      }
+    });
+  }
+
+  const previewCents = free ? 0 : reaisToCents(price);
+  const priceHint = free
+    ? "Grátis — R$ 0,00"
+    : previewCents != null
+      ? formatCurrency(previewCents)
+      : "preço padrão da quadra";
+
+  return (
+    <SectionCard
+      title="Adicionar horário"
+      description="Cria horários avulsos em qualquer data e hora, fora da grade automática. Horários já existentes no mesmo instante são ignorados."
+    >
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          {(
+            [
+              ["single", "Um horário"],
+              ["range", "Vários dias"],
+            ] as const
+          ).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`rounded-full px-4 py-1.5 text-[11.5px] font-600 transition-colors ${
+                mode === m
+                  ? "bg-[var(--primary)] text-[var(--primary-fg)]"
+                  : "bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "single" ? (
+          <div>
+            <label htmlFor="add_date" className={labelClass}>
+              Data
+            </label>
+            <input
+              id="add_date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className={fieldClass}
+            />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="add_from" className={labelClass}>
+                  De
+                </label>
+                <input
+                  id="add_from"
+                  type="date"
+                  value={rangeFrom}
+                  onChange={(e) => setRangeFrom(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label htmlFor="add_to" className={labelClass}>
+                  Até
+                </label>
+                <input
+                  id="add_to"
+                  type="date"
+                  value={rangeTo}
+                  onChange={(e) => setRangeTo(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+            </div>
+            <div>
+              <p className={labelClass}>Dias da semana</p>
+              <div className="flex flex-wrap gap-1.5">
+                {WEEKDAYS.map((w) => {
+                  const on = weekdays.has(w.idx);
+                  return (
+                    <button
+                      key={w.idx}
+                      type="button"
+                      onClick={() => toggleWeekday(w.idx)}
+                      aria-pressed={on}
+                      className={`rounded-md border px-2.5 py-1 text-[11px] font-600 transition-colors ${
+                        on
+                          ? "border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--primary)]"
+                          : "border-[var(--border)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+                      }`}
+                    >
+                      {w.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="add_time" className={labelClass}>
+              Hora início
+            </label>
+            <input
+              id="add_time"
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className={fieldClass}
+            />
+          </div>
+          <div>
+            <label htmlFor="add_duration" className={labelClass}>
+              Duração (min)
+            </label>
+            <input
+              id="add_duration"
+              type="number"
+              min={15}
+              step={15}
+              value={duration}
+              onChange={(e) => setDuration(Number(e.target.value))}
+              className={fieldClass}
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label htmlFor="add_price" className={labelInlineClass}>
+              Preço (R$)
+            </label>
+            <GratisToggle active={free} onToggle={() => setFree((v) => !v)} />
+          </div>
+          <input
+            id="add_price"
+            inputMode="decimal"
+            value={free ? "" : price}
+            onChange={(e) => setPrice(e.target.value)}
+            disabled={free}
+            placeholder={free ? "Grátis — R$ 0,00" : "ex: 250 (vazio = padrão)"}
+            className={cn(fieldClass, free && "opacity-60")}
+          />
+          <p className="mt-1 text-[10.5px] font-300 text-[var(--text-tertiary)]">
+            Preço aplicado: {priceHint}.
+          </p>
+        </div>
+
+        <div>
+          <p className={labelClass}>Status</p>
+          <div className="flex gap-2">
+            {(
+              [
+                ["available", "Disponível"],
+                ["blocked", "Bloqueado"],
+              ] as const
+            ).map(([s, label]) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={`rounded-lg border px-3 py-1.5 text-[11.5px] font-600 transition-colors ${
+                  status === s
+                    ? "border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--primary)]"
+                    : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {error && <ErrorBanner message={error} />}
+        {result !== null && (
+          <SuccessNote>
+            {result.created.toLocaleString("pt-BR")} horário{result.created === 1 ? "" : "s"}{" "}
+            adicionado{result.created === 1 ? "" : "s"}
+            {result.skipped > 0
+              ? ` / ${result.skipped.toLocaleString("pt-BR")} já existia${
+                  result.skipped === 1 ? "" : "m"
+                }`
+              : ""}
+            .
+          </SuccessNote>
+        )}
+
+        <div className="flex justify-end border-t border-[var(--border)] pt-4">
+          <button type="button" onClick={submit} disabled={pending} className={primaryBtn}>
+            {pending ? "Adicionando…" : "Adicionar"}
+            <Plus size={11} strokeWidth={2.5} />
+          </button>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 /* ══ root ═════════════════════════════════════════════════════════════════ */
 
 export function EditCourt({
@@ -911,6 +1289,7 @@ export function EditCourt({
       <RepriceSection courtId={court.id} onDone={reloadSlots} />
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />
       <FranchiseSection franchiseId={court.franchise_id} franchiseName={court.franchise_name} />
+      <AddSlotsSection courtId={court.id} onDone={reloadSlots} />
       <SlotEditorSection
         courtId={court.id}
         slots={slots}
