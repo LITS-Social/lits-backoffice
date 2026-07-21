@@ -131,20 +131,37 @@ function DeactivateSection({ userId, isActive }: { userId: string; isActive: boo
 function BadgesSection({ userId, initialBadges }: { userId: string; initialBadges: string[] }) {
   const [badges, setBadges] = useState<Set<string>>(new Set(initialBadges));
   const [error, setError] = useState("");
-  const [pendingBadge, setPendingBadge] = useState<string | null>(null);
+  // A SET of in-flight badges, not a single scalar: clicking badge B while A is
+  // still in flight must not re-enable A's button (a single "pendingBadge"
+  // string would silently do that, opening a double-submit) or let whichever
+  // response resolves last clobber the other's local state.
+  const [pending, setPending] = useState<Set<string>>(new Set());
 
   function toggle(badge: BadgeType) {
     setError("");
-    setPendingBadge(badge);
-    const has = badges.has(badge);
-    const action = has ? revokeBadgeAction : grantBadgeAction;
+    const wasActive = badges.has(badge);
+    setPending((cur) => new Set(cur).add(badge));
+    const action = wasActive ? revokeBadgeAction : grantBadgeAction;
     action(userId, badge).then((res) => {
-      setPendingBadge(null);
+      setPending((cur) => {
+        const next = new Set(cur);
+        next.delete(badge);
+        return next;
+      });
       if (!res.ok) {
         setError(res.error);
         return;
       }
-      setBadges(new Set(res.data.badges));
+      // Toggle just THIS badge locally rather than overwrite the whole set
+      // from the response — with two toggles in flight at once, the response
+      // that resolves last would otherwise stomp on whichever badge the
+      // other request just changed.
+      setBadges((cur) => {
+        const next = new Set(cur);
+        if (wasActive) next.delete(badge);
+        else next.add(badge);
+        return next;
+      });
     });
   }
 
@@ -162,7 +179,7 @@ function BadgesSection({ userId, initialBadges }: { userId: string; initialBadge
           return (
             <button
               key={b}
-              disabled={pendingBadge === b}
+              disabled={pending.has(b)}
               onClick={() => toggle(b)}
               className={
                 active
@@ -184,7 +201,15 @@ function BadgesSection({ userId, initialBadges }: { userId: string; initialBadge
 
 /* ── Sanções ──────────────────────────────────────────────────────────────── */
 
-function SanctionsSection({ userId, initial }: { userId: string; initial: SanctionItem[] }) {
+function SanctionsSection({
+  userId,
+  initial,
+  incomplete,
+}: {
+  userId: string;
+  initial: SanctionItem[];
+  incomplete: boolean;
+}) {
   const [sanctions, setSanctions] = useState<SanctionItem[]>(initial);
   const [applying, setApplying] = useState(false);
   const [type, setType] = useState<SanctionType>("ranked_suspension");
@@ -194,6 +219,13 @@ function SanctionsSection({ userId, initial }: { userId: string; initial: Sancti
 
   return (
     <div className="space-y-3">
+      {incomplete && (
+        <p className="rounded-md border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-3 py-2 text-[11.5px] text-[var(--color-clay)]">
+          Não foi possível confirmar todas as sanções ativas — a lista abaixo pode
+          estar incompleta. Não interprete a ausência de sanção aqui como confirmação
+          de que não há nenhuma.
+        </p>
+      )}
       {sanctions.length > 0 && (
         <div className="space-y-2">
           {sanctions.map((s) => (
@@ -299,11 +331,13 @@ export function AccountActions({
   isActive,
   badges,
   sanctions,
+  sanctionsIncomplete,
 }: {
   userId: string;
   isActive: boolean;
   badges: string[];
   sanctions: SanctionItem[];
+  sanctionsIncomplete: boolean;
 }) {
   return (
     <div className="space-y-6">
@@ -317,7 +351,7 @@ export function AccountActions({
       </div>
       <div>
         <p className="label-colus mb-2 text-[8.5px] text-[var(--text-tertiary)]">Sanções</p>
-        <SanctionsSection userId={userId} initial={sanctions} />
+        <SanctionsSection userId={userId} initial={sanctions} incomplete={sanctionsIncomplete} />
       </div>
     </div>
   );

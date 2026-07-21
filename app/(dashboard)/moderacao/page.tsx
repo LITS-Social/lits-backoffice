@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +9,26 @@ import { PanelError, PanelNote } from "../_components/notes";
 import { StatRail, type Stat } from "../_components/stat-rail";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * These three lists are keyset/cursor-paginated with no server-side total —
+ * unlike TruncationNote's "N de M" (which needs a real count), the only
+ * honest thing to say here is "more exists past this page or it doesn't",
+ * signaled by `next_cursor` being present. Same visual language as
+ * TruncationNote (this app's established "say what you don't know" pattern),
+ * without claiming a total this endpoint shape can't give.
+ */
+function MayHaveMoreNote({ shown }: { shown: number }) {
+  return (
+    <p className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--color-warning)]/25 bg-[var(--color-warning-bg)] px-3.5 py-2.5 text-[11.5px] font-300 leading-relaxed text-[var(--text-secondary)]">
+      <AlertTriangle size={13} strokeWidth={2} className="mt-px shrink-0 text-[var(--color-clay)]" />
+      <span>
+        Mostrando os <span className="font-600 tabular-nums text-[var(--text-primary)]">{shown}</span> mais
+        recentes — há mais além desta página.
+      </span>
+    </p>
+  );
+}
 
 const STATUS_VARIANT: Record<string, "warning" | "info" | "success" | "muted"> = {
   pending: "warning",
@@ -28,8 +49,15 @@ function shortId(id: string): string {
 export default async function ModeracaoPage() {
   const api = await getApi();
 
-  const [reportsRes, chatRes, blocksRes] = await Promise.all([
+  // Two separate user-reports fetches: `pendingRes` is server-filtered
+  // (status=pending) so the "Denúncias pendentes" KPI counts what it claims
+  // to — a client-side .filter() over the general, mixed-status 50-item page
+  // would undercount whenever older pending reports sit past that window
+  // (newest-first across every status). `reportsRes` (unfiltered) stays as
+  // the browsable list below.
+  const [reportsRes, pendingRes, chatRes, blocksRes] = await Promise.all([
     api.GET("/v1/ops/user-reports", { params: { query: { limit: 50 } } }),
+    api.GET("/v1/ops/user-reports", { params: { query: { status: "pending", limit: 100 } } }),
     api.GET("/v1/ops/chat-flagged", { params: { query: { limit: 50 } } }),
     api.GET("/v1/ops/block-graph", { params: { query: { limit: 30 } } }),
   ]);
@@ -45,12 +73,24 @@ export default async function ModeracaoPage() {
   const blockItems = blocksRes.data?.items ?? [];
   const topTargets = blocksRes.data?.top_targets ?? [];
 
-  const pendingReports = reports.filter((r) => r.status === "pending").length;
+  // Pending count: from the dedicated server-filtered fetch when it
+  // succeeded (accurate up to its own 100-item cap); falls back to the
+  // client-side filter over the mixed page only if that fetch itself failed,
+  // clearly worse but strictly better than showing nothing.
+  const pendingReports = pendingRes.data
+    ? pendingRes.data.items?.length ?? 0
+    : reports.filter((r) => r.status === "pending").length;
+  const pendingMoreBeyondCap = Boolean(pendingRes.data?.next_cursor);
   const repeatOffenders = reports.filter((r) => r.repeat_count > 1).length;
 
   const stats: Stat[] = [
-    { label: "Denúncias pendentes", value: pendingReports, tone: pendingReports > 0 ? "attention" : "calm" },
-    { label: "Reincidentes", value: repeatOffenders, tone: repeatOffenders > 0 ? "money" : "calm" },
+    {
+      label: "Denúncias pendentes",
+      value: pendingReports,
+      tone: pendingReports > 0 ? "attention" : "calm",
+      hint: pendingMoreBeyondCap ? "há mais de 100 — mostrando o teto" : undefined,
+    },
+    { label: "Reincidentes", value: repeatOffenders, tone: repeatOffenders > 0 ? "money" : "calm", hint: "nos 50 mais recentes" },
     { label: "Mensagens sinalizadas", value: flagged.length, tone: flagged.length > 0 ? "attention" : "calm" },
   ];
 
@@ -72,6 +112,7 @@ export default async function ModeracaoPage() {
             Reincidência (repeat_count) conta quantos denunciantes distintos
             reportaram o mesmo usuário.
           </PanelNote>
+          {reportsRes.data.next_cursor && <MayHaveMoreNote shown={reports.length} />}
           {reports.length === 0 ? (
             <EmptyState message="Nenhuma denúncia de pessoa registrada." />
           ) : (
@@ -138,6 +179,7 @@ export default async function ModeracaoPage() {
         <section>
           <p className="eyebrow mb-3">Mensagens sinalizadas (chat)</p>
           <PanelNote>Fila de leitura — sem ação de redação daqui ainda.</PanelNote>
+          {chatRes.data?.next_cursor && <MayHaveMoreNote shown={flagged.length} />}
           {flagged.length === 0 ? (
             <EmptyState message="Nenhuma mensagem aguardando revisão." />
           ) : (
@@ -184,6 +226,7 @@ export default async function ModeracaoPage() {
               </div>
             </div>
           ) : null}
+          {blocksRes.data?.next_cursor && <MayHaveMoreNote shown={blockItems.length} />}
           {blockItems.length === 0 ? (
             <EmptyState message="Nenhum bloqueio registrado." />
           ) : (

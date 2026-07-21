@@ -505,8 +505,15 @@ function CommentsDrawer({
 }) {
   const [comments, setComments] = useState<OpsComment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState("");
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  // A SET of in-flight comment ids, not a single scalar: several delete
+  // buttons are independently clickable in this list (no blocking modal like
+  // the post-delete flow has), so a single "deletingId" would re-enable an
+  // earlier delete's button the moment a second one starts.
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -521,24 +528,44 @@ function CommentsDrawer({
         return;
       }
       setComments(res.comments);
+      setHasMore(res.hasMore);
+      setCursor(res.nextCursor);
     });
     return () => {
       cancelled = true;
     };
   }, [post.id]);
 
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    const res = await listPostCommentsAction(post.id, cursor);
+    setLoadingMore(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setComments((prev) => [...prev, ...res.comments]);
+    setHasMore(res.hasMore);
+    setCursor(res.nextCursor);
+  }
+
   async function handleDelete(commentId: number) {
     if (!staffUserId.trim()) {
       setError("Informe seu user_id LITS abaixo antes de apagar.");
       return;
     }
-    setDeletingId(commentId);
+    setDeletingIds((cur) => new Set(cur).add(commentId));
     const res = await deletePostCommentAction({
       postId: post.id,
       commentId,
       deleterUserId: staffUserId.trim(),
     });
-    setDeletingId(null);
+    setDeletingIds((cur) => {
+      const next = new Set(cur);
+      next.delete(commentId);
+      return next;
+    });
     if (!res.ok) {
       setError(res.error);
       return;
@@ -595,7 +622,7 @@ function CommentsDrawer({
                   <button
                     type="button"
                     onClick={() => handleDelete(c.comment_id)}
-                    disabled={deletingId === c.comment_id}
+                    disabled={deletingIds.has(c.comment_id)}
                     title="Apagar comentário"
                     className="shrink-0 rounded-md p-1.5 text-[var(--color-error)] transition-colors hover:bg-[var(--color-error-bg)] disabled:opacity-50"
                   >
@@ -604,6 +631,18 @@ function CommentsDrawer({
                 </li>
               ))}
             </ul>
+          )}
+          {hasMore && (
+            <div className="flex justify-center py-2">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-1.5 font-colus text-[8.5px] uppercase tracking-[0.16em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+              >
+                {loadingMore ? "Carregando…" : "Carregar mais"}
+              </button>
+            </div>
           )}
         </div>
       </div>

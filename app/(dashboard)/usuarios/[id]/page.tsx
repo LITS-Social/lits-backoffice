@@ -112,7 +112,8 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
             userId={id}
             isActive={!d.account.deleted_at}
             badges={d.profile?.verified_badges ?? []}
-            sanctions={sanctions}
+            sanctions={sanctions.sanctions}
+            sanctionsIncomplete={sanctions.incomplete}
           />
         </Section>
 

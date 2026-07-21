@@ -105,16 +105,41 @@ export async function liftSanctionAction(
   return { ok: true, data };
 }
 
+export type UserSanctionsResult = {
+  sanctions: SanctionItem[];
+  /**
+   * true when the lookup could not be completed (network/BFF error, or the
+   * page cap below was hit before exhausting every active sanction) — the
+   * caller must render this as "couldn't check", never silently as "clean".
+   * A trust-and-safety screen showing zero for a sanctioned user because a
+   * fetch failed is worse than showing nothing at all.
+   */
+  incomplete: boolean;
+};
+
 /**
  * Sanctions currently active against this user. `GET /v1/ops/sanctions` has no
- * user_id filter server-side, so this fetches the active page and filters
- * client-side — cheap while sanction volume stays small.
+ * user_id filter server-side, so this walks every page (cursor-paginated,
+ * capped at 20 pages = up to 2000 sanctions scanned — sane even well past
+ * beta scale) and filters client-side.
  */
-export async function listUserSanctionsAction(userId: string): Promise<SanctionItem[]> {
+export async function listUserSanctionsAction(userId: string): Promise<UserSanctionsResult> {
   const api = await getApi();
-  const { data, error } = await api.GET("/v1/ops/sanctions", {
-    params: { query: { active: "true", limit: 100 } },
-  });
-  if (error) return [];
-  return (data.items ?? []).filter((s) => s.user_id === userId);
+  const matched: SanctionItem[] = [];
+  let cursor: string | undefined;
+  const MAX_PAGES = 20;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await api.GET("/v1/ops/sanctions", {
+      params: { query: { active: "true", limit: 100, ...(cursor ? { cursor } : {}) } },
+    });
+    if (error) return { sanctions: matched, incomplete: true };
+
+    matched.push(...(data.items ?? []).filter((s) => s.user_id === userId));
+
+    if (!data.next_cursor) return { sanctions: matched, incomplete: false };
+    cursor = data.next_cursor;
+  }
+  // Hit MAX_PAGES without exhausting the cursor — genuinely incomplete.
+  return { sanctions: matched, incomplete: true };
 }
