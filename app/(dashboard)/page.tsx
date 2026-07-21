@@ -213,7 +213,18 @@ function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
                 </span>
               </span>
 
-              <span className="pl-[16px] text-[12px] font-600 leading-snug text-[var(--color-success)] sm:pl-0">
+              {/* A meta só veste verde quando está sendo batida; abaixo dela é
+                  vermelho. Sem medição, nem uma coisa nem outra — cinza. */}
+              <span
+                className={cn(
+                  "pl-[16px] text-[12px] font-600 leading-snug sm:pl-0",
+                  row.ok === undefined
+                    ? "text-[var(--text-tertiary)]"
+                    : row.ok
+                      ? "text-[var(--color-success)]"
+                      : "text-[var(--color-error)]",
+                )}
+              >
                 {row.meta}
               </span>
 
