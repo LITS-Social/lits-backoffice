@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { AlertCircle, Check, ChevronRight, Plus } from "lucide-react";
-import { reaisToCents } from "@/lib/utils";
+import { cn, reaisToCents } from "@/lib/utils";
 import {
   createFranchiseAction,
   createCourtAction,
@@ -36,47 +36,77 @@ function ErrorBanner({ message }: { message: string }) {
   );
 }
 
-function StepIndicator({ current }: { current: Step }) {
-  const steps: { key: Step; label: string }[] = [
-    { key: "franchise", label: "Franquia" },
-    { key: "court", label: "Quadra" },
-  ];
+const STEP_RAIL: { key: Step; label: string; hint: string }[] = [
+  { key: "franchise", label: "Franquia", hint: "Escolha ou crie a academia" },
+  { key: "court", label: "Quadra", hint: "Superfície, horário e preço" },
+];
 
-  const currentIdx = steps.findIndex((s) => s.key === current);
+/**
+ * Vertical, anchored stepper for the left rail. Reads top-to-bottom like a
+ * checklist, with a connector that fills in green as steps complete — so the
+ * left column carries the flow's state instead of sitting empty.
+ */
+function StepRail({ current, franchiseName }: { current: Step; franchiseName?: string }) {
+  const currentIdx = STEP_RAIL.findIndex((s) => s.key === current);
 
   return (
-    <div className="flex items-center gap-2">
-      {steps.map((s, i) => {
-        const done = current === "done" || i < currentIdx;
-        const active = s.key === current;
-        return (
-          <div key={s.key} className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5">
+    <div className="lg:sticky lg:top-6">
+      <p className="eyebrow mb-5">Nova quadra</p>
+
+      <ol>
+        {STEP_RAIL.map((s, i) => {
+          const done = current === "done" || i < currentIdx;
+          const active = s.key === current;
+          const last = i === STEP_RAIL.length - 1;
+          return (
+            <li key={s.key} className="relative flex gap-3 pb-6 last:pb-0">
+              {!last && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute left-[11px] top-6 h-[calc(100%-1.5rem)] w-px transition-colors",
+                    done ? "bg-[var(--primary)]" : "bg-[var(--border)]"
+                  )}
+                />
+              )}
               <div
-                className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-700 transition-colors ${
+                className={cn(
+                  "relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-700 transition-colors",
                   done
                     ? "bg-[var(--primary)] text-[var(--primary-fg)]"
                     : active
                       ? "border-2 border-[var(--primary)] text-[var(--primary)]"
                       : "border border-[var(--border)] text-[var(--text-tertiary)]"
-                }`}
+                )}
               >
-                {done ? <Check size={10} strokeWidth={3} /> : i + 1}
+                {done ? <Check size={11} strokeWidth={3} /> : i + 1}
               </div>
-              <span
-                className={`text-[11.5px] transition-colors ${
-                  active ? "font-600 text-[var(--text-primary)]" : "font-400 text-[var(--text-tertiary)]"
-                }`}
-              >
-                {s.label}
-              </span>
-            </div>
-            {i < steps.length - 1 && (
-              <ChevronRight size={12} className="shrink-0 text-[var(--border-strong)]" />
-            )}
-          </div>
-        );
-      })}
+              <div className="min-w-0 pt-0.5">
+                <p
+                  className={cn(
+                    "text-[12.5px] leading-none transition-colors",
+                    active || done
+                      ? "font-600 text-[var(--text-primary)]"
+                      : "font-500 text-[var(--text-tertiary)]"
+                  )}
+                >
+                  {s.label}
+                </p>
+                <p className="mt-1 text-[11px] font-300 leading-snug text-[var(--text-tertiary)]">
+                  {s.hint}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+
+      {franchiseName && current !== "franchise" && (
+        <div className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5">
+          <p className="label-colus mb-1 text-[8.5px] text-[var(--text-tertiary)]">Franquia</p>
+          <p className="truncate text-[12.5px] font-600 text-[var(--text-primary)]">{franchiseName}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -250,12 +280,10 @@ function FranchiseStep({
 }
 
 function CourtStep({
-  franchiseName,
   franchiseId,
   onDone,
   onBack,
 }: {
-  franchiseName: string;
   franchiseId: string;
   onDone: (result: CreateCourtState) => void;
   onBack: () => void;
@@ -300,11 +328,6 @@ function CourtStep({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2">
-        <p className="text-[10.5px] font-300 text-[var(--text-tertiary)]">Franquia selecionada</p>
-        <p className="text-[13px] font-600 text-[var(--text-primary)]">{franchiseName}</p>
-      </div>
-
       <div>
         <label htmlFor="court_name" className={labelClass}>
           Nome da quadra
@@ -499,13 +522,24 @@ export function NovaQuadraForm({ franchises }: { franchises: FranchiseItem[] }) 
     setResult(null);
   }
 
-  return (
-    <div className="mx-auto max-w-xl">
-      {step !== "done" && (
-        <div className="mb-6">
-          <StepIndicator current={step} />
+  // Success is a terminal, self-contained moment — no rail, just a centered card.
+  if (step === "done" && result) {
+    return (
+      <div className="mx-auto max-w-md">
+        <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">
+          <DoneStep
+            courtId={result.courtId!}
+            slotsCreated={result.slotsCreated!}
+            onNew={reset}
+          />
         </div>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto grid max-w-4xl gap-8 lg:grid-cols-[210px_minmax(0,1fr)]">
+      <StepRail current={step} franchiseName={franchiseName} />
 
       <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
         {step === "franchise" && (
@@ -513,17 +547,9 @@ export function NovaQuadraForm({ franchises }: { franchises: FranchiseItem[] }) 
         )}
         {step === "court" && (
           <CourtStep
-            franchiseName={franchiseName}
             franchiseId={franchiseId}
             onDone={handleCourtDone}
             onBack={() => setStep("franchise")}
-          />
-        )}
-        {step === "done" && result && (
-          <DoneStep
-            courtId={result.courtId!}
-            slotsCreated={result.slotsCreated!}
-            onNew={reset}
           />
         )}
       </div>

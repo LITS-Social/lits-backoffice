@@ -31,7 +31,7 @@ const nav = [
   { id: "04", label: "Sem Recomendação",      href: "/sem-recomendacao",       icon: UserX },
   { id: "05", label: "Cancelamentos",         href: "/cancelamentos",          icon: XCircle },
   { id: "06", label: "Pagamentos",            href: "/pagamentos",             icon: CreditCard },
-  { id: "07", label: "Quadras",              href: "/quadras-indisponiveis",  icon: AlertTriangle },
+  { id: "07", label: "Bloqueios",             href: "/quadras-indisponiveis",  icon: AlertTriangle },
   { id: "08", label: "Avaliações",            href: "/avaliacoes",             icon: Star },
   { id: "09", label: "Denúncias",             href: "/denuncias",              icon: Flag },
   { id: "10", label: "Reservas Pagas",        href: "/reservas-pagas",         icon: CalendarCheck },
