@@ -640,6 +640,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/product-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Norte do Produto aggregated KPIs
+         * @description One roll-up for the product dashboard: invite funnel (7d), new-active users (7d), onboarding→first-match (14d cohort), week-2 retention, invitation-code redemptions (7d). Every metric the schema cannot honestly measure is null, never zero — wo_today (no_show has no write path) and avg_balance_rating (no balance field in game_feedback) are null today.
+         */
+        get: operations["ops-get-product-metrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/reports": {
         parameters: {
             query?: never;
@@ -1716,6 +1736,18 @@ export interface components {
              */
             badge: "selfie_match" | "celebrity" | "club_official" | "federation_athlete" | "beta_tester";
         };
+        InviteAcceptance7d: {
+            /**
+             * Format: int64
+             * @description Of those, bookings whose guest reached an accepted state (awaiting_guest_payment, confirmed, live, played)
+             */
+            accepted: number;
+            /**
+             * Format: int64
+             * @description Non-quick-match bookings created in the last 7 days showing invite evidence (guest attached, or a guest-invite refund). LOWER BOUND: a declined/expired FREE invite clears guest_id and leaves no trace
+             */
+            sent: number;
+        };
         LiftSanctionBody: {
             /**
              * Format: uri
@@ -1996,6 +2028,18 @@ export interface components {
              * @description Total registered users (all time)
              */
             total_users: number;
+        };
+        OnboardingFunnel: {
+            /**
+             * Format: int64
+             * @description Users whose profiles.onboarding_completed_at falls in the last 14 days
+             */
+            cohort: number;
+            /**
+             * Format: int64
+             * @description Of those, users with >=1 booking (as host or guest) created within 7 days of completing onboarding. Users who completed <7 days ago have an incomplete window — the count can still grow
+             */
+            converted: number;
         };
         OpenInviteItem: {
             /** @description UUIDv7 booking identifier */
@@ -2508,6 +2552,50 @@ export interface components {
             resolved_by?: string;
             status: string;
         };
+        ProductMetricsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ProductMetricsBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: double
+             * @description Always null: game_feedback has only a 1–5 partner rating, no balance/equilíbrio field. Partner rating lives in GET /v1/ops/player-evaluations
+             */
+            avg_balance_rating: number | null;
+            /**
+             * Format: date-time
+             * @description When this snapshot was computed (RFC3339, UTC)
+             */
+            computed_at: string;
+            /** @description Invite funnel over bookings created in the last 7 days; the frontend computes the rate */
+            invite_acceptance_7d: components["schemas"]["InviteAcceptance7d"];
+            /**
+             * Format: int64
+             * @description Direct guest invites in the last 7 days — same figure as invite_acceptance_7d.sent (see its caveats)
+             */
+            invites_sent_7d: number | null;
+            /**
+             * Format: int64
+             * @description Users created in the last 7 days with last_seen_at stamped (>=1 authenticated request since signup). Excludes deleted accounts
+             */
+            new_active_users_7d: number | null;
+            /** @description Onboarding→first-match conversion over the 14-day completion cohort */
+            onboarding_to_first_match: components["schemas"]["OnboardingFunnel"];
+            /**
+             * Format: int64
+             * @description invitation_code_uses rows with used_at in the last 7 days (signup code redemptions via auth-bridge)
+             */
+            referral_codes_used_7d: number | null;
+            /** @description Users created 14–21 days ago vs those seen in the last 7 days */
+            retention_week2: components["schemas"]["RetentionWeek2"];
+            /**
+             * Format: int64
+             * @description Always null: booking_status 'no_show' has no write path anywhere in the backend, so W.O.s are not tracked yet. Reserved for when MarkNoShow exists
+             */
+            wo_today: number | null;
+        };
         ReactivateUserResponseBody: {
             /**
              * Format: uri
@@ -2625,6 +2713,18 @@ export interface components {
              * @description Number of future available slots repriced
              */
             slots_updated: number;
+        };
+        RetentionWeek2: {
+            /**
+             * Format: int64
+             * @description Users created 14–21 days ago (excluding deleted accounts)
+             */
+            cohort: number;
+            /**
+             * Format: int64
+             * @description Of those, users with last_seen_at inside the last 7 days
+             */
+            returned: number;
         };
         SanctionItem: {
             /**
@@ -4155,6 +4255,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RedactPostResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-get-product-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductMetricsBody"];
                 };
             };
             /** @description Error */

@@ -264,17 +264,33 @@ function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
 }
 
 export default async function MetricsPage() {
-  const { users, matches, completion, partnerRating } = await getProductMetrics();
+  const { users, matches, north, completion, partnerRating } = await getProductMetrics();
 
   const broken = [
     users.failed && "Usuários",
     matches.failed && "Partidas concluídas",
+    north.failed && "Métricas de produto",
   ].filter(Boolean) as string[];
 
   const wow = !matches.failed
     ? { ok: matches.last7 >= matches.prev7, delta: matches.last7 - matches.prev7 }
     : null;
   const wau = users.activity.hoje + users.activity.semana;
+
+  // Funnel rates from the backend roll-up. A pair with an empty denominator
+  // stays null — 0/0 dressed up as a percentage is still "sem dado".
+  const acceptance =
+    north.inviteAcceptance && north.inviteAcceptance.sent > 0
+      ? { rate: north.inviteAcceptance.accepted / north.inviteAcceptance.sent, ...north.inviteAcceptance }
+      : null;
+  const onboarding =
+    north.onboarding && north.onboarding.cohort > 0
+      ? { rate: north.onboarding.converted / north.onboarding.cohort, ...north.onboarding }
+      : null;
+  const week2 =
+    north.retentionWeek2 && north.retentionWeek2.cohort > 0
+      ? { rate: north.retentionWeek2.returned / north.retentionWeek2.cohort, ...north.retentionWeek2 }
+      : null;
 
   // ── Ação imediata — a metade diária da planilha ──────────────────────────────
   const daily: MetricRow[] = [
@@ -310,26 +326,49 @@ export default async function MetricsPage() {
     {
       metric: "Convites enviados",
       meta: "Cresce com a base",
+      ...(north.invitesSent7d != null
+        ? {
+            value: String(north.invitesSent7d),
+            ok: north.invitesSent7d > 0,
+            note: "últimos 7 dias · piso — convite grátis recusado não deixa rastro",
+          }
+        : {}),
       action: "Queda brusca = algo mudou no matchmaking",
     },
     {
       metric: "Taxa de aceitação de convite",
       meta: "≥ 50%",
+      ...(acceptance
+        ? {
+            value: pct(acceptance.rate),
+            ok: acceptance.rate >= 0.5,
+            note: `${acceptance.accepted} aceitos de ${acceptance.sent} enviados`,
+          }
+        : {}),
       action: "Se < 30%: revisa qualidade dos matches gerados",
     },
     {
       metric: "Novos usuários ativos",
       meta: "Conforme fase",
-      ...(!users.failed
+      ...(north.newActive7d != null
         ? {
-            value: `+${users.newLast7}`,
-            ok: users.newLast2 > 0,
+            value: `+${north.newActive7d}`,
+            ok: north.newActive7d > 0,
             note:
-              users.newLast2 > 0
-                ? `em 7 dias · ${users.newPrev7} nos 7 anteriores`
-                : "zero novas contas há 2 dias",
+              north.newActive7d > 0
+                ? "contas da semana que voltaram ao app"
+                : "nenhuma conta nova ativa em 7 dias",
           }
-        : {}),
+        : !users.failed
+          ? {
+              value: `+${users.newLast7}`,
+              ok: users.newLast2 > 0,
+              note:
+                users.newLast2 > 0
+                  ? `em 7 dias · ${users.newPrev7} nos 7 anteriores`
+                  : "zero novas contas há 2 dias",
+            }
+          : {}),
       action: "Zero por 2 dias seguidos = ação de aquisição necessária",
     },
     {
@@ -344,6 +383,13 @@ export default async function MetricsPage() {
     {
       metric: "Onboarding → 1ª partida",
       meta: "≥ 50% em 7 dias",
+      ...(onboarding
+        ? {
+            value: pct(onboarding.rate),
+            ok: onboarding.rate >= 0.5,
+            note: `${onboarding.converted} de ${onboarding.cohort} · coorte dos últimos 14 dias`,
+          }
+        : {}),
       action: "Mapeia onde o fluxo é abandonado",
     },
     {
@@ -371,18 +417,31 @@ export default async function MetricsPage() {
     {
       metric: "Retenção semana 2",
       meta: "≥ 50%",
-      ...(users.retention
+      ...(week2
         ? {
-            value: pct(users.retention.rate),
-            ok: users.retention.rate >= 0.5,
-            note: `aproximação via last_seen · coorte de ${users.retention.cohort}`,
+            value: pct(week2.rate),
+            ok: week2.rate >= 0.5,
+            note: `${week2.returned} de ${week2.cohort} criados há 14–21 dias vistos na semana`,
           }
-        : {}),
+        : users.retention
+          ? {
+              value: pct(users.retention.rate),
+              ok: users.retention.rate >= 0.5,
+              note: `aproximação via last_seen · coorte de ${users.retention.cohort}`,
+            }
+          : {}),
       action: "Entrevista quem não voltou — busca padrão",
     },
     {
       metric: "Códigos de indicação usados",
       meta: "≥ 1 por dia",
+      ...(north.referralCodesUsed7d != null
+        ? {
+            value: String(north.referralCodesUsed7d),
+            ok: north.referralCodesUsed7d >= 7,
+            note: "últimos 7 dias",
+          }
+        : {}),
       action: "Zero por 3 dias: MGM não está rodando",
     },
   ];

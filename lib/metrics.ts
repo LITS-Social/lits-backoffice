@@ -6,10 +6,11 @@ import { getApi } from "@/lib/api";
  *
  * Everything here is computed from rows that came off the wire, and every block
  * carries its own `failed` flag — one broken endpoint dims one card, not the
- * page. Metrics the backend does not capture yet (W.O., invite acceptance,
- * referral codes…) are NOT in this file on purpose: the dashboard renders them
- * as "sem dado", because a derived-looking zero is the one lie this console
- * does not tell.
+ * page. The funnel numbers the crawls cannot see (invites, onboarding,
+ * referral codes) come pre-aggregated from `/v1/ops/product-metrics`; what the
+ * schema still cannot measure (W.O., nota de equilíbrio) that endpoint returns
+ * as null and the dashboard keeps as "sem dado", because a derived-looking
+ * zero is the one lie this console does not tell.
  */
 
 const DAY_MS = 24 * 3600_000;
@@ -75,9 +76,31 @@ export type MatchesMetrics = {
   weekly: WeekPoint[] | null;
 };
 
+/**
+ * The backend's own Norte-do-Produto roll-up (`GET /v1/ops/product-metrics`).
+ * Scalars are null when the backend cannot honestly compute them; everything
+ * is null when the endpoint itself was unreachable (`failed`).
+ */
+export type NorthMetrics = {
+  failed: boolean;
+  /** LOWER BOUND: a declined/expired free invite clears guest_id and leaves no trace. */
+  invitesSent7d: number | null;
+  /** Invite funnel over bookings created in the last 7 days. */
+  inviteAcceptance: { sent: number; accepted: number } | null;
+  /** Accounts created in the last 7 days that came back with ≥1 authenticated request. */
+  newActive7d: number | null;
+  /** Onboarding→first-match conversion over the 14-day completion cohort. */
+  onboarding: { cohort: number; converted: number } | null;
+  /** Users created 14–21 days ago vs those seen in the last 7 days. */
+  retentionWeek2: { cohort: number; returned: number } | null;
+  /** Signup code redemptions in the last 7 days — 0 here is a real, measured 0. */
+  referralCodesUsed7d: number | null;
+};
+
 export type ProductMetrics = {
   users: UsersMetrics;
   matches: MatchesMetrics;
+  north: NorthMetrics;
   /** finished / (finished + cancelled). Null when either side failed. */
   completion: { rate: number; finished: number; cancelled: number } | null;
   /** Weighted mean of all partner ratings received. Null on failure or no ratings. */
@@ -220,12 +243,38 @@ async function fetchMatches(): Promise<MatchesMetrics> {
   };
 }
 
+async function fetchNorth(): Promise<NorthMetrics> {
+  const failed: NorthMetrics = {
+    failed: true,
+    invitesSent7d: null, inviteAcceptance: null, newActive7d: null,
+    onboarding: null, retentionWeek2: null, referralCodesUsed7d: null,
+  };
+
+  try {
+    const api = await getApi();
+    const { data, error } = await api.GET("/v1/ops/product-metrics");
+    if (error || data == null) return failed;
+    return {
+      failed: false,
+      invitesSent7d: data.invites_sent_7d,
+      inviteAcceptance: data.invite_acceptance_7d,
+      newActive7d: data.new_active_users_7d,
+      onboarding: data.onboarding_to_first_match,
+      retentionWeek2: data.retention_week2,
+      referralCodesUsed7d: data.referral_codes_used_7d,
+    };
+  } catch {
+    return failed;
+  }
+}
+
 export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
   const api = await getApi();
 
-  const [users, matches, cancellations, evaluations] = await Promise.all([
+  const [users, matches, north, cancellations, evaluations] = await Promise.all([
     crawlUsers(),
     fetchMatches(),
+    fetchNorth(),
     // Only the server-side `total` is read; one row is the cheapest way to get it.
     api.GET("/v1/ops/cancellations", { params: { query: { limit: 1, offset: 0 } } }),
     api.GET("/v1/ops/player-evaluations"),
@@ -257,5 +306,5 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
     }
   }
 
-  return { users, matches, completion, partnerRating };
+  return { users, matches, north, completion, partnerRating };
 });
