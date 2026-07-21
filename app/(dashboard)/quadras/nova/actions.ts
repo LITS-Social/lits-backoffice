@@ -28,7 +28,7 @@ export async function listFranchisesAction(): Promise<{ franchises: FranchiseIte
 export async function createFranchiseAction(
   slug: string,
   name: string,
-  kind: "partner" | "public",
+  kind: "partner" | "public" | "listing",
   defaultPriceCents?: number | null
 ): Promise<CreateFranchiseState> {
   const api = await getApi();

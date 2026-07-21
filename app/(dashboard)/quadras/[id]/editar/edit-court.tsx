@@ -1285,6 +1285,16 @@ export function EditCourt({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      {/* Directory listings serve the kind-based synthesized free grid in-app,
+          so the price/slot tools below do not change what users see today. One
+          banner up top beats repeating the caveat in every pricing section. */}
+      {court.franchise_kind === "listing" && (
+        <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          Local do diretório: o app exibe a grade sintetizada gratuita (06h–22h, R$&nbsp;0),
+          independente dos slots e preços cadastrados aqui. As ferramentas seguem editáveis para
+          quando o local virar parceiro.
+        </p>
+      )}
       <CourtBasicsSection court={court} />
       <RepriceSection courtId={court.id} onDone={reloadSlots} />
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />

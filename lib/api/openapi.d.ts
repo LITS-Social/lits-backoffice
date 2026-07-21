@@ -255,7 +255,7 @@ export interface paths {
         put?: never;
         /**
          * Create a court with pre-generated availability slots (ADR-0063 pricing)
-         * @description Inserts the court then generates hourly slots for the requested horizon (default 90 days). Pricing: public courts → free; paid courts 10h–17h59 → R$220; 06h–09h59 and 18h+ → R$280. Set auto_generate=false to create the court with zero slots and hand-enter them via POST /v1/ops/courts/{id}/slots.
+         * @description Inserts the court then generates hourly slots for the requested horizon (default 90 days). Pricing: public/listing courts → free; paid courts 10h–17h59 → R$220; 06h–09h59 and 18h+ → R$280. Set auto_generate=false to create the court with zero slots and hand-enter them via POST /v1/ops/courts/{id}/slots.
          */
         post: operations["ops-create-court"];
         delete?: never;
@@ -393,7 +393,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List bookable franchises (partner + public; excludes listing-only venues) */
+        /** List the full venue directory (partner + public + listing) */
         get: operations["ops-list-franchises"];
         put?: never;
         /** Create a new franchise */
@@ -1342,8 +1342,12 @@ export interface components {
             total: number;
         };
         CourtListItem: {
+            /** @description Owning franchise brand (e.g. 'playtennis'), or null */
+            franchise_brand: string | null;
             /** @description Owning franchise UUID */
             franchise_id: string;
+            /** @description Owning franchise kind: partner | public | listing */
+            franchise_kind: string;
             /** @description Franchise display name */
             franchise_name: string;
             /** @description Court UUID */
@@ -1456,10 +1460,10 @@ export interface components {
              */
             default_price_cents?: number;
             /**
-             * @description Venue kind: partner (paid club) or public (free park)
+             * @description Venue kind: partner (paid club), public (free park) or listing (directory venue, synthesized free grid)
              * @enum {string}
              */
-            kind: "partner" | "public";
+            kind: "partner" | "public" | "listing";
             /** @description Display name */
             name: string;
             /** @description URL-safe slug (lowercase, hyphens) */
@@ -1688,6 +1692,8 @@ export interface components {
             readonly $schema?: string;
             /** @description Whether the franchise is currently active */
             active: boolean;
+            /** @description Brand discriminator (e.g. 'playtennis'), or null */
+            brand: string | null;
             /** @description UUIDv4 franchise identifier */
             id: string;
             /** @description Venue kind: partner | public | listing */
@@ -1926,7 +1932,7 @@ export interface components {
         ManualSlotItem: {
             /**
              * Format: int64
-             * @description Slot price in cents; falls back to franchise default then ADR-0063 hour band (public → free)
+             * @description Slot price in cents; falls back to franchise default then ADR-0063 hour band (public/listing → free)
              */
             price_cents?: number;
             /** @description Slot end instant (RFC3339); defaults to slot_start + 1h */

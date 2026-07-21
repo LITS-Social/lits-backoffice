@@ -23,6 +23,17 @@ const SURFACE_LABELS: Record<Surface, string> = {
   carpet: "Carpete",
 };
 
+/**
+ * Venue kind as staff read it — PlayTennis (brand) split out of the generic
+ * directory listings, mirroring the /quadras table chips.
+ */
+function franchiseKindLabel(f: FranchiseItem): string {
+  if (f.kind === "partner") return "Parceiro";
+  if (f.kind === "public") return "Pública";
+  if (f.brand === "playtennis") return "PlayTennis";
+  return "Diretório";
+}
+
 const fieldClass =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--text-primary)] transition-colors placeholder:font-300 placeholder:text-[var(--text-tertiary)] hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:bg-[var(--surface)] focus:outline-none";
 
@@ -140,24 +151,36 @@ function FranchiseStep({
   onNext,
 }: {
   franchises: FranchiseItem[];
-  onNext: (id: string, name: string) => void;
+  onNext: (id: string, name: string, kind: string) => void;
 }) {
-  const [mode, setMode] = useState<FranchiseMode>(franchises.length > 0 ? "existing" : "new");
-  const [selectedId, setSelectedId] = useState(franchises[0]?.id ?? "");
+  // The directory has 160+ active venues, so the picker is search-first and
+  // demands an explicit click — a silent default under that many rows is how a
+  // court lands on the wrong franchise.
+  const selectable = franchises.filter((f) => f.active);
+  const [mode, setMode] = useState<FranchiseMode>(selectable.length > 0 ? "existing" : "new");
+  const [selectedId, setSelectedId] = useState("");
+  const [query, setQuery] = useState("");
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<"partner" | "public">("partner");
+  const [kind, setKind] = useState<"partner" | "public" | "listing">("partner");
   const [defaultPrice, setDefaultPrice] = useState("");
   const [freeFranchise, setFreeFranchise] = useState(false);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
+  const q = query.trim().toLowerCase();
+  const visible = q
+    ? selectable.filter((f) =>
+        `${f.name} ${f.slug} ${franchiseKindLabel(f)}`.toLowerCase().includes(q)
+      )
+    : selectable;
+  const selected = selectable.find((f) => f.id === selectedId);
+
   function handleSubmit() {
     setError("");
     if (mode === "existing") {
-      if (!selectedId) { setError("Selecione uma franquia."); return; }
-      const f = franchises.find((f) => f.id === selectedId);
-      onNext(selectedId, f?.name ?? selectedId);
+      if (!selected) { setError("Selecione uma franquia."); return; }
+      onNext(selected.id, selected.name, selected.kind);
     } else {
       const defaultPriceCents = freeFranchise ? 0 : reaisToCents(defaultPrice);
       if (!freeFranchise && defaultPrice.trim() !== "" && defaultPriceCents === null) {
@@ -170,14 +193,14 @@ function FranchiseStep({
           setError(result.error ?? "Falha ao criar franquia.");
           return;
         }
-        onNext(result.franchise.id, result.franchise.name);
+        onNext(result.franchise.id, result.franchise.name, result.franchise.kind);
       });
     }
   }
 
   return (
     <div className="space-y-5">
-      {franchises.length > 0 && (
+      {selectable.length > 0 && (
         <div className="flex gap-2">
           {(["existing", "new"] as FranchiseMode[]).map((m) => (
             <button
@@ -198,21 +221,58 @@ function FranchiseStep({
 
       {mode === "existing" ? (
         <div>
-          <label htmlFor="franchise_select" className={labelClass}>
+          <label htmlFor="franchise_search" className={labelClass}>
             Selecione a franquia
           </label>
-          <select
-            id="franchise_select"
-            value={selectedId}
-            onChange={(e) => setSelectedId(e.target.value)}
+          <input
+            id="franchise_search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por nome, slug ou tipo…"
             className={fieldClass}
-          >
-            {franchises.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name} ({f.kind})
-              </option>
-            ))}
-          </select>
+          />
+          <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-[var(--border)]">
+            {visible.length === 0 ? (
+              <p className="px-3 py-3 text-[12px] font-300 text-[var(--text-tertiary)]">
+                Nenhuma franquia encontrada para essa busca.
+              </p>
+            ) : (
+              visible.map((f) => {
+                const isSelected = f.id === selectedId;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setSelectedId(f.id)}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2 text-left transition-colors last:border-b-0",
+                      isSelected ? "bg-[var(--primary)]/8" : "hover:bg-[var(--surface-raised)]"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "min-w-0 truncate text-[12.5px]",
+                        isSelected
+                          ? "font-600 text-[var(--primary)]"
+                          : "text-[var(--text-primary)]"
+                      )}
+                    >
+                      {f.name}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-300 text-[var(--text-tertiary)]">
+                      {franchiseKindLabel(f)}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+          <p className="mt-1.5 text-[10.5px] font-300 text-[var(--text-tertiary)]">
+            {selected
+              ? `Selecionada: ${selected.name} (${franchiseKindLabel(selected)})`
+              : `${visible.length} de ${selectable.length} franquias ativas. Clique para selecionar.`}
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -245,8 +305,8 @@ function FranchiseStep({
           </div>
           <div>
             <p className={labelClass}>Tipo</p>
-            <div className="flex gap-3">
-              {(["partner", "public"] as const).map((k) => (
+            <div className="flex flex-wrap gap-3">
+              {(["partner", "public", "listing"] as const).map((k) => (
                 <label
                   key={k}
                   className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-[12px] transition-colors ${
@@ -263,7 +323,11 @@ function FranchiseStep({
                     onChange={() => setKind(k)}
                     className="sr-only"
                   />
-                  {k === "partner" ? "Parceiro (pago)" : "Público (gratuito)"}
+                  {k === "partner"
+                    ? "Parceiro (pago)"
+                    : k === "public"
+                      ? "Público (gratuito)"
+                      : "Diretório (vitrine)"}
                 </label>
               ))}
             </div>
@@ -312,10 +376,12 @@ function FranchiseStep({
 
 function CourtStep({
   franchiseId,
+  franchiseKind,
   onDone,
   onBack,
 }: {
   franchiseId: string;
+  franchiseKind: string;
   onDone: (result: CreateCourtState) => void;
   onBack: () => void;
 }) {
@@ -516,13 +582,21 @@ function CourtStep({
         />
       </div>
 
+      {franchiseKind === "listing" && (
+        <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          Local do diretório: o app hoje exibe a grade sintetizada gratuita (06h–22h, R$&nbsp;0) —
+          slots e preços cadastrados aqui não mudam a vitrine. Os campos seguem editáveis para
+          quando o local virar parceiro.
+        </p>
+      )}
+
       <p className="text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
         {manual ? (
           "A quadra é criada sem horários. Adicione os horários manualmente na edição da quadra."
         ) : (
           <>
             Gera slots das {String(startHour).padStart(2, "0")}h às {String(endHour).padStart(2, "0")}h para os próximos {daysForward} dias.
-            Preço personalizado (quadra ou padrão da academia) sobrepõe a fórmula 10h–17h59 → R$&nbsp;220; demais → R$&nbsp;280; quadras públicas → R$&nbsp;0.
+            Preço personalizado (quadra ou padrão da academia) sobrepõe a fórmula 10h–17h59 → R$&nbsp;220; demais → R$&nbsp;280; quadras públicas e do diretório → R$&nbsp;0.
           </>
         )}
       </p>
@@ -593,11 +667,13 @@ export function NovaQuadraForm({ franchises }: { franchises: FranchiseItem[] }) 
   const [step, setStep] = useState<Step>("franchise");
   const [franchiseId, setFranchiseId] = useState("");
   const [franchiseName, setFranchiseName] = useState("");
+  const [franchiseKind, setFranchiseKind] = useState("");
   const [result, setResult] = useState<CreateCourtState | null>(null);
 
-  function handleFranchiseNext(id: string, name: string) {
+  function handleFranchiseNext(id: string, name: string, kind: string) {
     setFranchiseId(id);
     setFranchiseName(name);
+    setFranchiseKind(kind);
     setStep("court");
   }
 
@@ -610,6 +686,7 @@ export function NovaQuadraForm({ franchises }: { franchises: FranchiseItem[] }) 
     setStep("franchise");
     setFranchiseId("");
     setFranchiseName("");
+    setFranchiseKind("");
     setResult(null);
   }
 
@@ -639,6 +716,7 @@ export function NovaQuadraForm({ franchises }: { franchises: FranchiseItem[] }) 
         {step === "court" && (
           <CourtStep
             franchiseId={franchiseId}
+            franchiseKind={franchiseKind}
             onDone={handleCourtDone}
             onBack={() => setStep("franchise")}
           />

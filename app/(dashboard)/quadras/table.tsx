@@ -17,7 +17,33 @@ const SURFACE_LABEL: Record<string, string> = {
   carpet: "Carpete",
 };
 
+/**
+ * Venue kind as staff read it: partner club, public park, or a directory
+ * listing — with PlayTennis (brand) split out of the generic listings because
+ * its 14 units behave as a semi-integrated network. `rank` drives the default
+ * sort: partners first, then parks, then the listing long tail alphabetical.
+ */
+function venueKind(c: CourtListItem): { label: string; variant: "success" | "info" | "default" | "muted"; rank: number } {
+  if (c.franchise_kind === "partner") return { label: "Parceiro",   variant: "success", rank: 0 };
+  if (c.franchise_kind === "public")  return { label: "Pública",    variant: "info",    rank: 1 };
+  if (c.franchise_brand === "playtennis") return { label: "PlayTennis", variant: "default", rank: 2 };
+  return { label: "Diretório", variant: "muted", rank: 2 };
+}
+
 const filters: DataTableFilterGroup<CourtListItem>[] = [
+  {
+    id: "kind",
+    label: "Tipo",
+    options: [
+      { value: "partner",    label: "Parceiro",   predicate: (c) => c.franchise_kind === "partner" },
+      { value: "public",     label: "Pública",    predicate: (c) => c.franchise_kind === "public"  },
+      { value: "playtennis", label: "PlayTennis", predicate: (c) => c.franchise_brand === "playtennis" },
+      // Mirrors venueKind()'s fallback branch (anything not partner/public/
+      // PlayTennis reads as Diretório) so badge and chip can never disagree —
+      // including the old-BFF window where franchise_kind is undefined.
+      { value: "listing",    label: "Diretório",  predicate: (c) => c.franchise_kind !== "partner" && c.franchise_kind !== "public" && c.franchise_brand !== "playtennis" },
+    ],
+  },
   {
     id: "surface",
     label: "Superfície",
@@ -58,6 +84,18 @@ const columns: DataTableColumn<CourtListItem>[] = [
         <p className="truncate text-[11px] text-[var(--text-tertiary)]">{c.franchise_name}</p>
       </div>
     ),
+  },
+  {
+    id: "kind",
+    header: "Tipo",
+    width: "110px",
+    // Rank prefix keeps the localeCompare order partner → public → listings,
+    // alphabetical by franchise inside each band.
+    sortAccessor: (c) => `${venueKind(c).rank} ${c.franchise_name} ${c.name}`,
+    render: (c) => {
+      const k = venueKind(c);
+      return <Badge variant={k.variant}>{k.label}</Badge>;
+    },
   },
   {
     id: "surface",
@@ -154,10 +192,10 @@ export function CourtsTable({ courts }: { courts: CourtListItem[] }) {
       rows={courts}
       columns={columns}
       filters={filters}
-      initialSort={{ columnId: "name", direction: "asc" }}
+      initialSort={{ columnId: "kind", direction: "asc" }}
       rowKey={(c) => c.id}
-      searchText={(c) => `${c.name} ${c.franchise_name} ${c.surface}`}
-      searchPlaceholder="Buscar por nome, franquia ou superfície…"
+      searchText={(c) => `${c.name} ${c.franchise_name} ${c.surface} ${venueKind(c).label}`}
+      searchPlaceholder="Buscar por nome, franquia, tipo ou superfície…"
       emptyMessage="Nenhuma quadra cadastrada."
       noResultsMessage="Nenhuma quadra encontrada para esse filtro."
       renderDetail={(c) => (
@@ -166,6 +204,7 @@ export function CourtsTable({ courts }: { courts: CourtListItem[] }) {
             fields={[
               { label: "Court ID",     value: c.id,             mono: true, span: true },
               { label: "Franquia",     value: c.franchise_name },
+              { label: "Tipo",         value: venueKind(c).label },
               { label: "Franchise ID", value: c.franchise_id,   mono: true, span: true },
               { label: "Superfície",   value: SURFACE_LABEL[c.surface] ?? c.surface },
               { label: "Cobertura",    value: c.indoor ? "Coberta" : "Descoberta" },
@@ -173,6 +212,12 @@ export function CourtsTable({ courts }: { courts: CourtListItem[] }) {
               { label: "Slots totais", value: String(c.slots_total) },
             ]}
           />
+          {c.franchise_kind === "listing" && (
+            <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+              Local do diretório: o app exibe a grade sintetizada gratuita (06h–22h, R$ 0),
+              independente dos slots cadastrados aqui — por isso o total de slots pode ser 0.
+            </p>
+          )}
           <div>
             <p className="eyebrow mb-3">Ações</p>
             <div className="flex flex-wrap items-center gap-3">
