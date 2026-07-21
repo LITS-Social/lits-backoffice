@@ -121,7 +121,7 @@ function ResolveControls({ report }: { report: PostReportItem }) {
             type="button"
             disabled={isPending}
             onClick={() => resolve("reviewing")}
-            className="rounded-full border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-3.5 py-2 font-colus text-[9px] uppercase tracking-[0.14em] text-[var(--color-clay)] transition-opacity hover:opacity-80 disabled:opacity-50"
+            className="rounded-full border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-3.5 py-2 font-700 text-[9px] uppercase tracking-[0.14em] text-[var(--color-clay)] transition-opacity hover:opacity-80 disabled:opacity-50"
           >
             Marcar em análise
           </button>
@@ -130,7 +130,7 @@ function ResolveControls({ report }: { report: PostReportItem }) {
           type="button"
           disabled={isPending}
           onClick={() => resolve("resolved")}
-          className="rounded-full border border-[var(--color-success)]/30 bg-[var(--color-success-bg)] px-3.5 py-2 font-colus text-[9px] uppercase tracking-[0.14em] text-[var(--color-success)] transition-opacity hover:opacity-80 disabled:opacity-50"
+          className="rounded-full border border-[var(--color-success)]/30 bg-[var(--color-success-bg)] px-3.5 py-2 font-700 text-[9px] uppercase tracking-[0.14em] text-[var(--color-success)] transition-opacity hover:opacity-80 disabled:opacity-50"
         >
           Resolver
         </button>
@@ -138,7 +138,7 @@ function ResolveControls({ report }: { report: PostReportItem }) {
           type="button"
           disabled={isPending}
           onClick={() => resolve("dismissed")}
-          className="rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-3.5 py-2 font-colus text-[9px] uppercase tracking-[0.14em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+          className="rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-3.5 py-2 font-700 text-[9px] uppercase tracking-[0.14em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
         >
           Encerrar (improcedente)
         </button>

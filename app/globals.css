@@ -2,17 +2,21 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    LITS — Painel Operacional
-   Design foundation on the real brand system (LitsLandingPage).
+   Design foundation on the LITS design system (brandbook V1.0, claude.ai/design
+   project "LITS"). Light = off-white paper with white cards; dark = brand brown
+   over black, the 8pm console. Surfaces feel like printed paper: 1px khaki
+   borders and value shifts, no shadows.
 
-   Two faces, no substitutes:
-     PP Nikkei Maru  variable 300–700 — body AND headings. One face, one voice.
-     Colus           400, UPPERCASE ONLY — eyebrows, labels, the lockup.
-                     Never body text. It has no lowercase worth reading and
-                     no italic; do not ask it for either.
+   Two faces, a strict voice split:
+     Colus           400 only, never italic — titles, named things, big numbers.
+                     "Colus does the talking."
+     PP Nikkei Maru  variable 300–700 — UI, body, data, and the signature
+                     tracked-uppercase labels. "Nikkei does the working."
 
    Colour law of this console:
-     court green  = selection, navigation, focus. Calm. Never alarms.
-     clay/orange  = attention. Something needs a look.
+     terracotta   = the ONLY energy colour. Primary CTAs, active states
+                    (nav, focus ring), key data. Never decorative.
+     court green  = institutional. The dark canvas, calm structure.
      RED          = money or moderation. Nothing else. An alert colour that
                     fires on healthy rows is an alert nobody reads.
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -38,33 +42,33 @@
 /* ─── Theme tokens ───────────────────────────────────────────────────────── */
 
 @theme inline {
-  /* Fonts. --font-display is the SAME face as --font-sans: in this brand the
-     display voice is size, weight and italic — not a second family. */
+  /* Fonts. --font-display is Colus, the brand's display serif — titles, named
+     things, big numbers. Upright only: the face has no italic, do not fake one. */
   --font-sans: "PP Nikkei Maru", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: "PP Nikkei Maru", ui-serif, Georgia, serif;
-  --font-colus: "Colus", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Colus", "Times New Roman", ui-serif, serif;
+  --font-colus: "Colus", "Times New Roman", ui-serif, serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
-  /* Court green — the brand's calm. Selection, nav, focus. */
+  /* Court green — Verde LITS. Institutional; the dark "club" canvas. */
   --color-court-50: #E4EAE6;
   --color-court-100: #C8D4CD;
   --color-court-200: #9DB3A7;
   --color-court-300: #74907F;
-  --color-court-400: #52705E;
-  --color-court-500: #3A5244; /* brand --color-court */
-  --color-court-600: #2F4438;
-  --color-court-700: #253830; /* brand --color-court-deep */
-  --color-court-800: #1A2721;
-  --color-court-900: #101A15;
+  --color-court-400: #4E6358;
+  --color-court-500: #2E433A; /* Verde LITS — PANTONE 6189 C */
+  --color-court-600: #2A3E35;
+  --color-court-700: #243530; /* green-700 — pressed / deep surface */
+  --color-court-800: #1C2A25;
+  --color-court-900: #121B17;
   --color-court-bright: #2F7A4A;
 
-  /* Paper — warm greige. The light theme lives here. */
-  --color-paper-50: #F5F2E7;
-  --color-paper-100: #EDE9DA;
-  --color-paper-200: #E2DECC; /* brand --off */
-  --color-paper-300: #D5CFBE;
-  --color-paper-400: #C4BCA6;
-  --color-paper-500: #A99F86;
+  /* Paper — off-white to cream. The light theme lives here. */
+  --color-paper-50: #FBFAF3;
+  --color-paper-100: #F6F5EC; /* Off-white — lightest canvas, PANTONE 7527 C (10%) */
+  --color-paper-200: #E8E7E1; /* secondary paper fill */
+  --color-paper-300: #E2DECC; /* Bege claro — cream, PANTONE 7527 C (50%) */
+  --color-paper-400: #C9BFA8; /* khaki-300 — light border */
+  --color-paper-500: #A39175; /* Bege — khaki, PANTONE 2325 C */
   --color-paper-600: #8A8069;
   --color-paper-700: #635B49;
   --color-paper-800: #423C30;
@@ -124,44 +128,42 @@
 @utility font-700 { font-weight: 700; }
 @utility font-800 { font-weight: 700; } /* the face stops at 700; do not fake 800 */
 
-/* ─── Semantic surface — LIGHT (warm greige paper, the brand's daylight) ──── */
+/* ─── Semantic surface — LIGHT (brandbook off-white paper, white cards) ───── */
 
 :root {
   color-scheme: light;
 
-  --bg: #D5CFBE;             /* page — greige */
-  --surface: #EAE5D6;        /* the data plane, lifted off the page */
-  --surface-raised: #DFD9C7; /* hover, muted chips */
-  --surface-sunken: #D2CBB7; /* expanded detail — recessed below the plane */
+  --bg: #F6F5EC;             /* page — brandbook Off-white */
+  --surface: #FFFFFF;        /* the data plane — white card on paper */
+  --surface-raised: #E8E7E1; /* hover, muted chips — secondary paper fill */
+  --surface-sunken: #E4E1D0; /* expanded detail — recessed toward cream */
 
-  --border: #C4BCA6;
-  --border-strong: #A99F86;
+  --border: #C9BFA8;         /* khaki-300 — the brand's 1px hairline */
+  --border-strong: #A39175;  /* Bege / khaki */
 
-  --primary: #3A5244;        /* court green */
-  --primary-fg: #EDE9DA;
+  --primary: #B54A29;        /* Laranja Saibro — the ONLY energy colour */
+  --primary-fg: #F6F5EC;
 
-  --text-primary: #1A140F;
-  --text-secondary: #4E4840;
+  --text-primary: #0C0C0C;   /* Preto */
+  --text-secondary: #4E5A54; /* muted green — darkened green-300 for AA */
   /* WCAG AA, verified against every surface it lands on — this token paints the
      truncation disclaimers ("só 50 carregadas"), the timestamps, the booking IDs,
-     the Colus column heads and the search placeholder. It was #6F6A5E, which
-     scored 3.33:1 on the table header and 3.46:1 on the page: the most important
-     honest sentence in the product was its least legible text. #565249 clears 4.5
-     on all four surfaces (worst = 4.80 on --surface-sunken), same warm hue. Do not
-     lighten it without re-checking contrast against --surface-sunken. */
-  --text-tertiary: #565249;
+     the column heads and the search placeholder. #655E4F (dark khaki) clears 4.5
+     on all four surfaces (worst = 4.84 on --surface-sunken), warm brand hue. Do
+     not lighten it without re-checking contrast against --surface-sunken. */
+  --text-tertiary: #655E4F;
 
   --color-success: #2C6B45;
-  --color-success-bg: #D6E1D4;
+  --color-success-bg: #DDE7DB;
   --color-warning: #B54A29;
-  --color-warning-bg: #EFDFCC;
+  --color-warning-bg: #F0E2DB; /* terracotta wash — DS --lits-terracotta-100 */
   --color-error: #A82A20;
-  --color-error-bg: #F0D9D4;
+  --color-error-bg: #F2DDD8;
   --color-info: #6B5B3E;
-  --color-info-bg: #E3DCC6;
+  --color-info-bg: #EAE4D2;
   --color-clay: #8A381F;
 
-  --grain-opacity: 0.34;
+  --grain-opacity: 0.2;
   --grain-blend: multiply;
 }
 
@@ -172,14 +174,14 @@
     color-scheme: dark;
 
     --bg: #0C0A08;
-    --surface: #1C1410;
+    --surface: #1C1410;        /* Marrom family — the warm dark card */
     --surface-raised: #2A1A12;
     --surface-sunken: #070605;
 
     --border: #35271F;
     --border-strong: #4C3A2E;
 
-    --primary: #58A97C;
+    --primary: #E08A5B;        /* terracotta, lifted for AA on brown */
     --primary-fg: #0C0A08;
 
     --text-primary: #EBE5D4;
@@ -212,13 +214,13 @@
   --border: #35271F;
   --border-strong: #4C3A2E;
 
-  --primary: #58A97C;
+  --primary: #E08A5B;
   --primary-fg: #0C0A08;
 
   --text-primary: #EBE5D4;
   --text-secondary: #A79F8E;
-  /* WCAG AA — see the light-theme note. Was #857D6F: 4.11:1 on --surface-raised.
-     #91897B clears 4.5 on all four (worst = 4.84 on --surface-raised). */
+  /* WCAG AA — see the light-theme note. #91897B clears 4.5 on all four
+     surfaces (worst = 4.84 on --surface-raised). */
   --text-tertiary: #91897B;
 
   --color-success: #6FBF8E;
@@ -238,32 +240,32 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg: #D5CFBE;
-  --surface: #EAE5D6;
-  --surface-raised: #DFD9C7;
-  --surface-sunken: #D2CBB7;
+  --bg: #F6F5EC;
+  --surface: #FFFFFF;
+  --surface-raised: #E8E7E1;
+  --surface-sunken: #E4E1D0;
 
-  --border: #C4BCA6;
-  --border-strong: #A99F86;
+  --border: #C9BFA8;
+  --border-strong: #A39175;
 
-  --primary: #3A5244;
-  --primary-fg: #EDE9DA;
+  --primary: #B54A29;
+  --primary-fg: #F6F5EC;
 
-  --text-primary: #1A140F;
-  --text-secondary: #4E4840;
-  --text-tertiary: #565249;
+  --text-primary: #0C0C0C;
+  --text-secondary: #4E5A54;
+  --text-tertiary: #655E4F;
 
   --color-success: #2C6B45;
-  --color-success-bg: #D6E1D4;
+  --color-success-bg: #DDE7DB;
   --color-warning: #B54A29;
-  --color-warning-bg: #EFDFCC;
+  --color-warning-bg: #F0E2DB;
   --color-error: #A82A20;
-  --color-error-bg: #F0D9D4;
+  --color-error-bg: #F2DDD8;
   --color-info: #6B5B3E;
-  --color-info-bg: #E3DCC6;
+  --color-info-bg: #EAE4D2;
   --color-clay: #8A381F;
 
-  --grain-opacity: 0.34;
+  --grain-opacity: 0.2;
   --grain-blend: multiply;
 }
 
@@ -285,9 +287,11 @@ body {
 }
 
 h1, h2, h3, h4 {
+  /* Colus does the talking. 400 is the face's only weight; never italic. */
   font-family: var(--font-display);
-  font-weight: 500;
-  letter-spacing: -0.025em;
+  font-weight: 400;
+  font-style: normal;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
 }
 
@@ -350,8 +354,8 @@ body::after {
 }
 
 /* ─── Editorial devices ──────────────────────────────────────────────────────
-   The landing's eyebrow: Colus, uppercase, wide-tracked, with a leading rule.
-   This is the brand's most recognisable typographic gesture — every panel
+   The tracked-uppercase Nikkei label is the signature "club" device — Nikkei
+   does the working. The eyebrow adds a leading rule in clay; every panel
    header wears one.
    ──────────────────────────────────────────────────────────────────────────── */
 
@@ -359,10 +363,10 @@ body::after {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-family: var(--font-colus);
-  font-weight: 400;
+  font-family: var(--font-sans);
+  font-weight: 700;
   font-size: 10px;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-clay);
   line-height: 1;
@@ -375,20 +379,23 @@ body::after {
   flex-shrink: 0;
 }
 
-/* A Colus label with no rule — column heads, field labels, small caps. */
+/* The label with no rule — column heads, field labels, folio numbers.
+   (Historically Colus; the design system sets labels in tracked Nikkei —
+   the class name survives its font.) */
 .label-colus {
-  font-family: var(--font-colus);
-  font-weight: 400;
-  letter-spacing: 0.2em;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-/* Editorial numeral — the serif face, tabular, tight. For counts that matter. */
+/* Editorial numeral — Colus, tabular, tight. Numbers are content: counts that
+   matter are set large in the display face as a point of pride. */
 .numeral {
   font-family: var(--font-display);
-  font-weight: 500;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.01em;
   line-height: 1;
 }
 

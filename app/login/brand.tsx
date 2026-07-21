@@ -10,9 +10,10 @@
  * Source of truth: LitsLandingPage/src/styles/landing.css.
  */
 
-/** The landing's `--degrade`, verbatim. Gold at the top burning down to brown-black. */
+/** The design system's `--lits-gradient` (khaki→terracotta→brown, the "human
+    heat map"), tilted vertical: gold at the top burning down to Marrom. */
 export const STAGE_GRADIENT =
-  "linear-gradient(176deg,#A8966F 0%,#B45C30 34%,#9C3D20 56%,#5E2C1B 80%,#2A1A12 100%)"
+  "linear-gradient(176deg,#A48769 0%,#A85739 28%,#793F29 55%,#4F2D21 82%,#37241D 100%)"
 
 /**
  * Cream. The brand's `--off`.

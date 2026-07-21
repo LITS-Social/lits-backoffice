@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import {
   Clock,
   CheckCircle2,
+  Gauge,
+  LayoutDashboard,
   Mail,
   UserX,
   XCircle,
@@ -19,13 +21,19 @@ import {
   Users2,
   Images,
   Megaphone,
-  LayoutDashboard,
   ShieldAlert,
   ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { OpsSummary } from "@/lib/ops";
 import { ThemeToggle } from "./theme-toggle";
+
+// The two home screens: the product's north-star metrics, and the operational
+// overview it displaced from "/". No folio numbers — these are not panels.
+const home = [
+  { label: "Métricas",    href: "/",            icon: Gauge },
+  { label: "Visão Geral", href: "/visao-geral", icon: LayoutDashboard },
+];
 
 const nav = [
   { id: "01", label: "Aguardando Jogo",      href: "/partidas-aguardando",    icon: Clock },
@@ -129,6 +137,54 @@ export function Sidebar({
       {/* ── Panels ─────────────────────────────────────────────────────── */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <p className="label-colus mb-3 px-2 text-[9px] text-[var(--text-tertiary)]">
+          Painel
+        </p>
+
+        {home.map((item) => {
+          const Icon = item.icon;
+          // "/" would prefix-match every route; the home links match exactly.
+          const active = pathname === item.href;
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "group relative mb-0.5 flex items-center gap-2.5 rounded-md px-2.5 py-[7px] transition-colors duration-150",
+                active
+                  ? "bg-[var(--primary)]/12 text-[var(--primary)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
+              )}
+            >
+              {active && (
+                <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r-full bg-[var(--primary)]" />
+              )}
+
+              <Icon
+                size={13}
+                strokeWidth={1.75}
+                className={cn(
+                  "ml-[26px] shrink-0 transition-colors",
+                  active
+                    ? "text-[var(--primary)]"
+                    : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
+                )}
+              />
+
+              <span
+                className={cn(
+                  "flex-1 truncate text-[12.5px] leading-none transition-colors",
+                  active ? "font-600" : "font-500"
+                )}
+              >
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+
+        <p className="label-colus mt-5 mb-3 px-2 text-[9px] text-[var(--text-tertiary)]">
           Monitoramento
         </p>
 
@@ -156,7 +212,7 @@ export function Sidebar({
                 <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r-full bg-[var(--primary)]" />
               )}
 
-              {/* Panel number — Colus, the editorial folio mark. */}
+              {/* Panel number — tracked Nikkei, the editorial folio mark. */}
               <span
                 className={cn(
                   "label-colus w-4 shrink-0 text-[9px] leading-none tracking-normal",

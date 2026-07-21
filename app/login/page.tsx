@@ -105,13 +105,11 @@ export default async function LoginPage({
         <div className="animate-fade-in-up w-full max-w-[384px]">
           <span className="eyebrow">Acesso restrito</span>
 
-          <h1 className="mt-5 text-[34px] leading-[1.06] tracking-[-0.03em] lg:text-[40px]">
+          <h1 className="mt-5 text-[34px] leading-[1.06] tracking-[-0.01em] lg:text-[40px]">
             Painel{" "}
-            {/* The landing's `.ital`: italic, clay, medium. The brand's one
-                typographic flourish — it does the work a second typeface would. */}
-            <i className="font-500" style={{ color: "var(--color-clay)" }}>
-              Operacional
-            </i>
+            {/* The flourish is colour, not slant: Colus is never italicized,
+                so the second word takes clay — the brand's one energy accent. */}
+            <span style={{ color: "var(--color-clay)" }}>Operacional</span>
           </h1>
 
           <p className="mt-5 text-[14px] font-300 leading-relaxed text-[var(--text-secondary)]">

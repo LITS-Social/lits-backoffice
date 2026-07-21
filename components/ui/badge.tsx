@@ -32,8 +32,8 @@ export function Badge({ variant = "default", pulse = false, children, className 
     <span
       className={cn(
         "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-[3.5px]",
-        // Colus, uppercase, wide-tracked — a status is a label, not prose.
-        "font-colus text-[9px] leading-none uppercase tracking-[0.13em]",
+        // Tracked-uppercase Nikkei — a status is a label, not prose.
+        "font-700 text-[9px] leading-none uppercase tracking-[0.13em]",
         variantStyles[variant],
         className
       )}

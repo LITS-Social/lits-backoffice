@@ -165,8 +165,9 @@ export function WeekChart({ matches }: { matches: WeekMatch[] }) {
               tick={{
                 fill: "var(--text-tertiary)",
                 fontSize: 9,
-                fontFamily: "var(--font-colus)",
-                letterSpacing: "0.14em",
+                fontFamily: "var(--font-sans)",
+                fontWeight: 700,
+                letterSpacing: "0.12em",
               }}
               tickFormatter={(v: string) => v.toUpperCase()}
               dy={6}

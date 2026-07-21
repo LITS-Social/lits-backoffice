@@ -534,7 +534,7 @@ export function AudienceForm({
             <p className="eyebrow mb-2.5">Painel 14</p>
             <h2
               id="audience-form-title"
-              className="font-display text-[21px] leading-tight italic tracking-[-0.02em] text-[var(--text-primary)]"
+              className="font-display text-[21px] leading-tight tracking-[-0.01em] text-[var(--text-primary)]"
             >
               {mode === "edit" ? "Editar público" : "Novo público"}
             </h2>
@@ -840,7 +840,7 @@ export function AudienceForm({
               <button
                 type="submit"
                 disabled={!canSave}
-                className="rounded-full bg-[var(--primary)] px-4 py-2 font-colus text-[9.5px] tracking-[0.16em] text-[var(--primary-fg)] uppercase transition-opacity hover:opacity-90 disabled:opacity-40"
+                className="rounded-full bg-[var(--primary)] px-4 py-2 font-700 text-[9.5px] tracking-[0.16em] text-[var(--primary-fg)] uppercase transition-opacity hover:opacity-90 disabled:opacity-40"
               >
                 {isPending ? "Salvando…" : mode === "edit" ? "Salvar" : "Criar público"}
               </button>

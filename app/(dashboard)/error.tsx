@@ -23,7 +23,7 @@ export default function DashboardError({
 
         <p className="eyebrow mb-3">Falha</p>
 
-        <h2 className="mb-2.5 font-display text-[24px] italic leading-tight tracking-[-0.02em] text-[var(--text-primary)]">
+        <h2 className="mb-2.5 font-display text-[24px] leading-tight tracking-[-0.01em] text-[var(--text-primary)]">
           Não deu para ler este painel
         </h2>
 
@@ -43,7 +43,7 @@ export default function DashboardError({
         <button
           type="button"
           onClick={() => reset()}
-          className="rounded-full bg-[var(--primary)] px-4 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
+          className="rounded-full bg-[var(--primary)] px-4 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
         >
           Tentar novamente
         </button>
