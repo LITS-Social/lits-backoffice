@@ -4,10 +4,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { getProductMetrics } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import {
+  ChartCard,
+  ChartUnavailable,
+  ChartsGrid,
   CompletionGauge,
   EngagementDonut,
-  GrowthChart,
-  PaceChart,
 } from "./_components/metric-charts";
 
 export const dynamic = "force-dynamic";
@@ -116,40 +117,6 @@ function ProgressCard({
         </>
       )}
     </div>
-  );
-}
-
-/* ── Chart card shell ──────────────────────────────────────────────────────── */
-
-function ChartCard({
-  eyebrow,
-  hint,
-  className,
-  children,
-}: {
-  eyebrow: string;
-  hint?: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className={cn("rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5", className)}>
-      <div className="mb-4">
-        <p className="eyebrow">{eyebrow}</p>
-        {hint && (
-          <p className="mt-2 text-[11px] font-300 text-[var(--text-tertiary)]">{hint}</p>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function ChartUnavailable({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="flex h-[220px] items-center justify-center px-6 text-center text-[12px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-      {children}
-    </p>
   );
 }
 
@@ -583,66 +550,46 @@ export default async function MetricsPage() {
           />
         </div>
 
-        {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão ──────────── */}
-        <div className="grid gap-4 lg:grid-cols-3">
-          <ChartCard
-            eyebrow="Crescimento da base"
-            hint="Usuários acumulados por semana, últimas 12 semanas."
-            className="lg:col-span-2"
-          >
-            {users.series ? (
-              <GrowthChart points={users.series} target={META_FASE.usuarios} />
-            ) : (
-              <ChartUnavailable>
-                {users.failed
-                  ? "Não foi possível carregar os usuários."
-                  : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."}
-              </ChartUnavailable>
-            )}
-          </ChartCard>
-
-          <ChartCard
-            eyebrow="Engajamento da base"
-            hint="Toda a base, por último acesso."
-          >
-            {!users.failed ? (
-              <EngagementDonut slices={users.activity} />
-            ) : (
-              <ChartUnavailable>Não foi possível carregar os usuários.</ChartUnavailable>
-            )}
-          </ChartCard>
-
-          <ChartCard
-            eyebrow="Ritmo de partidas"
-            hint="Partidas com placar publicado, por dia — últimos 12 dias; visão semanal no toggle."
-            className="lg:col-span-2"
-          >
-            {matches.daily || matches.weekly ? (
-              <PaceChart daily={matches.daily} weekly={matches.weekly} />
-            ) : (
-              <ChartUnavailable>
-                {matches.failed
-                  ? "Não foi possível carregar as partidas."
-                  : "Série omitida: a página carregada não cobre o total, e um histograma parcial mostraria semanas que não existem."}
-              </ChartUnavailable>
-            )}
-          </ChartCard>
-
-          <ChartCard
-            eyebrow="Taxa de conclusão"
-            hint="Concluídas sobre concluídas + canceladas."
-          >
-            {completion ? (
-              <CompletionGauge
-                rate={completion.rate}
-                target={META_CONCLUSAO}
-                caption={`${completion.finished} concluídas · ${completion.cancelled} canceladas`}
-              />
-            ) : (
-              <ChartUnavailable>Sem dado de cancelamentos para compor a taxa.</ChartUnavailable>
-            )}
-          </ChartCard>
-        </div>
+        {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão — com filtro
+            de período compartilhado entre crescimento e ritmo ─────────────────── */}
+        <ChartsGrid
+          userCreatedAtMs={users.createdAtMs}
+          userDateless={users.dateless}
+          usersTarget={META_FASE.usuarios}
+          growthFallback={
+            users.failed
+              ? "Não foi possível carregar os usuários."
+              : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."
+          }
+          matchStartsAtMs={matches.startsAtMs}
+          paceFallback={
+            matches.failed
+              ? "Não foi possível carregar as partidas."
+              : "Série omitida: a página carregada não cobre o total, e um histograma parcial mostraria semanas que não existem."
+          }
+          engagementSlot={
+            <ChartCard eyebrow="Engajamento da base" hint="Toda a base, por último acesso.">
+              {!users.failed ? (
+                <EngagementDonut slices={users.activity} />
+              ) : (
+                <ChartUnavailable>Não foi possível carregar os usuários.</ChartUnavailable>
+              )}
+            </ChartCard>
+          }
+          completionSlot={
+            <ChartCard eyebrow="Taxa de conclusão" hint="Concluídas sobre concluídas + canceladas.">
+              {completion ? (
+                <CompletionGauge
+                  rate={completion.rate}
+                  target={META_CONCLUSAO}
+                  caption={`${completion.finished} concluídas · ${completion.cancelled} canceladas`}
+                />
+              ) : (
+                <ChartUnavailable>Sem dado de cancelamentos para compor a taxa.</ChartUnavailable>
+              )}
+            </ChartCard>
+          }
+        />
 
         {/* ── A planilha, viva ─────────────────────────────────────────────────── */}
         <MetricsTable title="Ação imediata — verificar todo dia" rows={daily} />

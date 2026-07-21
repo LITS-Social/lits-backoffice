@@ -26,19 +26,6 @@ const USERS_MAX_PAGES = 10;
     partial instead of drawing a week that does not exist. */
 const MATCHES_LIMIT = 1000;
 
-/** Rolling-window series depth for the charts. */
-const SERIES_WEEKS = 12;
-
-/** Daily pace depth — the beta is ~2 weeks old, so 12 daily bars carry real
-    shape while 12 weekly buckets are still one lonely bar. */
-const SERIES_DAYS = 12;
-
-export type WeekPoint = {
-  /** End of the 7-day window, dd/MM. */
-  label: string;
-  count: number;
-};
-
 export type UsersMetrics = {
   failed: boolean;
   /** Exact count unless `truncated`, then a lower bound. */
@@ -51,11 +38,15 @@ export type UsersMetrics = {
   /** last_seen_at within 7 days. */
   active7: number;
   /**
-   * Cumulative base at the end of each of the last SERIES_WEEKS windows, plus
-   * signups inside each window. Null when the crawl was truncated — a growth
-   * curve over part of the base has the wrong shape, not a rough one.
+   * Raw signup instants (ms epoch) for the client-side growth re-bucket —
+   * timestamps only, nothing identifying crosses to the client. Null when the
+   * crawl was truncated: a growth curve over part of the base has the wrong
+   * shape, not a rough one.
    */
-  series: { label: string; total: number; novos: number }[] | null;
+  createdAtMs: number[] | null;
+  /** Accounts with no created_at (the field is optional) — folded into every
+      cumulative total: they exist now and did not appear this quarter. */
+  dateless: number;
   /**
    * Mutually exclusive engagement buckets over the whole base, by last_seen_at:
    * hoje ≤ 24h · semana 1–7d · mês 7–30d · inativos 30d+ or never seen.
@@ -75,12 +66,10 @@ export type MatchesMetrics = {
   total: number;
   last7: number;
   prev7: number;
-  /** Matches per rolling week, oldest→newest, ending today. Null when the
-      page we hold is smaller than the server's total. */
-  weekly: WeekPoint[] | null;
-  /** Matches per rolling day, oldest→newest, ending today — same completeness
-      contract as `weekly`. */
-  daily: WeekPoint[] | null;
+  /** Raw starts_at instants (ms epoch) for the client-side pace re-bucket.
+      Null when the page we hold is smaller than the server's total — a partial
+      histogram would show weeks that do not exist. */
+  startsAtMs: number[] | null;
 };
 
 /**
@@ -152,7 +141,8 @@ async function crawlUsers(): Promise<UsersMetrics> {
     return {
       failed: true, total: 0, truncated: false,
       newLast7: 0, newPrev7: 0, newLast2: 0, active7: 0,
-      series: null, activity: { hoje: 0, semana: 0, mes: 0, inativos: 0 },
+      createdAtMs: null, dateless: 0,
+      activity: { hoje: 0, semana: 0, mes: 0, inativos: 0 },
       retention: null,
     };
   }
@@ -169,27 +159,12 @@ async function crawlUsers(): Promise<UsersMetrics> {
       new Date(r.last_seen_at).getTime() - new Date(r.created_at!).getTime() >= WEEK_MS,
   );
 
-  // Growth curve: cumulative base at the end of each rolling week. Accounts
-  // with no created_at (shouldn't happen, but the field is optional) are folded
-  // into every point — they exist now and did not appear this quarter.
+  // Raw instants for the client-side growth re-bucket (daily/weekly/range).
+  // Same honesty contract the old server series had: truncated crawl → null.
   const dateless = rows.filter((r) => !r.created_at).length;
-  const series = truncated
+  const createdAtMs = truncated
     ? null
-    : Array.from({ length: SERIES_WEEKS }, (_, i) => {
-        const end = now - (SERIES_WEEKS - 1 - i) * WEEK_MS;
-        const upTo = rows.filter(
-          (r) => r.created_at && new Date(r.created_at).getTime() <= end,
-        ).length;
-        const inWindow = rows.filter((r) => {
-          const t = r.created_at ? new Date(r.created_at).getTime() : NaN;
-          return t > end - WEEK_MS && t <= end;
-        }).length;
-        return {
-          label: new Date(end).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-          total: upTo + dateless,
-          novos: inWindow,
-        };
-      });
+    : rows.filter((r) => r.created_at).map((r) => new Date(r.created_at!).getTime());
 
   const seen = (r: Row) => (r.last_seen_at ? now - new Date(r.last_seen_at).getTime() : Infinity);
   const activity = {
@@ -211,7 +186,8 @@ async function crawlUsers(): Promise<UsersMetrics> {
     active7: rows.filter(
       (r) => r.last_seen_at && now - new Date(r.last_seen_at).getTime() <= WEEK_MS,
     ).length,
-    series,
+    createdAtMs,
+    dateless,
     activity,
     // Below ~10 accounts a percentage is theatre; the UI treats null as "ainda cedo".
     retention:
@@ -229,7 +205,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, weekly: null, daily: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, startsAtMs: null };
   }
 
   const matches = data.matches;
@@ -242,33 +218,16 @@ async function fetchMatches(): Promise<MatchesMetrics> {
       return t > from && t <= to;
     }).length;
 
-  const weekly = complete
-    ? Array.from({ length: SERIES_WEEKS }, (_, i) => {
-        const end = now - (SERIES_WEEKS - 1 - i) * WEEK_MS;
-        return {
-          label: new Date(end).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-          count: inWindow(end - WEEK_MS, end),
-        };
-      })
-    : null;
-
-  const daily = complete
-    ? Array.from({ length: SERIES_DAYS }, (_, i) => {
-        const end = now - (SERIES_DAYS - 1 - i) * DAY_MS;
-        return {
-          label: new Date(end).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-          count: inWindow(end - DAY_MS, end),
-        };
-      })
-    : null;
+  // Raw instants for the client-side pace re-bucket — same honesty contract
+  // the old server series had: partial page → null.
+  const startsAtMs = complete ? matches.map((m) => new Date(m.starts_at).getTime()) : null;
 
   return {
     failed: false,
     total,
     last7: inWindow(now - WEEK_MS, now),
     prev7: inWindow(now - 2 * WEEK_MS, now - WEEK_MS),
-    weekly,
-    daily,
+    startsAtMs,
   };
 }
 

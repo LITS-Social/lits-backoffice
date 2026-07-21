@@ -18,13 +18,15 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { cn } from "@/lib/utils";
 
 /**
  * The Norte do Produto charts. Same contract as WeekChart: every mark is a
- * count of rows we actually hold — the callers only mount these when the set
- * is complete, so there is no interpolation and no invented trend. Series and
- * labels are computed on the server (lib/metrics.ts); these components only
- * draw. Mounted after hydration behind fixed-height placeholders so recharts'
+ * count of rows we actually hold — the server only ships raw instants when the
+ * set is complete (lib/metrics.ts), so there is no interpolation and no
+ * invented trend. Growth and pace re-bucket those instants client-side (daily
+ * 12-day default, weekly toggle, or an explicit date range that overrides
+ * both). Mounted after hydration behind fixed-height placeholders so recharts'
  * measured layout never fights the server HTML.
  */
 
@@ -61,16 +63,159 @@ function CardTooltip({ label, lines }: { label: string; lines: string[] }) {
   );
 }
 
-/* ── Growth: cumulative user base, terracotta line over a soft wash ────────── */
+/* ── Client-side bucketing ─────────────────────────────────────────────────── */
 
 export type GrowthPoint = { label: string; total: number; novos: number };
+export type PacePoint = { label: string; count: number };
 
-export function GrowthChart({ points, target }: { points: GrowthPoint[]; target: number }) {
-  const mounted = useMounted();
-  if (!mounted) return <div className="h-[220px]" aria-hidden />;
+const DAY_MS = 24 * 3600_000;
+const WEEK_MS = 7 * DAY_MS;
+
+/** Default series depth — the beta is ~2 weeks old, so 12 daily bars carry
+    real shape while 12 weekly buckets are still one lonely bar. */
+const SERIES_LEN = 12;
+
+/** A range longer than this re-buckets weekly — 31 daily bars still read;
+    past a month they turn to noise. Documented in the card hints. */
+const MAX_DAILY_RANGE_DAYS = 31;
+
+type Granularity = "daily" | "weekly";
+type Win = { start: number; end: number };
+
+const fmtDay = (ms: number) =>
+  new Date(ms).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+
+/** 12 rolling windows of `stepMs`, oldest→newest, ending now. */
+function rollingWindows(stepMs: number): Win[] {
+  const now = Date.now();
+  return Array.from({ length: SERIES_LEN }, (_, i) => {
+    const end = now - (SERIES_LEN - 1 - i) * stepMs;
+    return { start: end - stepMs + 1, end };
+  });
+}
+
+/** Explicit range chunked from its start: daily up to 31 days, weekly past
+    that. The last chunk clips at the range end instead of spilling over. */
+function rangeWindows(fromMs: number, toEndMs: number): { wins: Win[]; granularity: Granularity } {
+  const spanDays = Math.round((toEndMs + 1 - fromMs) / DAY_MS);
+  const step = spanDays <= MAX_DAILY_RANGE_DAYS ? DAY_MS : WEEK_MS;
+  const wins: Win[] = [];
+  for (let lo = fromMs; lo <= toEndMs; lo += step) {
+    wins.push({ start: lo, end: Math.min(lo + step - 1, toEndMs) });
+  }
+  return { wins, granularity: step === DAY_MS ? "daily" : "weekly" };
+}
+
+function paceSeries(times: number[], wins: Win[]): PacePoint[] {
+  return wins.map((w) => ({
+    label: fmtDay(w.end),
+    count: times.filter((t) => t >= w.start && t <= w.end).length,
+  }));
+}
+
+/** Cumulative base at each window end; `dateless` accounts are folded into
+    every total — they exist now and did not appear this quarter. */
+function growthSeries(times: number[], dateless: number, wins: Win[]): GrowthPoint[] {
+  return wins.map((w) => ({
+    label: fmtDay(w.end),
+    total: times.filter((t) => t <= w.end).length + dateless,
+    novos: times.filter((t) => t >= w.start && t <= w.end).length,
+  }));
+}
+
+/** "2026-07-21" (input[type=date]) → local midnight ms, or null when unparsable. */
+function parseDay(v: string): number | null {
+  const [y, m, d] = v.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d).getTime();
+}
+
+/* ── Card shell (shared with the server page for the unfiltered cards) ─────── */
+
+export function ChartCard({
+  eyebrow,
+  hint,
+  className,
+  children,
+}: {
+  eyebrow: string;
+  hint?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={cn("rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5", className)}>
+      <div className="mb-4">
+        <p className="eyebrow">{eyebrow}</p>
+        {hint && (
+          <p className="mt-2 text-[11px] font-300 text-[var(--text-tertiary)]">{hint}</p>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function ChartUnavailable({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex h-[220px] items-center justify-center px-6 text-center text-[12px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+      {children}
+    </p>
+  );
+}
+
+/* ── Daily/weekly toggle — hidden while an explicit range overrides it ─────── */
+
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: Granularity;
+  onChange: (m: Granularity) => void;
+}) {
+  return (
+    <div className="-mt-1 mb-2 flex justify-end gap-1">
+      {(
+        [
+          { key: "daily", name: "12 dias" },
+          { key: "weekly", name: "12 semanas" },
+        ] as const
+      ).map((m) => (
+        <button
+          key={m.key}
+          type="button"
+          aria-pressed={mode === m.key}
+          onClick={() => onChange(m.key)}
+          className={
+            mode === m.key
+              ? "rounded-md bg-[var(--surface-raised)] px-2 py-1 text-[9px] font-700 uppercase tracking-[0.1em] text-[var(--text-primary)]"
+              : "rounded-md px-2 py-1 text-[9px] font-700 uppercase tracking-[0.1em] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+          }
+        >
+          {m.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── Growth: cumulative user base, terracotta line over a soft wash ────────── */
+
+function GrowthChart({
+  points,
+  target,
+  granularity,
+}: {
+  points: GrowthPoint[];
+  target: number;
+  granularity: Granularity;
+}) {
+  const labelFor = (label: string) =>
+    granularity === "daily" ? `dia ${label}` : `semana até ${label}`;
+  const novosSuffix = granularity === "daily" ? "no dia" : "na semana";
 
   return (
-    <div className="h-[220px] w-full">
+    <div className="h-[196px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -4 }}>
           <defs>
@@ -94,10 +239,10 @@ export function GrowthChart({ points, target }: { points: GrowthPoint[]; target:
             content={({ active, payload }) =>
               active && payload?.length ? (
                 <CardTooltip
-                  label={`semana até ${(payload[0].payload as GrowthPoint).label}`}
+                  label={labelFor((payload[0].payload as GrowthPoint).label)}
                   lines={[
                     `${(payload[0].payload as GrowthPoint).total} usuários`,
-                    `+${(payload[0].payload as GrowthPoint).novos} na semana`,
+                    `+${(payload[0].payload as GrowthPoint).novos} ${novosSuffix}`,
                   ]}
                 />
               ) : null
@@ -119,92 +264,219 @@ export function GrowthChart({ points, target }: { points: GrowthPoint[]; target:
   );
 }
 
-/* ── Pace: matches per rolling day/week, current bucket in terracotta ──────── */
+/* ── Pace: matches per bucket, newest bucket in terracotta ─────────────────── */
 
-export type PacePoint = { label: string; count: number };
-
-/** Daily is the default — two weeks into the beta, 12 daily bars have shape
-    where 12 weekly buckets are one lonely bar. The weekly series stays a
-    toggle away for when the phase outgrows days. */
-export function PaceChart({
-  daily,
-  weekly,
-}: {
-  daily: PacePoint[] | null;
-  weekly: PacePoint[] | null;
-}) {
-  const mounted = useMounted();
-  const [mode, setMode] = useState<"daily" | "weekly">(daily ? "daily" : "weekly");
-  if (!mounted) return <div className="h-[220px]" aria-hidden />;
-
-  const points = (mode === "daily" ? daily : weekly) ?? [];
-  const tooltipLabel = (label: string) =>
-    mode === "daily" ? `dia ${label}` : `semana até ${label}`;
+function PaceChart({ points, granularity }: { points: PacePoint[]; granularity: Granularity }) {
+  const labelFor = (label: string) =>
+    granularity === "daily" ? `dia ${label}` : `semana até ${label}`;
 
   return (
-    <div className="w-full">
-      {daily && weekly && (
-        <div className="-mt-1 mb-2 flex justify-end gap-1">
-          {(
-            [
-              { key: "daily", name: "12 dias" },
-              { key: "weekly", name: "12 semanas" },
-            ] as const
-          ).map((m) => (
+    <div className="h-[196px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -4 }} barCategoryGap="32%">
+          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" opacity={0.7} />
+          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} dy={6} interval="preserveStartEnd" />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            width={44}
+            allowDecimals={false}
+            tick={{ ...AXIS_TICK, fontFamily: "var(--font-display)", fontSize: 10, fontWeight: 400 }}
+          />
+          <Tooltip
+            cursor={{ fill: "var(--surface-raised)", opacity: 0.6 }}
+            content={({ active, payload }) =>
+              active && payload?.length ? (
+                <CardTooltip
+                  label={labelFor((payload[0].payload as PacePoint).label)}
+                  lines={[
+                    `${(payload[0].payload as PacePoint).count} ${
+                      (payload[0].payload as PacePoint).count === 1 ? "partida" : "partidas"
+                    }`,
+                  ]}
+                />
+              ) : null
+            }
+          />
+          <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+            {points.map((p, i) => (
+              <Cell
+                key={`${p.label}-${i}`}
+                fill={i === points.length - 1 ? "var(--primary)" : "var(--border-strong)"}
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/* ── The filtered grid: growth + pace share one date-range filter ──────────── */
+
+const fieldClass =
+  "rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-[12px] text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:bg-[var(--surface)] focus:outline-none";
+const labelClass = "label-colus mb-1 block text-[8.5px] text-[var(--text-tertiary)]";
+
+/**
+ * Growth and pace with their per-chart daily/weekly toggles plus one shared
+ * "de X a Y" range filter that overrides both windows (daily buckets up to 31
+ * days, weekly past that). The engagement and completion cards ride along as
+ * server-rendered slots so the grid keeps its 2+1 / 2+1 shape.
+ */
+export function ChartsGrid({
+  userCreatedAtMs,
+  userDateless,
+  usersTarget,
+  growthFallback,
+  matchStartsAtMs,
+  paceFallback,
+  engagementSlot,
+  completionSlot,
+}: {
+  /** Raw signup instants (ms) — null when the crawl failed or was truncated. */
+  userCreatedAtMs: number[] | null;
+  userDateless: number;
+  usersTarget: number;
+  /** Why the growth series is missing, shown when `userCreatedAtMs` is null. */
+  growthFallback: string;
+  /** Raw match starts_at instants (ms) — null when the fetch failed or is partial. */
+  matchStartsAtMs: number[] | null;
+  paceFallback: string;
+  engagementSlot: React.ReactNode;
+  completionSlot: React.ReactNode;
+}) {
+  const mounted = useMounted();
+  const [growthMode, setGrowthMode] = useState<Granularity>("daily");
+  const [paceMode, setPaceMode] = useState<Granularity>("daily");
+  const [fromStr, setFromStr] = useState("");
+  const [toStr, setToStr] = useState("");
+
+  const fromMs = fromStr ? parseDay(fromStr) : null;
+  const toEndMs = (() => {
+    const t = toStr ? parseDay(toStr) : null;
+    return t != null ? t + DAY_MS - 1 : null;
+  })();
+  const invalidRange = fromMs != null && toEndMs != null && fromMs > toEndMs;
+  const range =
+    fromMs != null && toEndMs != null && !invalidRange ? rangeWindows(fromMs, toEndMs) : null;
+
+  const growthGran = range ? range.granularity : growthMode;
+  const paceGran = range ? range.granularity : paceMode;
+  const growthPoints = userCreatedAtMs
+    ? growthSeries(
+        userCreatedAtMs,
+        userDateless,
+        range ? range.wins : rollingWindows(growthMode === "daily" ? DAY_MS : WEEK_MS),
+      )
+    : null;
+  const pacePoints = matchStartsAtMs
+    ? paceSeries(
+        matchStartsAtMs,
+        range ? range.wins : rollingWindows(paceMode === "daily" ? DAY_MS : WEEK_MS),
+      )
+    : null;
+
+  const rangeSuffix = range
+    ? `de ${fmtDay(fromMs!)} a ${fmtDay(toEndMs!)}, por ${
+        range.granularity === "daily" ? "dia" : "semana"
+      } (diário até ${MAX_DAILY_RANGE_DAYS} dias)`
+    : null;
+  const growthHint = rangeSuffix
+    ? `Usuários acumulados ${rangeSuffix}.`
+    : growthMode === "daily"
+      ? "Usuários acumulados por dia — últimos 12 dias; visão semanal no toggle."
+      : "Usuários acumulados por semana — últimas 12 semanas.";
+  const paceHint = rangeSuffix
+    ? `Partidas com placar publicado ${rangeSuffix}.`
+    : paceMode === "daily"
+      ? "Partidas com placar publicado, por dia — últimos 12 dias; visão semanal no toggle."
+      : "Partidas com placar publicado, por semana — últimas 12 semanas.";
+
+  const hasAnySeries = growthPoints != null || pacePoints != null;
+
+  return (
+    <div className="space-y-3">
+      {hasAnySeries && (
+        <div className="flex flex-wrap items-end justify-end gap-3">
+          {invalidRange && (
+            <p className="self-center text-[11px] font-300 text-[var(--color-clay)]">
+              Data final antes da inicial — intervalo ignorado.
+            </p>
+          )}
+          <div>
+            <label htmlFor="charts_range_from" className={labelClass}>
+              De
+            </label>
+            <input
+              id="charts_range_from"
+              type="date"
+              value={fromStr}
+              onChange={(e) => setFromStr(e.target.value)}
+              className={fieldClass}
+            />
+          </div>
+          <div>
+            <label htmlFor="charts_range_to" className={labelClass}>
+              Até
+            </label>
+            <input
+              id="charts_range_to"
+              type="date"
+              value={toStr}
+              onChange={(e) => setToStr(e.target.value)}
+              className={fieldClass}
+            />
+          </div>
+          {(fromStr || toStr) && (
             <button
-              key={m.key}
               type="button"
-              aria-pressed={mode === m.key}
-              onClick={() => setMode(m.key)}
-              className={
-                mode === m.key
-                  ? "rounded-md bg-[var(--surface-raised)] px-2 py-1 text-[9px] font-700 uppercase tracking-[0.1em] text-[var(--text-primary)]"
-                  : "rounded-md px-2 py-1 text-[9px] font-700 uppercase tracking-[0.1em] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
-              }
+              onClick={() => {
+                setFromStr("");
+                setToStr("");
+              }}
+              className="rounded-full bg-[var(--surface-raised)] px-3 py-2 text-[12px] font-600 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
             >
-              {m.name}
+              Limpar
             </button>
-          ))}
+          )}
         </div>
       )}
 
-      <div className="h-[196px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -4 }} barCategoryGap="32%">
-            <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" opacity={0.7} />
-            <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} dy={6} interval="preserveStartEnd" />
-            <YAxis
-              axisLine={false}
-              tickLine={false}
-              width={44}
-              allowDecimals={false}
-              tick={{ ...AXIS_TICK, fontFamily: "var(--font-display)", fontSize: 10, fontWeight: 400 }}
-            />
-            <Tooltip
-              cursor={{ fill: "var(--surface-raised)", opacity: 0.6 }}
-              content={({ active, payload }) =>
-                active && payload?.length ? (
-                  <CardTooltip
-                    label={tooltipLabel((payload[0].payload as PacePoint).label)}
-                    lines={[
-                      `${(payload[0].payload as PacePoint).count} ${
-                        (payload[0].payload as PacePoint).count === 1 ? "partida" : "partidas"
-                      }`,
-                    ]}
-                  />
-                ) : null
-              }
-            />
-            <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false}>
-              {points.map((p, i) => (
-                <Cell
-                  key={p.label}
-                  fill={i === points.length - 1 ? "var(--primary)" : "var(--border-strong)"}
-                />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <ChartCard eyebrow="Crescimento da base" hint={growthHint} className="lg:col-span-2">
+          {growthPoints ? (
+            mounted ? (
+              <>
+                {!range && <ModeToggle mode={growthMode} onChange={setGrowthMode} />}
+                <GrowthChart points={growthPoints} target={usersTarget} granularity={growthGran} />
+              </>
+            ) : (
+              <div className="h-[220px]" aria-hidden />
+            )
+          ) : (
+            <ChartUnavailable>{growthFallback}</ChartUnavailable>
+          )}
+        </ChartCard>
+
+        {engagementSlot}
+
+        <ChartCard eyebrow="Ritmo de partidas" hint={paceHint} className="lg:col-span-2">
+          {pacePoints ? (
+            mounted ? (
+              <>
+                {!range && <ModeToggle mode={paceMode} onChange={setPaceMode} />}
+                <PaceChart points={pacePoints} granularity={paceGran} />
+              </>
+            ) : (
+              <div className="h-[220px]" aria-hidden />
+            )
+          ) : (
+            <ChartUnavailable>{paceFallback}</ChartUnavailable>
+          )}
+        </ChartCard>
+
+        {completionSlot}
       </div>
     </div>
   );
