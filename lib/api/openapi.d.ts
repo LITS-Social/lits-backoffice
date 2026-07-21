@@ -515,6 +515,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/payments-succeeded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List PIX bookings with an approved payment (panel #06 companion — payments that worked) */
+        get: operations["ops-list-successful-payments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/player-evaluations": {
         parameters: {
             query?: never;
@@ -2668,6 +2685,37 @@ export interface components {
              */
             total: number;
         };
+        SuccessfulPaymentItem: {
+            /**
+             * Format: int64
+             * @description Charged amount in centavos (booking total_cents)
+             */
+            amount_cents: number;
+            /** @description UUIDv7 booking identifier */
+            booking_id: string;
+            /** @description Booking lifecycle status at the time of payment */
+            booking_status: string;
+            /**
+             * Format: date-time
+             * @description When the booking was created (RFC3339)
+             */
+            created_at: string;
+            /** @description ISO 4217 currency code (BRL) */
+            currency: string;
+            /** @description The payer (booking host); name joined from user-service on user_id */
+            user: components["schemas"]["OpsUserRef"];
+        };
+        SuccessfulPaymentsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SuccessfulPaymentsResponseBody.json
+             */
+            readonly $schema?: string;
+            payments: components["schemas"]["SuccessfulPaymentItem"][] | null;
+            /** Format: int32 */
+            total: number;
+        };
         UpcomingMatchItem: {
             alerts?: string[] | null;
             booking_id: string;
@@ -3851,6 +3899,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentIssuesResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-successful-payments": {
+        parameters: {
+            query?: {
+                /** @description Max rows to return */
+                limit?: number;
+                /** @description Rows to skip (paging) */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessfulPaymentsResponseBody"];
                 };
             };
             /** @description Error */
