@@ -663,11 +663,19 @@ function DoneStep({ courtId, slotsCreated, onNew }: { courtId: string; slotsCrea
   );
 }
 
-export function NovaQuadraForm({ franchises }: { franchises: FranchiseItem[] }) {
-  const [step, setStep] = useState<Step>("franchise");
-  const [franchiseId, setFranchiseId] = useState("");
-  const [franchiseName, setFranchiseName] = useState("");
-  const [franchiseKind, setFranchiseKind] = useState("");
+export function NovaQuadraForm({
+  franchises,
+  initialFranchise,
+}: {
+  franchises: FranchiseItem[];
+  /** Pre-selected academia (deep link from the courts list) — skips straight
+      to the court step; "voltar" still reopens the picker. */
+  initialFranchise?: FranchiseItem;
+}) {
+  const [step, setStep] = useState<Step>(initialFranchise ? "court" : "franchise");
+  const [franchiseId, setFranchiseId] = useState(initialFranchise?.id ?? "");
+  const [franchiseName, setFranchiseName] = useState(initialFranchise?.name ?? "");
+  const [franchiseKind, setFranchiseKind] = useState(initialFranchise?.kind ?? "");
   const [result, setResult] = useState<CreateCourtState | null>(null);
 
   function handleFranchiseNext(id: string, name: string, kind: string) {

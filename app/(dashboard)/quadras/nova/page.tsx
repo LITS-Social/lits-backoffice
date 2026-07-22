@@ -3,8 +3,17 @@ import { PanelError } from "../../_components/notes";
 import { listFranchisesAction } from "./actions";
 import { NovaQuadraForm } from "./form";
 
-export default async function NovaQuadraPage() {
+export default async function NovaQuadraPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ franquia?: string }>;
+}) {
+  const { franquia } = await searchParams;
   const { franchises, error } = await listFranchisesAction();
+
+  // Deep link from the courts list ("Nova quadra nesta academia"): lands with
+  // the academia pre-selected, straight on the court step.
+  const initialFranchise = franquia ? franchises.find((f) => f.id === franquia) : undefined;
 
   if (error) {
     return (
@@ -25,7 +34,7 @@ export default async function NovaQuadraPage() {
       />
 
       <div className="px-8 py-6">
-        <NovaQuadraForm franchises={franchises} />
+        <NovaQuadraForm franchises={franchises} initialFranchise={initialFranchise} />
       </div>
     </div>
   );

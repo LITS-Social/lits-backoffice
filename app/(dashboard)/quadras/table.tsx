@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { MapPin, Pencil } from "lucide-react";
+import { Building2, MapPin, Pencil, Plus } from "lucide-react";
 import { DataTable, type DataTableColumn, type DataTableFilterGroup } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { DetailGrid } from "@/components/ui/detail-grid";
@@ -288,6 +288,23 @@ export function CourtsTable({ courts }: { courts: CourtListItem[] }) {
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Editar quadra
+              </Link>
+              {/* Academia-level actions ride on the court row — the franchise has
+                  no page of its own; its editor (nome, endereço, localização,
+                  preço padrão) lives anchored inside the court edit page. */}
+              <Link
+                href={`/quadras/${c.id}/editar#academia`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--text-tertiary)]/30 px-3 py-1.5 text-[11.5px] font-500 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                Editar academia
+              </Link>
+              <Link
+                href={`/quadras/nova?franquia=${c.franchise_id}`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--text-tertiary)]/30 px-3 py-1.5 text-[11.5px] font-500 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Nova quadra nesta academia
               </Link>
               <DeleteButton court={c} />
             </div>
