@@ -29,6 +29,7 @@ import {
   type CourtSlotItem,
   type GeocodeCandidate,
 } from "./actions";
+import { ImportPrintSection } from "./import-print";
 
 type Surface = "clay" | "hard" | "grass" | "beach" | "carpet";
 
@@ -1649,6 +1650,7 @@ export function EditCourt({
         initialAddress={court.franchise_street_address}
       />
       <AddSlotsSection courtId={court.id} onDone={reloadSlots} />
+      <ImportPrintSection courtId={court.id} courtName={court.name} onDone={reloadSlots} />
       <SlotEditorSection
         courtId={court.id}
         slots={slots}
