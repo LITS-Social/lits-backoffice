@@ -39,6 +39,8 @@ function minToHm(min: number): string {
   return `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 }
 
+const validYmd = (y: string) => /^\d{4}-\d{2}-\d{2}$/.test(y);
+
 /** "2026-07-24" → "sex 24/07" — how a block announces its own day on the chip. */
 function blockDayLabel(ymd: string): string {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -183,7 +185,6 @@ export function ImportPrintSection({
 
     // Each block prefers its own date (chat prints span several days); the
     // date field is only the fallback for blocks the model couldn't date.
-    const validYmd = (y: string) => /^\d{4}-\d{2}-\d{2}$/.test(y);
     const blocks = parsed.courts[courtIdx].occupied;
     if (blocks.some((b, i) => checked.has(i) && !validYmd(b.date) && !validYmd(date))) {
       setError("Há horários sem data no print — preencha o campo de data.");
@@ -479,9 +480,13 @@ export function ImportPrintSection({
                           )}
                         >
                           {on && <Check size={11} strokeWidth={2.5} />}
-                          {b.date && (
+                          {b.date ? (
                             <span className="font-300 opacity-80">{blockDayLabel(b.date)} ·</span>
-                          )}
+                          ) : validYmd(date) ? (
+                            // Undated block inheriting the fallback field — the
+                            // "*" and dimmer tone say "came from the date input".
+                            <span className="font-300 opacity-55">{blockDayLabel(date)}* ·</span>
+                          ) : null}
                           {b.start}–{b.end === "24:00" ? "00:00" : b.end}
                         </button>
                       </li>
