@@ -1260,6 +1260,28 @@ export interface components {
              */
             users: number;
         };
+        Completion: {
+            /**
+             * Format: int64
+             * @description Bookings cancelled AFTER confirmation (status='cancelled' AND confirmed_at IS NOT NULL) — a real match that got called off
+             */
+            cancelled_confirmed: number;
+            /**
+             * Format: int64
+             * @description Bookings cancelled that never reached confirmed_at (expired invite / reaper auto-cancel) — never a confirmed match; excluded from the rate denominator, exposed for the funnel
+             */
+            expired_never_confirmed: number;
+            /**
+             * Format: int64
+             * @description Bookings in terminal status 'played'
+             */
+            played: number;
+            /**
+             * Format: double
+             * @description played / (played + cancelled_confirmed); 0 when the denominator is 0. expired_never_confirmed is intentionally NOT in the denominator
+             */
+            rate: number;
+        };
         ConnectorItem: {
             /**
              * Format: int64
@@ -2689,6 +2711,8 @@ export interface components {
              * @description Always null: game_feedback has only a 1–5 partner rating, no balance/equilíbrio field. Partner rating lives in GET /v1/ops/player-evaluations
              */
             avg_balance_rating: number | null;
+            /** @description Match-completion funnel: played vs cancelled-after-confirmed, with expired/never-confirmed cancellations split out so they don't pollute the rate. rate = played/(played+cancelled_confirmed) */
+            completion: components["schemas"]["Completion"];
             /**
              * Format: date-time
              * @description When this snapshot was computed (RFC3339, UTC)

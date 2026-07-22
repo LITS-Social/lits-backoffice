@@ -244,6 +244,15 @@ export default async function MetricsPage() {
     : null;
   const wau = users.activity.hoje + users.activity.semana;
 
+  // One breakdown string for every completion surface. expiredNeverConfirmed
+  // null = legacy fallback (old BFF): its "canceladas" still counts every
+  // cancellation, so the confirmed-only wording would be a lie there.
+  const completionNote = completion
+    ? completion.expiredNeverConfirmed != null
+      ? `${completion.finished} concluídas · ${completion.cancelled} canceladas (confirmadas) · ${completion.expiredNeverConfirmed} convites expirados`
+      : `${completion.finished} concluídas · ${completion.cancelled} canceladas`
+    : null;
+
   // Funnel rates from the backend roll-up. A pair with an empty denominator
   // stays null — 0/0 dressed up as a percentage is still "sem dado".
   const acceptance =
@@ -286,11 +295,11 @@ export default async function MetricsPage() {
     {
       metric: "Taxa de conclusão",
       meta: "≥ 70%",
-      ...(completion
+      ...(completion && completionNote
         ? {
             value: pct(completion.rate),
             ok: completion.rate >= META_CONCLUSAO,
-            note: `${completion.finished} concluídas · ${completion.cancelled} canceladas`,
+            note: completionNote,
           }
         : {}),
       action: "Liga para quem deu W.O. e entende por quê",
@@ -510,7 +519,9 @@ export default async function MetricsPage() {
               : {})}
             context={
               completion
-                ? `meta ≥ ${pct(META_CONCLUSAO)} · ${completion.cancelled} canceladas`
+                ? `meta ≥ ${pct(META_CONCLUSAO)} · ${completion.cancelled} canceladas${
+                    completion.expiredNeverConfirmed != null ? " (confirmadas)" : ""
+                  }`
                 : "sem dado de cancelamentos"
             }
           />
@@ -577,12 +588,19 @@ export default async function MetricsPage() {
             </ChartCard>
           }
           completionSlot={
-            <ChartCard eyebrow="Taxa de conclusão" hint="Concluídas sobre concluídas + canceladas.">
-              {completion ? (
+            <ChartCard
+              eyebrow="Taxa de conclusão"
+              hint={
+                completion?.expiredNeverConfirmed != null
+                  ? "Concluídas sobre concluídas + canceladas de jogos confirmados. Convites que expiram sem confirmação não contam."
+                  : "Concluídas sobre concluídas + canceladas."
+              }
+            >
+              {completion && completionNote ? (
                 <CompletionGauge
                   rate={completion.rate}
                   target={META_CONCLUSAO}
-                  caption={`${completion.finished} concluídas · ${completion.cancelled} canceladas`}
+                  caption={completionNote}
                 />
               ) : (
                 <ChartUnavailable>Sem dado de cancelamentos para compor a taxa.</ChartUnavailable>

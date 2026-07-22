@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { getApi } from "@/lib/api";
+import type { components } from "@/lib/api/openapi";
 
 /**
  * The product-metrics roll-up behind the home dashboard.
@@ -102,14 +103,35 @@ export type NorthMetrics = {
     min_candidates: number;
     categories: { category: string; users: number }[] | null;
   } | null;
+  /**
+   * Server-side completion funnel (test users already excluded): played over
+   * played + cancellations of CONFIRMED games; invites that expired without
+   * ever being confirmed are counted separately and stay out of the rate.
+   * The schema says the block always comes, but an old running BFF omits it —
+   * hence nullable (deploy window).
+   */
+  completion: components["schemas"]["Completion"] | null;
 };
 
 export type ProductMetrics = {
   users: UsersMetrics;
   matches: MatchesMetrics;
   north: NorthMetrics;
-  /** finished / (finished + cancelled). Null when either side failed. */
-  completion: { rate: number; finished: number; cancelled: number } | null;
+  /**
+   * Preferred source is the server's completion block: finished = played,
+   * cancelled = cancellations of CONFIRMED games only, and
+   * `expiredNeverConfirmed` counts the invites that expired unconfirmed and are
+   * excluded from the rate. On the old-BFF fallback the legacy math applies
+   * (finished-total ÷ every cancellation) and `expiredNeverConfirmed` is null —
+   * that null is how the UI knows to keep the legacy wording. Null when
+   * neither source could be computed.
+   */
+  completion: {
+    rate: number;
+    finished: number;
+    cancelled: number;
+    expiredNeverConfirmed: number | null;
+  } | null;
   /** Weighted mean of all partner ratings received. Null on failure or no ratings. */
   partnerRating: { avg: number; count: number } | null;
 };
@@ -237,6 +259,7 @@ async function fetchNorth(): Promise<NorthMetrics> {
     invitesSent7d: null, inviteAcceptance: null, newActive7d: null,
     onboarding: null, retentionWeek2: null, referralCodesUsed7d: null,
     woToday: null, appOpenNoAction: null, validMatchesPerUser: null,
+    completion: null,
   };
 
   try {
@@ -254,6 +277,9 @@ async function fetchNorth(): Promise<NorthMetrics> {
       woToday: data.wo_today,
       appOpenNoAction: data.app_open_no_action ?? null,
       validMatchesPerUser: data.valid_matches_per_user ?? null,
+      // ?? null is the deploy-window guard: the schema says required, but an
+      // old running BFF still omits the block.
+      completion: data.completion ?? null,
     };
   } catch {
     return failed;
@@ -277,12 +303,23 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
       ? cancellations.data.total ?? 0
       : null;
 
-  const completion =
-    !matches.failed && cancelled != null && matches.total + cancelled > 0
+  // Preferred: the server's completion block (confirmed-only cancellations,
+  // expired invites excluded, test users already filtered). Old BFF in the
+  // deploy window → fall back to the legacy client-side math, flagged by
+  // expiredNeverConfirmed: null.
+  const completion: ProductMetrics["completion"] = north.completion
+    ? {
+        rate: north.completion.rate,
+        finished: north.completion.played,
+        cancelled: north.completion.cancelled_confirmed,
+        expiredNeverConfirmed: north.completion.expired_never_confirmed,
+      }
+    : !matches.failed && cancelled != null && matches.total + cancelled > 0
       ? {
           rate: matches.total / (matches.total + cancelled),
           finished: matches.total,
           cancelled,
+          expiredNeverConfirmed: null,
         }
       : null;
 
