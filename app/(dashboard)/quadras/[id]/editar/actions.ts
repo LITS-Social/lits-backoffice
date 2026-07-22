@@ -448,6 +448,18 @@ export async function updateFranchiseAction(
     if (response.status === 400 && params.lat === 0 && params.lng === 0) {
       return { ok: false, error: "O par (0, 0) não é uma localização válida — confira as coordenadas." };
     }
+    // A deployed BFF that predates the kind field rejects the unknown key with
+    // Huma's bare "validation failed" — name the real cause during the rollout
+    // window instead of leaking that string.
+    if (response.status === 422 && params.kind !== undefined) {
+      return {
+        ok: false,
+        error:
+          "O backend em produção ainda não aceita mudança de tipo — publique o " +
+          "bff-backoffice com o campo kind (lits-backend, branch feat/franchise-kind-update) " +
+          "e tente de novo. Os demais campos salvam se você desfazer a troca de tipo.",
+      };
+    }
     return { ok: false, error: error.detail || error.title || "Falha ao atualizar franquia." };
   }
   revalidatePath("/quadras");
