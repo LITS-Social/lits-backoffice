@@ -617,21 +617,44 @@ function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () =>
 
 /* ══ franchise ════════════════════════════════════════════════════════════ */
 
+type FranchiseKind = "partner" | "public" | "listing";
+
+const KIND_LABELS: Record<FranchiseKind, string> = {
+  partner: "Parceira",
+  public: "Pública",
+  listing: "Diretório",
+};
+
+const KIND_HINTS: Record<FranchiseKind, string> = {
+  partner: "Parceira: o app vende os slots reais cadastrados aqui, com os preços desta página.",
+  public: "Pública: parque gratuito — o app sintetiza a grade livre (06h–22h, R$ 0).",
+  listing: "Diretório: local não integrado — o app sintetiza a grade livre (06h–22h, R$ 0).",
+};
+
 function FranchiseSection({
   franchiseId,
   franchiseName,
+  initialKind,
   initialLat,
   initialLng,
   initialAddress,
 }: {
   franchiseId: string;
   franchiseName: string;
+  initialKind: string;
   initialLat: number | null | undefined;
   initialLng: number | null | undefined;
   initialAddress: string | null | undefined;
 }) {
   const [name, setName] = useState(franchiseName);
   const [price, setPrice] = useState("");
+  const [kind, setKind] = useState<FranchiseKind>(
+    (["partner", "public", "listing"] as const).includes(initialKind as FranchiseKind)
+      ? (initialKind as FranchiseKind)
+      : "partner"
+  );
+  // Touched-only, like geo — see updateFranchiseAction.
+  const [kindDirty, setKindDirty] = useState(false);
   const [address, setAddress] = useState(initialAddress ?? "");
   const [lat, setLat] = useState(initialLat != null ? String(initialLat) : "");
   const [lng, setLng] = useState(initialLng != null ? String(initialLng) : "");
@@ -782,6 +805,7 @@ function FranchiseSection({
       const res = await updateFranchiseAction(franchiseId, {
         name: name.trim(),
         ...(cents != null ? { defaultPriceCents: cents } : {}),
+        ...(kindDirty ? { kind } : {}),
         ...(geo ?? {}),
         ...(addr !== undefined ? { streetAddress: addr } : {}),
       });
@@ -789,6 +813,7 @@ function FranchiseSection({
         setError(res.error ?? "Falha ao salvar franquia.");
         return;
       }
+      setKindDirty(false);
       setSaved(true);
       setSavedPrice(res.franchise.default_price_cents);
       setPrice("");
@@ -830,6 +855,40 @@ function FranchiseSection({
             placeholder="ex: PlayTennis Morumbi"
             className={fieldClass}
           />
+        </div>
+
+        <div>
+          <p className={labelClass}>Tipo</p>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(KIND_LABELS) as FranchiseKind[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setKind(k);
+                  setKindDirty(k !== initialKind);
+                  touched();
+                }}
+                aria-pressed={kind === k}
+                className={`rounded-lg border px-3 py-1.5 text-[11.5px] font-600 transition-colors ${
+                  kind === k
+                    ? "border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--primary)]"
+                    : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                {KIND_LABELS[k]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {KIND_HINTS[kind]}
+          </p>
+          {kindDirty && kind === "partner" && (
+            <p className="mt-1.5 rounded-lg border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-3 py-2 text-[11px] leading-snug text-[var(--color-clay)]">
+              Ao virar parceira, o app deixa a grade sintetizada e passa a vender os slots reais —
+              se a quadra estiver sem disponibilidade, gere a grade nesta página após salvar.
+            </p>
+          )}
         </div>
 
         <div>
@@ -1642,9 +1701,12 @@ export function EditCourt({
       <CourtBasicsSection court={court} />
       <RepriceSection courtId={court.id} onDone={reloadSlots} />
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />
+      {/* "#academia" — the courts list deep-links here via "Editar academia". */}
+      <span id="academia" className="block scroll-mt-6" aria-hidden />
       <FranchiseSection
         franchiseId={court.franchise_id}
         franchiseName={court.franchise_name}
+        initialKind={court.franchise_kind}
         initialLat={court.franchise_lat}
         initialLng={court.franchise_lng}
         initialAddress={court.franchise_street_address}

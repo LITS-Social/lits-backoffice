@@ -13,7 +13,7 @@ import "./globals.css";
  */
 
 export const metadata: Metadata = {
-  title: "Painel Operacional — LITS Beta",
+  title: "LITS • Backoffice",
   description: "Painel interno de monitoramento operacional do beta LITS",
 };
 

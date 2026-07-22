@@ -406,6 +406,8 @@ export async function updateFranchiseAction(
   params: {
     name?: string;
     defaultPriceCents?: number;
+    /** Reclassifies the venue (app grid semantics change at read time). */
+    kind?: "partner" | "public" | "listing";
     /** Set as a complete pair (BFF 400s a lone lat or lng). Absent = unchanged. */
     lat?: number;
     lng?: number;
@@ -426,6 +428,9 @@ export async function updateFranchiseAction(
     ...(params.defaultPriceCents !== undefined
       ? { default_price_cents: params.defaultPriceCents }
       : {}),
+    // Touched-only, like geo: a BFF that predates the kind field 422s unknown
+    // body keys, so name/price saves must not carry it implicitly.
+    ...(params.kind !== undefined ? { kind: params.kind } : {}),
     ...(params.lat !== undefined && params.lng !== undefined
       ? { lat: params.lat, lng: params.lng }
       : {}),

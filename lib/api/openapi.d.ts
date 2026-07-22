@@ -424,8 +424,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update a franchise (name, default slot price, geo location and/or street address)
-         * @description Partial update: only the provided fields change (COALESCE keeps the rest). Geo: lat (-90..90) and lng (-180..180) must be sent together; clear_geo=true nulls both (mutually exclusive with lat/lng). street_address: unset = unchanged, empty string clears. Venues without geo are excluded from the app's distance ranking. Returns the full updated franchise, including default_price_cents, lat, lng, has_geo and street_address. 404 if the franchise does not exist.
+         * Update a franchise (name, kind, default slot price, geo location and/or street address)
+         * @description Partial update: only the provided fields change (COALESCE keeps the rest). kind reclassifies the venue (partner | public | listing) and changes how the app builds its grid at read time — public/listing get the synthesized free grid, partner sells the real slots priced here; no slot rows are touched. Geo: lat (-90..90) and lng (-180..180) must be sent together; clear_geo=true nulls both (mutually exclusive with lat/lng). street_address: unset = unchanged, empty string clears. Venues without geo are excluded from the app's distance ranking. Returns the full updated franchise, including default_price_cents, lat, lng, has_geo and street_address. 404 if the franchise does not exist.
          */
         patch: operations["ops-update-franchise"];
         trace?: never;
@@ -3057,6 +3057,11 @@ export interface components {
              * @description New default slot price in cents (unset = unchanged)
              */
             default_price_cents?: number;
+            /**
+             * @description New venue kind: partner (paid club), public (free park) or listing (directory venue, synthesized free grid) (unset = unchanged)
+             * @enum {string}
+             */
+            kind?: "partner" | "public" | "listing";
             /**
              * Format: double
              * @description New venue latitude (-90..90); must be provided together with lng; (0,0) is rejected (unset = unchanged)
