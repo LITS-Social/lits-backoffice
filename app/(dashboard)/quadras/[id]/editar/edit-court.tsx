@@ -16,6 +16,7 @@ import {
   type AddSlotInput,
   type CourtSlotItem,
 } from "./actions";
+import { ImportPrintSection } from "./import-print";
 
 type Surface = "clay" | "hard" | "grass" | "beach" | "carpet";
 
@@ -1300,6 +1301,7 @@ export function EditCourt({
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />
       <FranchiseSection franchiseId={court.franchise_id} franchiseName={court.franchise_name} />
       <AddSlotsSection courtId={court.id} onDone={reloadSlots} />
+      <ImportPrintSection courtId={court.id} courtName={court.name} onDone={reloadSlots} />
       <SlotEditorSection
         courtId={court.id}
         slots={slots}
