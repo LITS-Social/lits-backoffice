@@ -124,52 +124,58 @@ export async function addCourtSlotsAction(
 
 /* ══ import from a schedule print ═════════════════════════════════════════ */
 
-export type PrintBlock = { start: string; end: string };
+export type PrintBlock = { date: string; start: string; end: string };
 export type PrintCourt = { name: string; occupied: PrintBlock[] };
 export type ParsePrintState = {
   ok: boolean;
-  /** YYYY-MM-DD from the print's header; "" when the print doesn't show one. */
+  /** Default YYYY-MM-DD (a grid print's header date); "" when absent. */
   date?: string;
   courts?: PrintCourt[];
   error?: string;
 };
 
 /** Structured-output contract for the extraction — what the model MUST return.
-    Kept minimal on purpose: times as HH:MM strings, one entry per court column,
-    only the occupied (colored) blocks. Free/white cells carry no information the
-    console doesn't already have. */
+    Times as HH:MM strings, one entry per court, only the occupied blocks. Each
+    block carries its own date so a chat print listing several days ("quinta…,
+    sexta…, domingo…") round-trips losslessly; grid prints repeat the header
+    date. Free/white cells carry no information the console doesn't have. */
 const PRINT_SCHEMA = {
   type: "object",
   properties: {
     date: {
       type: "string",
       description:
-        "Data mostrada no cabeçalho do calendário, formato YYYY-MM-DD. String vazia se o print não mostrar a data.",
+        "Data padrão do print (cabeçalho do calendário), formato YYYY-MM-DD. String vazia se não houver uma data única.",
     },
     courts: {
       type: "array",
-      description: "Uma entrada por coluna/quadra do calendário, na ordem exibida.",
+      description: "Uma entrada por quadra identificada no print, na ordem em que aparece.",
       items: {
         type: "object",
         properties: {
           name: {
             type: "string",
-            description: "Título da coluna exatamente como aparece no print.",
+            description:
+              "Nome da quadra exatamente como aparece no print (título da coluna, ou como citada na mensagem, ex. 'quadra rápida'). Se o print não distinguir quadras, use 'Quadra'.",
           },
           occupied: {
             type: "array",
-            description:
-              "Blocos ocupados/reservados (células coloridas, ex. vermelhas) desta coluna, em ordem cronológica.",
+            description: "Blocos ocupados/reservados desta quadra, em ordem cronológica.",
             items: {
               type: "object",
               properties: {
+                date: {
+                  type: "string",
+                  description:
+                    "Data deste bloco, YYYY-MM-DD. Resolva dias da semana e datas parciais (ex. '23/07'). String vazia apenas se for impossível determinar.",
+                },
                 start: { type: "string", description: "Início do bloco, HH:MM (24h)." },
                 end: {
                   type: "string",
                   description: "Fim do bloco, HH:MM (24h). Use 24:00 para meia-noite do fim do dia.",
                 },
               },
-              required: ["start", "end"],
+              required: ["date", "start", "end"],
               additionalProperties: false,
             },
           },
@@ -182,6 +188,23 @@ const PRINT_SCHEMA = {
   required: ["date", "courts"],
   additionalProperties: false,
 };
+
+/** Today's wall-clock date in São Paulo — the anchor the model needs to resolve
+    relative dates in chat prints ("sexta", "23/07" sem ano). */
+function spToday(): { ymd: string; weekday: string } {
+  const now = new Date();
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const weekday = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "long",
+  }).format(now);
+  return { ymd, weekday };
+}
 
 /**
  * Reads a club-calendar screenshot and extracts, per court column, the occupied
@@ -217,6 +240,7 @@ export async function parseSchedulePrintAction(formData: FormData): Promise<Pars
   }
 
   const data = Buffer.from(await file.arrayBuffer()).toString("base64");
+  const today = spToday();
   const client = new Anthropic();
 
   try {
@@ -236,12 +260,23 @@ export async function parseSchedulePrintAction(formData: FormData): Promise<Pars
             {
               type: "text",
               text:
-                "Este é um print do sistema de reservas de um clube de tênis: uma grade com " +
-                "horários nas linhas e quadras nas colunas. Células coloridas (vermelhas) são " +
-                "horários ocupados/reservados; células brancas estão livres. Extraia a data do " +
-                "cabeçalho e, para cada coluna (quadra), os blocos ocupados com início e fim. " +
-                "Um bloco que rotula um intervalo (ex. '15:00-18:00') é um único bloco desse " +
-                "intervalo inteiro. Rótulos '22:00-00:00' terminam à meia-noite — use 24:00.",
+                `Hoje é ${today.weekday}, ${today.ymd} (America/Sao_Paulo). ` +
+                "Este print vem de um clube de tênis e mostra horários ocupados/reservados em um " +
+                "de dois formatos. (1) GRADE DE CALENDÁRIO: horários nas linhas, quadras nas " +
+                "colunas; células coloridas (ex. vermelhas) são ocupadas, brancas estão livres. " +
+                "Extraia a data do cabeçalho como data padrão e repita-a no campo date de cada " +
+                "bloco. Um rótulo de intervalo ('15:00-18:00') é um único bloco inteiro; " +
+                "'22:00-00:00' termina à meia-noite — use 24:00. (2) PRINT DE MENSAGEM/CONVERSA " +
+                "(ex. WhatsApp) listando horários por dia: cada menção de hora vira um bloco. " +
+                "Hora avulsa ('às 14h') é um bloco de 1 hora (14:00–15:00); horas em sequência " +
+                "('16h, 17h e 18h') são blocos de 1 hora cada. Agrupe por quadra citada (ex. " +
+                "'quadra rápida', 'grama'); se nenhuma for citada, use o nome 'Quadra'. Resolva " +
+                "as datas: uma data ancorada (ex. 'Quinta (23/07)') fixa a semana e os dias " +
+                "seguintes da lista são consecutivos a ela ('sexta' = dia seguinte, etc.); sem " +
+                "âncora, use a PRÓXIMA ocorrência do dia da semana a partir de hoje. Datas sem " +
+                "ano recebem o ano dessa resolução. Nesse formato deixe a data padrão vazia. " +
+                "Extraia apenas horários afirmados como reservados/combinados — ignore " +
+                "saudações e texto sem horário.",
             },
           ],
         },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { AlertCircle, Check, ScanLine, Upload } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, ImageUp, ScanLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   applyPrintSlotsAction,
@@ -36,6 +36,17 @@ function toMin(hm: string): number | null {
 
 function minToHm(min: number): string {
   return `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
+
+/** "2026-07-24" → "sex 24/07" — how a block announces its own day on the chip. */
+function blockDayLabel(ymd: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  })
+    .format(new Date(`${ymd}T12:00:00`))
+    .replace(".", "");
 }
 
 /** Loose name match: shared normalized tokens between print column and court. */
@@ -75,6 +86,7 @@ export function ImportPrintSection({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [courtIdx, setCourtIdx] = useState(0);
   const [date, setDate] = useState("");
@@ -89,6 +101,24 @@ export function ImportPrintSection({
     setChecked(new Set());
     setResult(null);
     setError("");
+  }
+
+  /** Client-side gate mirroring the action's limits — a dropped .pdf or a 12 MB
+      screenshot fails here instantly instead of after a round-trip. */
+  function handleFile(file: File) {
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      reset();
+      setFileName(file.name);
+      setError("Formato não suportado — use PNG, JPEG ou WebP.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      reset();
+      setFileName(file.name);
+      setError("Imagem muito grande (máx. 5 MB).");
+      return;
+    }
+    parse(file);
   }
 
   function parse(file: File) {
@@ -139,8 +169,13 @@ export function ImportPrintSection({
     if (!parsed) return;
     setError("");
     setResult(null);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      setError("Confirme a data do print (o cabeçalho não trouxe uma data válida).");
+
+    // Each block prefers its own date (chat prints span several days); the
+    // date field is only the fallback for blocks the model couldn't date.
+    const validYmd = (y: string) => /^\d{4}-\d{2}-\d{2}$/.test(y);
+    const blocks = parsed.courts[courtIdx].occupied;
+    if (blocks.some((b, i) => checked.has(i) && !validYmd(b.date) && !validYmd(date))) {
+      setError("Há horários sem data no print — preencha o campo de data.");
       return;
     }
 
@@ -149,15 +184,15 @@ export function ImportPrintSection({
     // remainder). Everything imports as BLOCKED — the print shows what the
     // club already sold, which is exactly what LITS must stop offering.
     const slots: AddSlotInput[] = [];
-    const blocks = parsed.courts[courtIdx].occupied;
     for (const [i, block] of blocks.entries()) {
       if (!checked.has(i)) continue;
+      const ymd = validYmd(block.date) ? block.date : date;
       const start = toMin(block.start);
       const end = toMin(block.end === "00:00" ? "24:00" : block.end);
       if (start == null || end == null || end <= start) continue;
       for (let t = start; t < end; t += 60) {
         const sliceEnd = Math.min(t + 60, end);
-        const startMs = spStartMs(date, minToHm(t));
+        const startMs = spStartMs(ymd, minToHm(t));
         slots.push({
           slot_start: new Date(startMs).toISOString(),
           slot_end: new Date(startMs + (sliceEnd - t) * 60_000).toISOString(),
@@ -194,9 +229,9 @@ export function ImportPrintSection({
       <div className="mb-5">
         <h2 className="eyebrow">Importar do print</h2>
         <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Suba o print do calendário do clube e os horários ocupados entram pré-selecionados como
-          bloqueados nesta quadra. Nada é gravado antes da sua revisão; horários com reserva real
-          nunca são sobrescritos.
+          Suba o print do calendário do clube — ou de uma mensagem com os horários combinados — e
+          eles entram pré-selecionados como bloqueados nesta quadra. Nada é gravado antes da sua
+          revisão; horários com reserva real nunca são sobrescritos.
         </p>
       </div>
 
@@ -208,24 +243,68 @@ export function ImportPrintSection({
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) parse(f);
+            if (f) handleFile(f);
             e.target.value = "";
           }}
         />
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={parsing}
-            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface-raised)] px-4 py-2 text-[12px] font-600 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
-          >
-            {parsing ? <ScanLine size={13} className="animate-pulse" /> : <Upload size={13} />}
-            {parsing ? "Lendo o print…" : parsed ? "Trocar imagem" : "Enviar print"}
-          </button>
-          {fileName && !parsing && (
-            <span className="truncate text-[11px] font-300 text-[var(--text-tertiary)]">
-              {fileName}
-            </span>
+        {/* The dropzone IS the upload control: click, keyboard, or drag a file
+            straight from the screenshot preview. */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Enviar print — arraste a imagem ou clique para selecionar"
+          onClick={() => !parsing && fileRef.current?.click()}
+          onKeyDown={(e) => {
+            if ((e.key === "Enter" || e.key === " ") && !parsing) {
+              e.preventDefault();
+              fileRef.current?.click();
+            }
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            if (parsing) return;
+            const f = e.dataTransfer.files?.[0];
+            if (f) handleFile(f);
+          }}
+          className={cn(
+            "cursor-pointer rounded-xl border border-dashed px-6 py-9 text-center transition-colors",
+            dragOver
+              ? "border-[var(--primary)] bg-[var(--primary)]/6"
+              : "border-[var(--border-strong)] hover:border-[var(--primary)]/60"
+          )}
+        >
+          {parsing ? (
+            <>
+              <ScanLine size={22} className="mx-auto animate-pulse text-[var(--primary)]" />
+              <p className="mt-3 text-[13px] font-300 text-[var(--text-secondary)]">
+                Lendo o print…
+              </p>
+              {fileName && (
+                <p className="mt-1 truncate text-[11px] font-300 text-[var(--text-tertiary)]">
+                  {fileName}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <ImageUp size={22} className="mx-auto text-[var(--text-tertiary)]" />
+              <p className="mt-3 text-[13.5px] font-300 text-[var(--text-secondary)]">
+                Arraste o print do calendário ou da mensagem do clube
+              </p>
+              <p className="mt-1 text-[11px] font-300 text-[var(--text-tertiary)]">
+                PNG, JPEG ou WebP · máx. 5 MB
+                {fileName && <> · {fileName}</>}
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90">
+                Selecionar arquivo <ArrowRight size={11} strokeWidth={2.5} />
+              </span>
+            </>
           )}
         </div>
 
@@ -253,18 +332,20 @@ export function ImportPrintSection({
               </div>
             </div>
 
-            <div className="max-w-[220px]">
-              <label htmlFor="print_date" className={labelClass}>
-                Data
-              </label>
-              <input
-                id="print_date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className={fieldClass}
-              />
-            </div>
+            {blocks.some((b) => !b.date) && (
+              <div className="max-w-[240px]">
+                <label htmlFor="print_date" className={labelClass}>
+                  Data · para horários sem data no print
+                </label>
+                <input
+                  id="print_date"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+            )}
 
             <div>
               <p className={labelClass}>
@@ -292,6 +373,9 @@ export function ImportPrintSection({
                           )}
                         >
                           {on && <Check size={11} strokeWidth={2.5} />}
+                          {b.date && (
+                            <span className="font-300 opacity-80">{blockDayLabel(b.date)} ·</span>
+                          )}
                           {b.start}–{b.end === "24:00" ? "00:00" : b.end}
                         </button>
                       </li>
