@@ -1,12 +1,24 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import { AlertCircle, Check, Lock, LockOpen, Pencil, Plus, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  ClipboardPaste,
+  Lock,
+  LockOpen,
+  MapPin,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatCurrency, reaisToCents } from "@/lib/utils";
 import type { CourtListItem } from "../../actions";
 import {
   addCourtSlotsAction,
+  geocodeAction,
   regenerateAvailabilityAction,
   repriceCourtAction,
   updateCourtAction,
@@ -15,6 +27,7 @@ import {
   listCourtSlotsAction,
   type AddSlotInput,
   type CourtSlotItem,
+  type GeocodeCandidate,
 } from "./actions";
 
 type Surface = "clay" | "hard" | "grass" | "beach" | "carpet";
@@ -127,6 +140,62 @@ function reaisFromCents(cents: number | null): string {
 
 function dayStartISO(y: string): string {
   return new Date(`${y}T00:00:00`).toISOString();
+}
+
+/* ── geo helpers ──────────────────────────────────────────────────────────── */
+
+/** Number for one coordinate field; tolerates the BR decimal comma ("-23,5936"). */
+function coordNumber(raw: string): number {
+  const t = raw.trim();
+  const normalized = t.includes(",") && !t.includes(".") ? t.replace(",", ".") : t;
+  return normalized === "" ? NaN : Number(normalized);
+}
+
+/**
+ * Splits a "lat, lng" pair as staff paste it — Google Maps' dot-decimal form
+ * ("-23.5936, -46.6731") plus BR comma-decimal variants ("-23,5936; -46,6731",
+ * "-23,5936, -46,6731", "-23,5936 -46,6731") and loose spacing around the
+ * separator. Null when the text isn't a recognizable pair.
+ */
+function splitLatLngPair(text: string): { lat: string; lng: string } | null {
+  const t = text.trim().replace(/^\(/, "").replace(/\)$/, "");
+  let sides: [string, string] | null = null;
+
+  const semi = t.split(";");
+  if (semi.length === 2) {
+    sides = [semi[0], semi[1]];
+  } else if (semi.length === 1) {
+    const commas: number[] = [];
+    for (let i = 0; i < t.length; i++) if (t[i] === ",") commas.push(i);
+    if (commas.length === 3) {
+      // Two BR decimals joined by a comma — the middle comma is the separator.
+      sides = [t.slice(0, commas[1]), t.slice(commas[1] + 1)];
+    } else if (commas.length === 1) {
+      // A lone comma separates when decimals use dots, or when it's followed by
+      // whitespace or a minus — otherwise it's the decimal comma of a single BR
+      // number ("-23,5936") and there is no pair here.
+      const i = commas[0];
+      if (t.includes(".") || /^[\s-]/.test(t.slice(i + 1))) {
+        sides = [t.slice(0, i), t.slice(i + 1)];
+      }
+    } else {
+      // 0 commas (dot decimals or integers) or 2 (BR decimals): whitespace-only
+      // separator, e.g. "-23.5936 -46.6731" / "-23,5936 -46,6731".
+      const parts = t.split(/\s+/);
+      if (parts.length === 2) sides = [parts[0], parts[1]];
+    }
+  }
+
+  if (!sides) return null;
+  const lat = sides[0].trim();
+  const lng = sides[1].trim();
+  // The splitter is permissive, so each side must actually read as a number.
+  if (!Number.isFinite(coordNumber(lat)) || !Number.isFinite(coordNumber(lng))) return null;
+  return { lat, lng };
+}
+
+function mapsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
 function dayEndISO(y: string): string {
@@ -550,12 +619,31 @@ function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () =>
 function FranchiseSection({
   franchiseId,
   franchiseName,
+  initialLat,
+  initialLng,
+  initialAddress,
 }: {
   franchiseId: string;
   franchiseName: string;
+  initialLat: number | null | undefined;
+  initialLng: number | null | undefined;
+  initialAddress: string | null | undefined;
 }) {
   const [name, setName] = useState(franchiseName);
   const [price, setPrice] = useState("");
+  const [address, setAddress] = useState(initialAddress ?? "");
+  const [lat, setLat] = useState(initialLat != null ? String(initialLat) : "");
+  const [lng, setLng] = useState(initialLng != null ? String(initialLng) : "");
+  // Only a touched pair is sent: Huma 422s on unknown body keys, so name/price
+  // saves must keep working while the geo-aware BFF rolls out.
+  const [geoDirty, setGeoDirty] = useState(false);
+  // The address is persisted too (it feeds the app's invite/booking cards) —
+  // what's in the field is what gets saved, under the same touched-only gate.
+  const [addressDirty, setAddressDirty] = useState(false);
+  // null = no search performed; [] = search returned nothing.
+  const [candidates, setCandidates] = useState<GeocodeCandidate[] | null>(null);
+  const [geoError, setGeoError] = useState("");
+  const [geoPending, startGeoTransition] = useTransition();
   const [error, setError] = useState("");
   const [savedPrice, setSavedPrice] = useState<number | null | undefined>(undefined);
   const [saved, setSaved] = useState(false);
@@ -565,6 +653,84 @@ function FranchiseSection({
     setSaved(false);
     setError("");
   }
+
+  function searchAddress() {
+    // Explicit-button search, one request at a time (Enter bypasses the disabled
+    // button) — the default provider is public Nominatim/OSM, ~1 req/s policy.
+    if (geoPending) return;
+    setGeoError("");
+    setCandidates(null);
+    const q = address.trim();
+    if (!q) {
+      setGeoError("Informe o endereço para buscar as coordenadas.");
+      return;
+    }
+    // Mirrors the BFF's q length bounds (422 outside 3..300).
+    if (q.length < 3) {
+      setGeoError("Endereço muito curto — descreva rua, número e cidade.");
+      return;
+    }
+    if (q.length > 300) {
+      setGeoError("Endereço muito longo — máximo 300 caracteres.");
+      return;
+    }
+    startGeoTransition(async () => {
+      const res = await geocodeAction(q);
+      if (!res.ok) {
+        setGeoError(res.error ?? "Falha ao buscar o endereço.");
+        return;
+      }
+      setCandidates(res.results ?? []);
+    });
+  }
+
+  function pickCandidate(c: GeocodeCandidate) {
+    setLat(String(c.lat));
+    setLng(String(c.lng));
+    setGeoDirty(true);
+    // Adopt the canonical address so the app card can't contradict the pin —
+    // saved together with lat/lng in the same PATCH.
+    setAddress(c.formatted_address);
+    setAddressDirty(true);
+    setCandidates(null);
+    setGeoError("");
+    touched();
+  }
+
+  /** Fills both fields from a pasted "lat, lng" pair; false when it isn't one. */
+  function applyPair(text: string): boolean {
+    const pair = splitLatLngPair(text);
+    if (!pair) return false;
+    setLat(pair.lat);
+    setLng(pair.lng);
+    setGeoDirty(true);
+    touched();
+    return true;
+  }
+
+  async function pasteFromClipboard() {
+    setError("");
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      setError("Sem acesso à área de transferência — cole o par direto no campo Latitude (⌘V).");
+      return;
+    }
+    if (!applyPair(text)) {
+      setError('Não achei um par "lat, lng" no que foi copiado. Ex: -23.5936, -46.6731.');
+    }
+  }
+
+  const latPreview = coordNumber(lat);
+  const lngPreview = coordNumber(lng);
+  const previewOk =
+    Number.isFinite(latPreview) &&
+    Math.abs(latPreview) <= 90 &&
+    Number.isFinite(lngPreview) &&
+    Math.abs(lngPreview) <= 180 &&
+    // (0,0) is the "no coords" sentinel — never a real place to preview.
+    !(latPreview === 0 && lngPreview === 0);
 
   function save() {
     setError("");
@@ -578,10 +744,45 @@ function FranchiseSection({
       setError("Preço padrão inválido. Use ex: 220 ou 220,50.");
       return;
     }
+    // Always a complete pair; clearing is its own flag (a JSON null pair would
+    // be silently ignored by the BFF) — see updateFranchiseAction.
+    let geo: { lat: number; lng: number } | { clearGeo: true } | undefined;
+    if (geoDirty) {
+      const latEmpty = lat.trim() === "";
+      const lngEmpty = lng.trim() === "";
+      if (latEmpty !== lngEmpty) {
+        setError("Preencha latitude E longitude — ou deixe ambas vazias para remover a localização.");
+        return;
+      }
+      if (latEmpty) {
+        geo = { clearGeo: true };
+      } else {
+        if (!Number.isFinite(latPreview) || Math.abs(latPreview) > 90) {
+          setError("Latitude inválida — número entre -90 e 90 (ex: -23.5936).");
+          return;
+        }
+        if (!Number.isFinite(lngPreview) || Math.abs(lngPreview) > 180) {
+          setError("Longitude inválida — número entre -180 e 180 (ex: -46.6731).");
+          return;
+        }
+        // The exact (0,0) pair is the app-wide "no coords" sentinel (unranked
+        // in proximity sort); the BFF 400s it — catching here saves the trip.
+        // Lone zeros (equator/Greenwich) stay valid.
+        if (latPreview === 0 && lngPreview === 0) {
+          setError("Coordenadas inválidas — o par (0, 0) é reservado para “sem localização”. Confira os valores.");
+          return;
+        }
+        geo = { lat: latPreview, lng: lngPreview };
+      }
+    }
+    // "" clears the street_address on the BFF, matching an emptied field.
+    const addr = addressDirty ? address.trim() : undefined;
     startTransition(async () => {
       const res = await updateFranchiseAction(franchiseId, {
         name: name.trim(),
         ...(cents != null ? { defaultPriceCents: cents } : {}),
+        ...(geo ?? {}),
+        ...(addr !== undefined ? { streetAddress: addr } : {}),
       });
       if (!res.ok || !res.franchise) {
         setError(res.error ?? "Falha ao salvar franquia.");
@@ -590,13 +791,28 @@ function FranchiseSection({
       setSaved(true);
       setSavedPrice(res.franchise.default_price_cents);
       setPrice("");
+      if (addr !== undefined) {
+        setAddressDirty(false);
+        setAddress(addr);
+      }
+      if (geo) {
+        setGeoDirty(false);
+        if ("clearGeo" in geo) {
+          setLat("");
+          setLng("");
+        } else {
+          // Normalize what the staff typed (comma decimals etc.) to what was saved.
+          setLat(String(geo.lat));
+          setLng(String(geo.lng));
+        }
+      }
     });
   }
 
   return (
     <SectionCard
       title="Franquia"
-      description="Edita a academia dona da quadra. O preço padrão é aplicado às quadras que não têm preço próprio."
+      description="Edita a academia dona da quadra. O preço padrão é aplicado às quadras que não têm preço próprio; a localização posiciona a academia no app (distância e mapa)."
     >
       <div className="space-y-5">
         <div>
@@ -636,6 +852,133 @@ function FranchiseSection({
                 ? "Preço padrão atual: nenhum. Deixe em branco para manter."
                 : `Preço padrão atual: ${formatCurrency(savedPrice)}. Deixe em branco para manter.`
               : "A API não expõe o preço padrão atual na leitura; deixe em branco para não alterá-lo."}
+          </p>
+        </div>
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label htmlFor="franchise_address" className={labelInlineClass}>
+              Localização
+            </label>
+            <button
+              type="button"
+              onClick={pasteFromClipboard}
+              className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-raised)] px-2.5 py-0.5 text-[10.5px] font-600 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+            >
+              <ClipboardPaste size={11} strokeWidth={2} />
+              Colar &quot;lat, lng&quot;
+            </button>
+          </div>
+
+          <div className="flex items-stretch gap-2">
+            <input
+              id="franchise_address"
+              value={address}
+              onChange={(e) => {
+                setAddress(e.target.value);
+                setAddressDirty(true);
+                setGeoError("");
+                touched();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  searchAddress();
+                }
+              }}
+              placeholder="Endereço — ex: Rua Girassol 555, Vila Madalena, São Paulo"
+              className={cn(fieldClass, "flex-1")}
+            />
+            <button
+              type="button"
+              onClick={searchAddress}
+              disabled={geoPending}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--surface-raised)] px-3.5 text-[11.5px] font-600 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+            >
+              <Search size={12} strokeWidth={2} />
+              {geoPending ? "Buscando…" : "Buscar coordenadas"}
+            </button>
+          </div>
+
+          {geoError && <p className="mt-1.5 text-[11px] text-[var(--color-error)]">{geoError}</p>}
+
+          {candidates !== null &&
+            (candidates.length === 0 ? (
+              <p className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 text-[11.5px] text-[var(--text-tertiary)]">
+                Nenhum resultado — refine o endereço (rua, número, bairro, cidade).
+              </p>
+            ) : (
+              <ul className="mt-2 divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                {candidates.map((c) => (
+                  <li key={`${c.lat},${c.lng},${c.formatted_address}`}>
+                    <button
+                      type="button"
+                      onClick={() => pickCandidate(c)}
+                      className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-raised)]"
+                    >
+                      <MapPin size={12} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--text-tertiary)]" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-[12px] text-[var(--text-primary)]">
+                          {c.formatted_address}
+                        </span>
+                        <span className="block tabular-nums text-[10.5px] text-[var(--text-tertiary)]">
+                          {c.lat}, {c.lng}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ))}
+
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <input
+              id="franchise_lat"
+              aria-label="Latitude"
+              inputMode="decimal"
+              value={lat}
+              onChange={(e) => {
+                setLat(e.target.value);
+                setGeoDirty(true);
+                touched();
+              }}
+              onPaste={(e) => {
+                if (applyPair(e.clipboardData.getData("text"))) e.preventDefault();
+              }}
+              placeholder="Latitude — ex: -23.5936"
+              className={fieldClass}
+            />
+            <input
+              id="franchise_lng"
+              aria-label="Longitude"
+              inputMode="decimal"
+              value={lng}
+              onChange={(e) => {
+                setLng(e.target.value);
+                setGeoDirty(true);
+                touched();
+              }}
+              onPaste={(e) => {
+                if (applyPair(e.clipboardData.getData("text"))) e.preventDefault();
+              }}
+              placeholder="Longitude — ex: -46.6731"
+              className={fieldClass}
+            />
+          </div>
+          <p className="mt-1 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {previewOk ? (
+              <a
+                href={mapsUrl(latPreview, lngPreview)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-500 text-[var(--primary)] hover:underline"
+              >
+                <MapPin size={11} strokeWidth={2} />
+                Conferir no Google Maps
+              </a>
+            ) : (
+              "Busque pelo endereço acima (ele aparece nos cards do app), ou cole coordenadas do Google Maps. Lat/lng vazias = sem localização."
+            )}
           </p>
         </div>
 
@@ -1298,7 +1641,13 @@ export function EditCourt({
       <CourtBasicsSection court={court} />
       <RepriceSection courtId={court.id} onDone={reloadSlots} />
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />
-      <FranchiseSection franchiseId={court.franchise_id} franchiseName={court.franchise_name} />
+      <FranchiseSection
+        franchiseId={court.franchise_id}
+        franchiseName={court.franchise_name}
+        initialLat={court.franchise_lat}
+        initialLng={court.franchise_lng}
+        initialAddress={court.franchise_street_address}
+      />
       <AddSlotsSection courtId={court.id} onDone={reloadSlots} />
       <SlotEditorSection
         courtId={court.id}

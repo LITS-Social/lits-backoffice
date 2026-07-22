@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Pencil } from "lucide-react";
+import { MapPin, Pencil } from "lucide-react";
 import { DataTable, type DataTableColumn, type DataTableFilterGroup } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { DetailGrid } from "@/components/ui/detail-grid";
@@ -28,6 +28,26 @@ function venueKind(c: CourtListItem): { label: string; variant: "success" | "inf
   if (c.franchise_kind === "public")  return { label: "Pública",    variant: "info",    rank: 1 };
   if (c.franchise_brand === "playtennis") return { label: "PlayTennis", variant: "default", rank: 2 };
   return { label: "Diretório", variant: "muted", rank: 2 };
+}
+
+/**
+ * Franchise geolocation, three-state: `missing` (null — the backlog the staff
+ * works through), `set`, and `unknown` for the deploy window where the running
+ * BFF predates the geo fields. The generated type says the fields always exist,
+ * so absence is probed with `in` (absent key ≠ "no location", so no false alarm).
+ * The exact (0,0) pair is legacy "no coords" sentinel data (unranked in the
+ * app's proximity sort, rejected by the PATCH) — reads as missing.
+ */
+function geoState(c: CourtListItem): "set" | "missing" | "unknown" {
+  if (
+    typeof c.franchise_lat === "number" &&
+    typeof c.franchise_lng === "number" &&
+    !(c.franchise_lat === 0 && c.franchise_lng === 0)
+  ) {
+    return "set";
+  }
+  if (!("franchise_lat" in c) || !("franchise_lng" in c)) return "unknown";
+  return "missing";
 }
 
 const filters: DataTableFilterGroup<CourtListItem>[] = [
@@ -69,6 +89,14 @@ const filters: DataTableFilterGroup<CourtListItem>[] = [
     options: [
       { value: "active",   label: "Ativa",   predicate: (c) => c.is_active  },
       { value: "inactive", label: "Inativa", predicate: (c) => !c.is_active },
+    ],
+  },
+  {
+    id: "geo",
+    label: "Localização",
+    options: [
+      { value: "missing", label: "Sem localização", predicate: (c) => geoState(c) === "missing" },
+      { value: "set",     label: "Com localização", predicate: (c) => geoState(c) === "set"     },
     ],
   },
 ];
@@ -136,6 +164,19 @@ const columns: DataTableColumn<CourtListItem>[] = [
         {c.is_active ? "Ativa" : "Inativa"}
       </Badge>
     ),
+  },
+  {
+    id: "geo",
+    header: "Geo",
+    width: "90px",
+    // Missing first: sorting this column surfaces the no-location backlog.
+    sortAccessor: (c) => ({ missing: 0, unknown: 1, set: 2 })[geoState(c)],
+    render: (c) => {
+      const g = geoState(c);
+      if (g === "missing") return <Badge variant="warning">Sem geo</Badge>;
+      if (g === "set")     return <Badge variant="muted">OK</Badge>;
+      return <span className="text-[11px] text-[var(--text-tertiary)]">—</span>;
+    },
   },
 ];
 
@@ -210,6 +251,26 @@ export function CourtsTable({ courts }: { courts: CourtListItem[] }) {
               { label: "Cobertura",    value: c.indoor ? "Coberta" : "Descoberta" },
               { label: "Status",       value: c.is_active ? "Ativa" : "Inativa" },
               { label: "Slots totais", value: String(c.slots_total) },
+              {
+                label: "Localização",
+                span: true,
+                value:
+                  geoState(c) === "set" ? (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${c.franchise_lat},${c.franchise_lng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[var(--primary)] hover:underline"
+                    >
+                      <MapPin size={12} strokeWidth={2} />
+                      {c.franchise_lat}, {c.franchise_lng}
+                    </a>
+                  ) : geoState(c) === "missing" ? (
+                    "Sem localização — edite a quadra para definir."
+                  ) : (
+                    "—"
+                  ),
+              },
             ]}
           />
           {c.franchise_kind === "listing" && (

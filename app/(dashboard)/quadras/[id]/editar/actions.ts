@@ -123,18 +123,79 @@ export async function addCourtSlotsAction(
 
 export async function updateFranchiseAction(
   id: string,
-  params: { name?: string; defaultPriceCents?: number }
+  params: {
+    name?: string;
+    defaultPriceCents?: number;
+    /** Set as a complete pair (BFF 400s a lone lat or lng). Absent = unchanged. */
+    lat?: number;
+    lng?: number;
+    /** Clears the location. Never combined with lat/lng (BFF 400s the mix). */
+    clearGeo?: boolean;
+    /** Shown on app cards (invite/booking). "" clears; absent = unchanged. */
+    streetAddress?: string;
+  }
 ): Promise<UpdateFranchiseState> {
   const api = await getApi();
-  const body: components["schemas"]["UpdateFranchiseBody"] = {};
-  if (params.name !== undefined) body.name = params.name;
-  if (params.defaultPriceCents !== undefined) body.default_price_cents = params.defaultPriceCents;
+  // A JSON `lat: null` is NOT a clear — Go decodes it same as absent and
+  // silently changes nothing; clearing goes through clear_geo (location) and
+  // "" (street_address). Geo keys are only included when the caller touched
+  // them, so name/price saves stay compatible with a pre-geo BFF (which 422s
+  // unknown body keys).
+  const body: components["schemas"]["UpdateFranchiseBody"] = {
+    ...(params.name !== undefined ? { name: params.name } : {}),
+    ...(params.defaultPriceCents !== undefined
+      ? { default_price_cents: params.defaultPriceCents }
+      : {}),
+    ...(params.lat !== undefined && params.lng !== undefined
+      ? { lat: params.lat, lng: params.lng }
+      : {}),
+    ...(params.clearGeo ? { clear_geo: true } : {}),
+    ...(params.streetAddress !== undefined ? { street_address: params.streetAddress } : {}),
+  };
 
-  const { data, error } = await api.PATCH("/v1/ops/franchises/{id}", {
+  const { data, error, response } = await api.PATCH("/v1/ops/franchises/{id}", {
     params: { path: { id } },
     body,
   });
-  if (error) return { ok: false, error: error.detail || error.title || "Falha ao atualizar franquia." };
+  if (error) {
+    // The BFF 400s the exact (0,0) pair — the app-wide "no coords" sentinel.
+    // The form pre-validates it, so this mapping is belt-and-braces.
+    if (response.status === 400 && params.lat === 0 && params.lng === 0) {
+      return { ok: false, error: "O par (0, 0) não é uma localização válida — confira as coordenadas." };
+    }
+    return { ok: false, error: error.detail || error.title || "Falha ao atualizar franquia." };
+  }
   revalidatePath("/quadras");
   return { ok: true, franchise: data };
+}
+
+export type GeocodeCandidate = components["schemas"]["GeocodeCandidate"];
+export type GeocodeState = {
+  ok: boolean;
+  results?: GeocodeCandidate[];
+  /** BFF predates the geocode route (404) — steer staff to manual lat/lng. */
+  unavailable?: boolean;
+  error?: string;
+};
+
+export async function geocodeAction(q: string): Promise<GeocodeState> {
+  const api = await getApi();
+  const { data, error, response } = await api.GET("/v1/ops/geocode", {
+    params: { query: { q } },
+  });
+  if (error) {
+    if (response.status === 404) {
+      return {
+        ok: false,
+        unavailable: true,
+        error:
+          "Busca por endereço ainda não disponível neste ambiente — preencha lat/lng manualmente ou cole do Google Maps.",
+      };
+    }
+    if (response.status === 502) {
+      return { ok: false, error: "Provedor de geocoding fora do ar — tente novamente." };
+    }
+    return { ok: false, error: error.detail || error.title || "Falha ao buscar o endereço." };
+  }
+  return { ok: true, results: data?.candidates ?? [] };
 }

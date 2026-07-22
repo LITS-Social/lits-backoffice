@@ -393,10 +393,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the full venue directory (partner + public + listing) */
+        /**
+         * List the full venue directory (partner + public + listing)
+         * @description Each row carries lat/lng and the derived has_geo flag so the panel can surface venues missing a location (excluded from the app's distance ranking).
+         */
         get: operations["ops-list-franchises"];
         put?: never;
-        /** Create a new franchise */
+        /**
+         * Create a new franchise
+         * @description Optional lat (-90..90) and lng (-180..180) geolocate the venue and must be sent together; venues without geo are excluded from the app's distance ranking.
+         */
         post: operations["ops-create-franchise"];
         delete?: never;
         options?: never;
@@ -418,10 +424,30 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update a franchise (name and/or default slot price)
-         * @description Partial update: only the provided fields change (COALESCE keeps the rest). Returns the full updated franchise, including default_price_cents. 404 if the franchise does not exist.
+         * Update a franchise (name, default slot price, geo location and/or street address)
+         * @description Partial update: only the provided fields change (COALESCE keeps the rest). Geo: lat (-90..90) and lng (-180..180) must be sent together; clear_geo=true nulls both (mutually exclusive with lat/lng). street_address: unset = unchanged, empty string clears. Venues without geo are excluded from the app's distance ranking. Returns the full updated franchise, including default_price_cents, lat, lng, has_geo and street_address. 404 if the franchise does not exist.
          */
         patch: operations["ops-update-franchise"];
+        trace?: never;
+    };
+    "/v1/ops/geocode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Geocode a free-form street address into lat/lng candidates
+         * @description Server-side geocoding proxy for the franchise geo editor: staff type an address, pick a candidate, and the panel PATCHes the franchise with the chosen lat/lng. Returns up to 5 candidates (formatted_address, lat, lng), best first; an unresolvable address is a 200 with an empty list. Provider: Google Geocoding (region=br, language=pt-BR) when GOOGLE_GEOCODING_API_KEY is configured, Nominatim/OSM (countrycodes=br) otherwise — no key needed. Provider failure → 502.
+         */
+        get: operations["ops-geocode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/ops/live-matches": {
@@ -1389,8 +1415,20 @@ export interface components {
             franchise_id: string;
             /** @description Owning franchise kind: partner | public | listing */
             franchise_kind: string;
+            /**
+             * Format: double
+             * @description Owning franchise latitude, or null when not geolocated
+             */
+            franchise_lat: number | null;
+            /**
+             * Format: double
+             * @description Owning franchise longitude, or null when not geolocated
+             */
+            franchise_lng: number | null;
             /** @description Franchise display name */
             franchise_name: string;
+            /** @description Owning franchise street address, or null when unset */
+            franchise_street_address: string | null;
             /** @description Court UUID */
             id: string;
             /** @description Whether indoors */
@@ -1505,10 +1543,22 @@ export interface components {
              * @enum {string}
              */
             kind: "partner" | "public" | "listing";
+            /**
+             * Format: double
+             * @description Venue latitude (-90..90); must be provided together with lng; (0,0) is rejected
+             */
+            lat?: number;
+            /**
+             * Format: double
+             * @description Venue longitude (-180..180); must be provided together with lat; (0,0) is rejected
+             */
+            lng?: number;
             /** @description Display name */
             name: string;
             /** @description URL-safe slug (lowercase, hyphens) */
             slug: string;
+            /** @description Venue street address shown on app cards */
+            street_address?: string;
         };
         DailyCount: {
             /**
@@ -1715,14 +1765,28 @@ export interface components {
              * @description Default slot price in cents, or null when unset
              */
             default_price_cents: number | null;
+            /** @description True when lat and lng are set and not the (0,0) null-island sentinel */
+            has_geo: boolean;
             /** @description UUIDv4 franchise identifier */
             id: string;
             /** @description Venue kind: partner | public | listing */
             kind: string;
+            /**
+             * Format: double
+             * @description Venue latitude, or null when not geolocated
+             */
+            lat: number | null;
+            /**
+             * Format: double
+             * @description Venue longitude, or null when not geolocated
+             */
+            lng: number | null;
             /** @description Display name */
             name: string;
             /** @description URL-safe unique slug (citext) */
             slug: string;
+            /** @description Venue street address (shown on app cards), or null */
+            street_address: string | null;
         };
         FranchiseItem: {
             /**
@@ -1735,14 +1799,52 @@ export interface components {
             active: boolean;
             /** @description Brand discriminator (e.g. 'playtennis'), or null */
             brand: string | null;
+            /** @description True when lat and lng are set and not the (0,0) null-island sentinel; venues without geo are excluded from the app's distance ranking */
+            has_geo: boolean;
             /** @description UUIDv4 franchise identifier */
             id: string;
             /** @description Venue kind: partner | public | listing */
             kind: string;
+            /**
+             * Format: double
+             * @description Venue latitude, or null when not geolocated
+             */
+            lat: number | null;
+            /**
+             * Format: double
+             * @description Venue longitude, or null when not geolocated
+             */
+            lng: number | null;
             /** @description Display name */
             name: string;
             /** @description URL-safe unique slug (citext) */
             slug: string;
+            /** @description Venue street address (shown on app cards), or null */
+            street_address: string | null;
+        };
+        GeocodeBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/GeocodeBody.json
+             */
+            readonly $schema?: string;
+            /** @description Up to 5 matches, best first; empty when the address resolves to nothing */
+            candidates: components["schemas"]["GeocodeCandidate"][] | null;
+        };
+        GeocodeCandidate: {
+            /** @description Human-readable address as the provider formatted it */
+            formatted_address: string;
+            /**
+             * Format: double
+             * @description Latitude of the match
+             */
+            lat: number;
+            /**
+             * Format: double
+             * @description Longitude of the match
+             */
+            lng: number;
         };
         GrantBadgeBody: {
             /**
@@ -2924,13 +3026,27 @@ export interface components {
              * @example https://example.com/schemas/UpdateFranchiseBody.json
              */
             readonly $schema?: string;
+            /** @description When true, clears lat+lng (sets both to null); cannot be combined with lat/lng */
+            clear_geo?: boolean;
             /**
              * Format: int64
              * @description New default slot price in cents (unset = unchanged)
              */
             default_price_cents?: number;
+            /**
+             * Format: double
+             * @description New venue latitude (-90..90); must be provided together with lng; (0,0) is rejected (unset = unchanged)
+             */
+            lat?: number;
+            /**
+             * Format: double
+             * @description New venue longitude (-180..180); must be provided together with lat; (0,0) is rejected (unset = unchanged)
+             */
+            lng?: number;
             /** @description New display name (unset = unchanged) */
             name?: string;
+            /** @description New venue street address shown on app cards (unset = unchanged; empty string clears it) */
+            street_address?: string;
         };
         UpdateReportStatusRequestBody: {
             /**
@@ -3884,6 +4000,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FranchiseDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-geocode": {
+        parameters: {
+            query: {
+                /** @description Free-form street address to geocode (biased to Brazil) */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeBody"];
                 };
             };
             /** @description Error */
