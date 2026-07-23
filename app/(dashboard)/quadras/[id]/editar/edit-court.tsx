@@ -105,7 +105,7 @@ function SectionCard({
 }
 
 const primaryBtn =
-  "inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50";
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 
@@ -1121,7 +1121,7 @@ export function FranchiseSection({
         </div>
 
         <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2">
-          <p className="text-[10px] font-colus uppercase tracking-widest text-[var(--text-tertiary)]">
+          <p className="text-[10px] font-700 uppercase tracking-widest text-[var(--text-tertiary)]">
             Franchise ID
           </p>
           <p className="mt-1 font-mono text-[11px] text-[var(--text-secondary)]">{franchiseId}</p>

@@ -638,7 +638,7 @@ function CommentsDrawer({
                 type="button"
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-1.5 font-colus text-[8.5px] uppercase tracking-[0.16em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+                className="rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-1.5 font-700 text-[8.5px] uppercase tracking-[0.16em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
               >
                 {loadingMore ? "Carregando…" : "Carregar mais"}
               </button>

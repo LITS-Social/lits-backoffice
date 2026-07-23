@@ -52,13 +52,10 @@ const nav = [
   { id: "14", label: "Públicos",              href: "/publicos",               icon: Users2 },
 ];
 
-// Red is the money-and-moderation colour. Only these panels get to use it, and
-// only they roll up into the headline alert count: #06 payments, #07 courts
-// pulled by clubs, #09 reports awaiting moderation. #01 and #05 are ledgers —
-// 66 healthy upcoming matches and 21 cancellations that already happened are
-// things to LOOK at, not things to FIX. Summing every panel produced a red
-// "138 alertas" that was mostly just the beta working, and an alert that fires
-// on success is one people learn to ignore.
+// Red is the money-and-moderation colour. Only these panels get to use it:
+// #06 payments, #07 courts pulled by clubs, #09 reports awaiting moderation.
+// #01 and #05 are ledgers — healthy upcoming matches and cancellations that
+// already happened are things to LOOK at, not things to FIX.
 const ALERTING_PANELS = ["06", "07", "09"];
 
 export function Sidebar({
@@ -70,8 +67,6 @@ export function Sidebar({
   searchSlot?: React.ReactNode;
 }) {
   const pathname = usePathname();
-
-  const totalAlerts = ALERTING_PANELS.reduce((sum, id) => sum + (summary[id]?.count ?? 0), 0);
 
   return (
     <aside className="fixed top-0 left-0 z-30 flex h-screen w-60 flex-col border-r border-[var(--border)] bg-[var(--surface)]">
@@ -108,17 +103,6 @@ export function Sidebar({
               Beta Closed
             </span>
           </span>
-
-          {/* Serif numeral, red, no noun until it earns one. */}
-          {totalAlerts > 0 && (
-            <span
-              title={`${totalAlerts} em pagamentos, quadras e denúncias`}
-              className="flex items-baseline gap-1 text-[var(--color-error)]"
-            >
-              <span className="numeral text-[15px]">{totalAlerts}</span>
-              <span className="label-colus text-[8px] leading-none opacity-70">alertas</span>
-            </span>
-          )}
         </div>
       </div>
 

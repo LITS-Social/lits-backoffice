@@ -364,7 +364,7 @@ function FranchiseStep({
           type="button"
           onClick={handleSubmit}
           disabled={isPending}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {isPending ? "Criando…" : "Próximo"}
           <ChevronRight size={11} strokeWidth={2.5} />
@@ -615,7 +615,7 @@ function CourtStep({
           type="button"
           onClick={handleSubmit}
           disabled={isPending}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {isPending ? "Criando…" : "Criar quadra"}
           <Plus size={11} strokeWidth={2.5} />
@@ -640,13 +640,13 @@ function DoneStep({ courtId, slotsCreated, onNew }: { courtId: string; slotsCrea
         </p>
       </div>
       <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-3 text-left">
-        <p className="text-[10px] font-colus uppercase tracking-widest text-[var(--text-tertiary)]">ID da quadra</p>
+        <p className="text-[10px] font-700 uppercase tracking-widest text-[var(--text-tertiary)]">ID da quadra</p>
         <p className="mt-1 font-mono text-[12px] text-[var(--text-primary)]">{courtId}</p>
       </div>
       <div className="flex flex-col items-center gap-2">
         <Link
           href={`/quadras/${courtId}/editar`}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-colus text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
+          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
         >
           {slotsCreated > 0 ? "Editar quadra" : "Adicionar horários"}
           <ChevronRight size={11} strokeWidth={2.5} />
