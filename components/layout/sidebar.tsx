@@ -282,8 +282,8 @@ export function Sidebar({
         </p>
 
         {[
-          { href: "/quadras",      label: "Quadras",      Icon: LayoutGrid, exact: true },
-          { href: "/quadras/nova", label: "Nova Quadra",  Icon: PlusCircle, exact: false },
+          { href: "/academias",    label: "Academias",     Icon: LayoutGrid, exact: false },
+          { href: "/quadras/nova", label: "Nova Academia", Icon: PlusCircle, exact: false },
         ].map((item) => (
           <SecondaryNavItem key={item.href} {...item} pathname={pathname} />
         ))}

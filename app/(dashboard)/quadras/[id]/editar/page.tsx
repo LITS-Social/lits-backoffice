@@ -36,11 +36,11 @@ export default async function EditarQuadraPage({ params }: { params: Promise<{ i
     <div>
       <div className="px-8 pt-5">
         <Link
-          href="/quadras"
+          href={`/academias/${court.franchise_id}`}
           className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
         >
           <ArrowLeft size={12} strokeWidth={2} />
-          Quadras
+          {court.franchise_name}
         </Link>
       </div>
 

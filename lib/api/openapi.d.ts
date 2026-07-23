@@ -1442,6 +1442,36 @@ export interface components {
              * @description Owning franchise default slot price in cents, or null when unset
              */
             franchise_default_price_cents: number | null;
+            /**
+             * Format: int64
+             * @description Owning franchise Saturday last slot start hour, or null
+             */
+            franchise_hours_sat_end: number | null;
+            /**
+             * Format: int64
+             * @description Owning franchise Saturday first slot hour, or null
+             */
+            franchise_hours_sat_start: number | null;
+            /**
+             * Format: int64
+             * @description Owning franchise Sunday last slot start hour, or null
+             */
+            franchise_hours_sun_end: number | null;
+            /**
+             * Format: int64
+             * @description Owning franchise Sunday first slot hour, or null
+             */
+            franchise_hours_sun_start: number | null;
+            /**
+             * Format: int64
+             * @description Owning franchise Mon–Fri last slot start hour, or null
+             */
+            franchise_hours_week_end: number | null;
+            /**
+             * Format: int64
+             * @description Owning franchise Mon–Fri first slot hour, or null
+             */
+            franchise_hours_week_start: number | null;
             /** @description Owning franchise UUID */
             franchise_id: string;
             /** @description Owning franchise kind: partner | public | listing */
@@ -1828,6 +1858,36 @@ export interface components {
             default_price_cents: number | null;
             /** @description True when lat and lng are set and not the (0,0) null-island sentinel */
             has_geo: boolean;
+            /**
+             * Format: int64
+             * @description Saturday last slot start hour (inclusive), or null
+             */
+            hours_sat_end: number | null;
+            /**
+             * Format: int64
+             * @description Saturday first slot hour, or null
+             */
+            hours_sat_start: number | null;
+            /**
+             * Format: int64
+             * @description Sunday last slot start hour (inclusive), or null
+             */
+            hours_sun_end: number | null;
+            /**
+             * Format: int64
+             * @description Sunday first slot hour, or null
+             */
+            hours_sun_start: number | null;
+            /**
+             * Format: int64
+             * @description Mon–Fri last slot start hour (inclusive), or null
+             */
+            hours_week_end: number | null;
+            /**
+             * Format: int64
+             * @description Mon–Fri first slot hour, or null
+             */
+            hours_week_start: number | null;
             /** @description UUIDv4 franchise identifier */
             id: string;
             /** @description Venue kind: partner | public | listing */
@@ -3100,6 +3160,36 @@ export interface components {
              * @description New default slot price in cents (unset = unchanged)
              */
             default_price_cents?: number;
+            /**
+             * Format: int64
+             * @description Saturday last slot start hour, inclusive (unset = unchanged)
+             */
+            hours_sat_end?: number;
+            /**
+             * Format: int64
+             * @description Saturday first slot hour (unset = unchanged)
+             */
+            hours_sat_start?: number;
+            /**
+             * Format: int64
+             * @description Sunday last slot start hour, inclusive (unset = unchanged)
+             */
+            hours_sun_end?: number;
+            /**
+             * Format: int64
+             * @description Sunday first slot hour (unset = unchanged)
+             */
+            hours_sun_start?: number;
+            /**
+             * Format: int64
+             * @description Mon–Fri last slot start hour, inclusive (unset = unchanged)
+             */
+            hours_week_end?: number;
+            /**
+             * Format: int64
+             * @description Mon–Fri first slot hour (unset = unchanged)
+             */
+            hours_week_start?: number;
             /**
              * @description New venue kind: partner (paid club), public (free park) or listing (directory venue, synthesized free grid); changes how the app builds the grid at READ time — no slot rows touched (unset = unchanged)
              * @enum {string}

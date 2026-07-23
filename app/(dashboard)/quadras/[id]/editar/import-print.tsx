@@ -6,10 +6,10 @@ import { cn } from "@/lib/utils";
 import {
   applyPrintSlotsAction,
   parseSchedulePrintAction,
-  type AddSlotInput,
   type PrintCourt,
   type PrintKind,
 } from "./actions";
+import { blockDayLabel, buildPrintSlots, matchScore, validYmd } from "./print-lib";
 
 /**
  * "Importar do print" — upload a screenshot of the club's booking calendar and
@@ -20,50 +20,6 @@ import {
  * mapping stays editable, and nothing is written until the operator confirms.
  * A misread grid corrected in one glance beats a silent wrong write.
  */
-
-const SP_OFFSET = "-03:00"; // same wall-clock anchor as edit-court.tsx
-
-function spStartMs(ymd: string, hm: string): number {
-  return new Date(`${ymd}T${hm}:00${SP_OFFSET}`).getTime();
-}
-
-/** "HH:MM" → minutes since midnight; accepts "24:00" as end-of-day. */
-function toMin(hm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm.trim());
-  if (!m) return null;
-  const v = Number(m[1]) * 60 + Number(m[2]);
-  return v >= 0 && v <= 24 * 60 ? v : null;
-}
-
-function minToHm(min: number): string {
-  return `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
-}
-
-const validYmd = (y: string) => /^\d{4}-\d{2}-\d{2}$/.test(y);
-
-/** "2026-07-24" → "sex 24/07" — how a block announces its own day on the chip. */
-function blockDayLabel(ymd: string): string {
-  return new Intl.DateTimeFormat("pt-BR", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-  })
-    .format(new Date(`${ymd}T12:00:00`))
-    .replace(".", "");
-}
-
-/** Loose name match: shared normalized tokens between print column and court. */
-function matchScore(a: string, b: string): number {
-  const norm = (s: string) =>
-    s
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
-      .split(/[^a-z0-9]+/)
-      .filter(Boolean);
-  const ta = new Set(norm(a));
-  return norm(b).filter((t) => ta.has(t)).length;
-}
 
 const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
 const fieldClass =
@@ -79,14 +35,6 @@ type ApplyResult = {
   bookedConflicts: number;
   patchFailed: number;
 };
-
-/** The panel's slot-generation window: hourly starts 06:00 through 22:00
-    inclusive (CreateCourtBody's end_hour is last-start-inclusive, default 22).
-    In "available" mode this is the day that gets blocked around the offers;
-    in "occupied" mode with "completar o dia" it is the day that gets filled
-    as available around the blocks. */
-const WINDOW_START_MIN = 6 * 60;
-const WINDOW_LAST_START_MIN = 22 * 60;
 
 export function ImportPrintSection({
   courtId,
@@ -195,90 +143,13 @@ export function ImportPrintSection({
       return;
     }
 
-    const slots: AddSlotInput[] = [];
-    if (kind === "occupied") {
-      // Occupied blocks arrive as ranges; the grid sells hourly slots, so each
-      // block is sliced at the top of the hour (a 90-minute tail keeps its
-      // remainder). Everything imports as BLOCKED — the print shows what the
-      // club already sold, which is exactly what LITS must stop offering.
-      const occupiedByDay = new Map<string, { start: number; end: number }[]>();
-      for (const [i, block] of blocks.entries()) {
-        if (!checked.has(i)) continue;
-        const ymd = validYmd(block.date) ? block.date : date;
-        const start = toMin(block.start);
-        const end = toMin(block.end === "00:00" ? "24:00" : block.end);
-        if (start == null || end == null || end <= start) continue;
-        occupiedByDay.set(ymd, [...(occupiedByDay.get(ymd) ?? []), { start, end }]);
-        for (let t = start; t < end; t += 60) {
-          const sliceEnd = Math.min(t + 60, end);
-          const startMs = spStartMs(ymd, minToHm(t));
-          slots.push({
-            slot_start: new Date(startMs).toISOString(),
-            slot_end: new Date(startMs + (sliceEnd - t) * 60_000).toISOString(),
-            status: "blocked",
-          });
-        }
-      }
-      // "Completar o dia": every window hour the print does NOT mark occupied
-      // goes in as available, so the grid mirrors the club — bloqueado onde
-      // ocupado, disponível no resto. Price stays unset (franchise default).
-      if (fillDay) {
-        for (const [ymd, ranges] of occupiedByDay) {
-          for (let t = WINDOW_START_MIN; t <= WINDOW_LAST_START_MIN; t += 60) {
-            if (ranges.some((r) => r.start < t + 60 && r.end > t)) continue;
-            const startMs = spStartMs(ymd, minToHm(t));
-            slots.push({
-              slot_start: new Date(startMs).toISOString(),
-              slot_end: new Date(startMs + 3_600_000).toISOString(),
-              status: "available",
-            });
-          }
-        }
-      }
-    } else {
-      // Available mode: the club vouched only for what it listed. For every
-      // date with a checked offer, the whole generation window becomes hourly
-      // slots — offered hours sell as available, every other hour is blocked.
-      // Unchecking an offer simply drops it into the blocked rest.
-      const byDate = new Map<string, { start: number; end: number }[]>();
-      for (const [i, block] of blocks.entries()) {
-        if (!checked.has(i)) continue;
-        const ymd = validYmd(block.date) ? block.date : date;
-        const start = toMin(block.start);
-        const end = toMin(block.end === "00:00" ? "24:00" : block.end);
-        if (start == null || end == null || end <= start) continue;
-        const list = byDate.get(ymd);
-        if (list) list.push({ start, end });
-        else byDate.set(ymd, [{ start, end }]);
-      }
-      for (const [ymd, intervals] of byDate) {
-        // Union of the offers, so adjacent blocks cover a spanning hour.
-        const merged = [...intervals]
-          .sort((a, b) => a.start - b.start)
-          .reduce<{ start: number; end: number }[]>((acc, cur) => {
-            const last = acc[acc.length - 1];
-            if (last && cur.start <= last.end) last.end = Math.max(last.end, cur.end);
-            else acc.push({ ...cur });
-            return acc;
-          }, []);
-        const offered = (t: number) => merged.some((m) => m.start <= t && t + 60 <= m.end);
-        // The window's hours, plus offered hours outside it (an explicit late
-        // offer still sells; hours the club never mentioned are never touched).
-        const hours = new Set<number>();
-        for (let t = WINDOW_START_MIN; t <= WINDOW_LAST_START_MIN; t += 60) hours.add(t);
-        for (const m of merged) {
-          for (let t = Math.ceil(m.start / 60) * 60; t + 60 <= m.end; t += 60) hours.add(t);
-        }
-        for (const t of [...hours].sort((a, b) => a - b)) {
-          const startMs = spStartMs(ymd, minToHm(t));
-          slots.push({
-            slot_start: new Date(startMs).toISOString(),
-            slot_end: new Date(startMs + 60 * 60_000).toISOString(),
-            status: offered(t) ? "available" : "blocked",
-          });
-        }
-      }
-    }
+    const slots = buildPrintSlots({
+      kind,
+      blocks,
+      checked,
+      fallbackDate: date,
+      fillDay,
+    });
     if (slots.length === 0) {
       setError("Nenhum horário selecionado.");
       return;

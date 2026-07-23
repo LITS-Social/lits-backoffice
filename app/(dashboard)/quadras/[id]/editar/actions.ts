@@ -395,6 +395,68 @@ export async function applyPrintSlotsAction(
   if (slots.length === 0) return { ok: false, error: "Nenhum horário selecionado." };
   const api = await getApi();
 
+  // Read the affected window FIRST. The add endpoint skips existing instants,
+  // and reading after the write would make just-created slots
+  // indistinguishable from pre-existing ones (this once reported negative
+  // "created" counts): only what exists NOW needs reconciling.
+  const starts = slots.map((s) => new Date(s.slot_start).getTime());
+  const from = new Date(Math.min(...starts) - 1).toISOString();
+  const to = new Date(Math.max(...starts) + 1).toISOString();
+  const wanted = new Map(
+    slots.map((s) => [new Date(s.slot_start).toISOString(), s.status ?? "available"] as const)
+  );
+  const listRes = await api.GET("/v1/ops/courts/{id}/slots", {
+    params: { path: { id: courtId }, query: { from, to } },
+  });
+  if (listRes.error) {
+    return {
+      ok: false,
+      error:
+        "Falha ao conferir os horários existentes: " +
+        (listRes.error.detail || listRes.error.title || "erro"),
+    };
+  }
+
+  const requestedBlocked = slots.filter((s) => (s.status ?? "available") === "blocked").length;
+  let skippedBlocked = 0;
+  let skippedAvailable = 0;
+  let blockedExisting = 0;
+  let alreadyBlocked = 0;
+  let unblocked = 0;
+  let bookedConflicts = 0;
+  let patchFailed = 0;
+
+  // Reconcile the pre-existing slots toward each one's desired status
+  // ("available" mirrors the add endpoint's default for slots omitting it).
+  for (const slot of listRes.data.slots ?? []) {
+    const desired = wanted.get(new Date(slot.slot_start).toISOString());
+    if (!desired) continue;
+    // Which side of the request this existing instant came from — feeds the
+    // created split reported back (created = requested − skipped, per side).
+    if (desired === "blocked") skippedBlocked++;
+    else skippedAvailable++;
+    if (slot.status === "booked") {
+      // A real reservation in our ledger — surfaced either way: the club
+      // "selling" it again or "offering" it free are both conflicts.
+      bookedConflicts++;
+    } else if (slot.status === desired) {
+      if (desired === "blocked") alreadyBlocked++;
+      // desired available + already available = nothing to do, no counter.
+    } else {
+      const patch = await api.PATCH("/v1/ops/courts/{id}/slots/{slot_start}", {
+        params: { path: { id: courtId, slot_start: slot.slot_start } },
+        body:
+          desired === "blocked"
+            ? { status: "blocked", block_reason: "Importado do print do clube" }
+            : { status: "available", block_reason: "" },
+      });
+      if (patch.error) patchFailed++;
+      else if (desired === "blocked") blockedExisting++;
+      else unblocked++;
+    }
+  }
+
+  // Now create the missing instants; the endpoint skips the existing ones.
   const addRes = await api.POST("/v1/ops/courts/{id}/slots", {
     params: { path: { id: courtId } },
     body: { slots },
@@ -405,73 +467,6 @@ export async function applyPrintSlotsAction(
       error: addRes.error.detail || addRes.error.title || "Falha ao adicionar horários.",
     };
   }
-  const created = addRes.data.slots_created ?? 0;
-  const skipped = addRes.data.slots_skipped ?? 0;
-
-  // The created split reported back is derived by subtraction: created per
-  // side = requested per side − skipped per side (counted in the second pass).
-  const requestedBlocked = slots.filter((s) => (s.status ?? "available") === "blocked").length;
-
-  let skippedBlocked = 0;
-  let skippedAvailable = 0;
-  let blockedExisting = 0;
-  let alreadyBlocked = 0;
-  let unblocked = 0;
-  let bookedConflicts = 0;
-  let patchFailed = 0;
-
-  if (skipped > 0) {
-    // The skipped instants already exist in the grid — fetch the window and
-    // reconcile each one toward its desired status. "available" mirrors the
-    // add endpoint's default for slots that omitted the field.
-    const starts = slots.map((s) => new Date(s.slot_start).getTime());
-    const from = new Date(Math.min(...starts) - 1).toISOString();
-    const to = new Date(Math.max(...starts) + 1).toISOString();
-    const wanted = new Map(
-      slots.map((s) => [new Date(s.slot_start).toISOString(), s.status ?? "available"] as const)
-    );
-
-    const listRes = await api.GET("/v1/ops/courts/{id}/slots", {
-      params: { path: { id: courtId }, query: { from, to } },
-    });
-    if (listRes.error) {
-      return {
-        ok: false,
-        error:
-          `${created} criados, mas falhou ao conferir os já existentes: ` +
-          (listRes.error.detail || listRes.error.title || "erro"),
-      };
-    }
-
-    for (const slot of listRes.data.slots ?? []) {
-      const desired = wanted.get(new Date(slot.slot_start).toISOString());
-      if (!desired) continue;
-      // Which side of the request this skipped instant came from — feeds the
-      // created split reported back (created = requested − skipped, per side).
-      if (desired === "blocked") skippedBlocked++;
-      else skippedAvailable++;
-      if (slot.status === "booked") {
-        // A real reservation in our ledger — surfaced either way: the club
-        // "selling" it again or "offering" it free are both conflicts.
-        bookedConflicts++;
-      } else if (slot.status === desired) {
-        if (desired === "blocked") alreadyBlocked++;
-        // desired available + already available = nothing to do, no counter.
-      } else {
-        const patch = await api.PATCH("/v1/ops/courts/{id}/slots/{slot_start}", {
-          params: { path: { id: courtId, slot_start: slot.slot_start } },
-          body:
-            desired === "blocked"
-              ? { status: "blocked", block_reason: "Importado do print do clube" }
-              : { status: "available", block_reason: "" },
-        });
-        if (patch.error) patchFailed++;
-        else if (desired === "blocked") blockedExisting++;
-        else unblocked++;
-      }
-    }
-  }
-
   revalidatePath("/quadras");
   return {
     ok: true,
@@ -528,6 +523,15 @@ export async function updateFranchiseAction(
     clearGeo?: boolean;
     /** Shown on app cards (invite/booking). "" clears; absent = unchanged. */
     streetAddress?: string;
+    /** Operating hours — the academia's standard schedule. Sent as a set. */
+    hours?: {
+      weekStart: number;
+      weekEnd: number;
+      satStart: number;
+      satEnd: number;
+      sunStart: number;
+      sunEnd: number;
+    };
   }
 ): Promise<UpdateFranchiseState> {
   const api = await getApi();
@@ -549,6 +553,17 @@ export async function updateFranchiseAction(
       : {}),
     ...(params.clearGeo ? { clear_geo: true } : {}),
     ...(params.streetAddress !== undefined ? { street_address: params.streetAddress } : {}),
+    // Touched-only like the rest — a BFF without the columns 422s unknown keys.
+    ...(params.hours !== undefined
+      ? {
+          hours_week_start: params.hours.weekStart,
+          hours_week_end: params.hours.weekEnd,
+          hours_sat_start: params.hours.satStart,
+          hours_sat_end: params.hours.satEnd,
+          hours_sun_start: params.hours.sunStart,
+          hours_sun_end: params.hours.sunEnd,
+        }
+      : {}),
   };
 
   const { data, error, response } = await api.PATCH("/v1/ops/franchises/{id}", {
@@ -564,6 +579,14 @@ export async function updateFranchiseAction(
     // A deployed BFF that predates the kind field rejects the unknown key with
     // Huma's bare "validation failed" — name the real cause during the rollout
     // window instead of leaking that string.
+    if (response.status === 422 && params.hours !== undefined) {
+      return {
+        ok: false,
+        error:
+          "O backend em produção ainda não guarda o horário de funcionamento — publique o " +
+          "bff-backoffice (branch feat/delete-court-slots) e tente de novo.",
+      };
+    }
     if (response.status === 422 && params.kind !== undefined) {
       return {
         ok: false,

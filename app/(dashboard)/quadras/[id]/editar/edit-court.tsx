@@ -688,7 +688,7 @@ const KIND_HINTS: Record<FranchiseKind, string> = {
   listing: "Diretório: local não integrado — o app sintetiza a grade livre (06h–22h, R$ 0).",
 };
 
-function FranchiseSection({
+export function FranchiseSection({
   franchiseId,
   franchiseName,
   initialKind,
