@@ -315,8 +315,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Reprice a court going forward (all future, unbooked slots)
-         * @description Sets price_cents on every future slot that is still available (slot_start > now AND status = 'available'). Past slots and booked/blocked slots are never touched. Returns the number of slots repriced.
+         * Reprice a court going forward and set the franchise default
+         * @description Sets price_cents on every future slot that is not booked (slot_start > now AND status <> 'booked') — available and blocked alike, so a slot unblocked later resurfaces at the new price. Past slots and real bookings are never touched. The value also becomes the owning franchise's default_price_cents, inherited by future grid generation. Returns the number of slots repriced. 404 if the court does not exist.
          */
         post: operations["ops-reprice-court"];
         delete?: never;
@@ -343,7 +343,11 @@ export interface paths {
          * @description Hand-enters 1..200 slots for clubs that do not use the auto-generated window. Each slot_start is an absolute RFC3339 instant stored verbatim (no timezone conversion); slot_end defaults to slot_start + 1h and must be after it. When price_cents is omitted, the same precedence as the generated grid applies (franchise default → ADR-0063 hour band; public franchise → free). status defaults to 'available'. Runs in one transaction with ON CONFLICT (court_id, slot_start) DO NOTHING, returning slots_created + slots_skipped. 404 if the court does not exist.
          */
         post: operations["ops-add-court-slots"];
-        delete?: never;
+        /**
+         * Delete a court's entire availability grid (booked slots survive)
+         * @description Removes every available and blocked slot of the court — past and future — so staff can start over after a bad import or layout change. Slots with a real booking are NEVER deleted; the response reports how many were kept. Returns slots_deleted + booked_kept. 404 if the court does not exist.
+         */
+        delete: operations["ops-delete-court-slots"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1433,6 +1437,11 @@ export interface components {
         CourtListItem: {
             /** @description Owning franchise brand (e.g. 'playtennis'), or null */
             franchise_brand: string | null;
+            /**
+             * Format: int64
+             * @description Owning franchise default slot price in cents, or null when unset
+             */
+            franchise_default_price_cents: number | null;
             /** @description Owning franchise UUID */
             franchise_id: string;
             /** @description Owning franchise kind: partner | public | listing */
@@ -1625,6 +1634,24 @@ export interface components {
             readonly $schema?: string;
             /** @description UUIDv7 of the soft-deleted audience */
             id: string;
+        };
+        DeleteCourtSlotsResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteCourtSlotsResultBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Booked slots left untouched — real reservations are never deleted
+             */
+            booked_kept: number;
+            /**
+             * Format: int64
+             * @description Number of slots removed (available + blocked, past and future)
+             */
+            slots_deleted: number;
         };
         DeletePostCommentRequestBody: {
             /**
@@ -2848,7 +2875,7 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: int64
-             * @description New price in cents applied to all future available slots
+             * @description New price in cents applied to all future non-booked slots; also becomes the franchise default_price_cents
              */
             price_cents: number;
         };
@@ -3861,6 +3888,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AddCourtSlotsResultBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-court-slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Court UUID whose slots to delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteCourtSlotsResultBody"];
                 };
             };
             /** @description Error */

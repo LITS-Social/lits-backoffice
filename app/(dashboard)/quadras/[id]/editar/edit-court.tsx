@@ -18,6 +18,7 @@ import { cn, formatCurrency, reaisToCents } from "@/lib/utils";
 import type { CourtListItem } from "../../actions";
 import {
   addCourtSlotsAction,
+  deleteCourtSlotsAction,
   geocodeAction,
   regenerateAvailabilityAction,
   repriceCourtAction,
@@ -393,8 +394,19 @@ function CourtBasicsSection({ court }: { court: CourtListItem }) {
 
 /* ══ reprice ══════════════════════════════════════════════════════════════ */
 
-function RepriceSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
+function RepriceSection({
+  courtId,
+  defaultPriceCents,
+  onDone,
+}: {
+  courtId: string;
+  defaultPriceCents: number | null | undefined;
+  onDone: () => void;
+}) {
   const [price, setPrice] = useState("");
+  // The franchise default the BFF reported on load — updated locally after a
+  // reprice so "último preço" is always visible without a refetch.
+  const [currentDefault, setCurrentDefault] = useState<number | null>(defaultPriceCents ?? null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
@@ -414,6 +426,7 @@ function RepriceSection({ courtId, onDone }: { courtId: string; onDone: () => vo
         return;
       }
       setResult(res.slotsUpdated ?? 0);
+      setCurrentDefault(cents);
       setPrice("");
       onDone();
     });
@@ -422,9 +435,15 @@ function RepriceSection({ courtId, onDone }: { courtId: string; onDone: () => vo
   return (
     <SectionCard
       title="Repreçar"
-      description="Aplica o novo preço a todos os horários futuros ainda disponíveis. Horários passados, reservados ou bloqueados não são tocados."
+      description="Aplica o novo preço a todos os horários futuros — disponíveis e bloqueados — e o grava como preço padrão da academia (herdado pelas próximas grades). Horários passados e reservas reais não são tocados."
     >
       <div className="space-y-4">
+        <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 text-[12px] leading-snug text-[var(--text-secondary)]">
+          Preço padrão atual:{" "}
+          <span className="numeral text-[13px] text-[var(--text-primary)]">
+            {currentDefault != null ? formatCurrency(currentDefault) : "nenhum — fórmula por horário"}
+          </span>
+        </p>
         <div className="flex items-end gap-3">
           <div className="flex-1">
             <label htmlFor="reprice_value" className={labelClass}>
@@ -635,6 +654,7 @@ function FranchiseSection({
   franchiseId,
   franchiseName,
   initialKind,
+  initialDefaultPriceCents,
   initialLat,
   initialLng,
   initialAddress,
@@ -642,6 +662,7 @@ function FranchiseSection({
   franchiseId: string;
   franchiseName: string;
   initialKind: string;
+  initialDefaultPriceCents: number | null | undefined;
   initialLat: number | null | undefined;
   initialLng: number | null | undefined;
   initialAddress: string | null | undefined;
@@ -676,7 +697,9 @@ function FranchiseSection({
   const [geoError, setGeoError] = useState("");
   const [geoPending, startGeoTransition] = useTransition();
   const [error, setError] = useState("");
-  const [savedPrice, setSavedPrice] = useState<number | null | undefined>(undefined);
+  const [savedPrice, setSavedPrice] = useState<number | null | undefined>(
+    initialDefaultPriceCents
+  );
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -1390,6 +1413,89 @@ function SlotEditorSection({
   );
 }
 
+/* ══ wipe slots ═══════════════════════════════════════════════════════════ */
+
+function DeleteSlotsSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
+  const [armed, setArmed] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ deleted: number; kept: number } | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function run() {
+    setError("");
+    startTransition(async () => {
+      const res = await deleteCourtSlotsAction(courtId);
+      if (!res.ok) {
+        setError(res.error ?? "Falha ao apagar horários.");
+        setArmed(false);
+        return;
+      }
+      setResult({ deleted: res.slotsDeleted ?? 0, kept: res.bookedKept ?? 0 });
+      setArmed(false);
+      onDone();
+    });
+  }
+
+  return (
+    <SectionCard
+      title="Apagar todos os horários"
+      description="Remove a grade inteira desta quadra — disponíveis e bloqueados, passados e futuros — para recomeçar do zero (novo import ou nova grade). Horários com reserva real nunca são apagados."
+    >
+      <div className="space-y-4">
+        {!armed ? (
+          <button
+            type="button"
+            onClick={() => {
+              setResult(null);
+              setArmed(true);
+            }}
+            className="rounded-md border border-[var(--color-error)]/40 px-4 py-2 text-[12px] font-500 text-[var(--color-error)] transition-colors hover:bg-[var(--color-error-bg)]"
+          >
+            Apagar todos os horários…
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[12px] leading-snug text-[var(--text-secondary)]">
+              Tem certeza? Isso apaga toda a grade desta quadra. Não dá para desfazer — só
+              recriando (import ou gerar grade).
+            </span>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={run}
+              className="rounded-md bg-[var(--color-error)] px-4 py-2 text-[12px] font-600 text-white transition-opacity disabled:opacity-50"
+            >
+              {pending ? "Apagando…" : "Confirmar exclusão"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setArmed(false)}
+              className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+
+        {error && <ErrorBanner message={error} />}
+        {result && (
+          <SuccessNote>
+            {result.deleted.toLocaleString("pt-BR")} horário{result.deleted === 1 ? "" : "s"}{" "}
+            apagado{result.deleted === 1 ? "" : "s"}
+            {result.kept > 0 && (
+              <>
+                {" "}
+                · <strong>{result.kept} com reserva real mantidos</strong>
+              </>
+            )}
+            .
+          </SuccessNote>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 /* ══ add slots ════════════════════════════════════════════════════════════ */
 
 function AddSlotsSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
@@ -1742,7 +1848,11 @@ export function EditCourt({
         </p>
       )}
       <CourtBasicsSection court={court} />
-      <RepriceSection courtId={court.id} onDone={reloadSlots} />
+      <RepriceSection
+        courtId={court.id}
+        defaultPriceCents={court.franchise_default_price_cents}
+        onDone={reloadSlots}
+      />
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />
       {/* "#academia" — the courts list deep-links here via "Editar academia". */}
       <span id="academia" className="block scroll-mt-6" aria-hidden />
@@ -1750,6 +1860,7 @@ export function EditCourt({
         franchiseId={court.franchise_id}
         franchiseName={court.franchise_name}
         initialKind={court.franchise_kind}
+        initialDefaultPriceCents={court.franchise_default_price_cents}
         initialLat={court.franchise_lat}
         initialLng={court.franchise_lng}
         initialAddress={court.franchise_street_address}
@@ -1768,6 +1879,7 @@ export function EditCourt({
         error={slotsError}
         onSlotUpdated={handleSlotUpdated}
       />
+      <DeleteSlotsSection courtId={court.id} onDone={reloadSlots} />
     </div>
   );
 }

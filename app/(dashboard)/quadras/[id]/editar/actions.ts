@@ -333,8 +333,10 @@ export async function parseSchedulePrintAction(formData: FormData): Promise<Pars
 
 export type ApplyPrintState = {
   ok: boolean;
-  created?: number;
-  /** Slots that already existed as available and were PATCHed to blocked. */
+  /** New slots created, split by the status they were created with. */
+  createdBlocked?: number;
+  createdAvailable?: number;
+  /** Existing slots PATCHed to blocked because the print shows them occupied. */
   blockedExisting?: number;
   /** Slots already blocked before the import — nothing to do. */
   alreadyBlocked?: number;
@@ -349,13 +351,13 @@ export type ApplyPrintState = {
 
 /**
  * Applies a print's slots with each one's OWN desired status ("blocked" for
- * what the club sold; "available" for what it offered — the disponíveis mode
- * blocks the rest of the day around the offers). The add endpoint skips
- * instants that already have a slot, so this runs in two passes: create the
- * missing ones, then re-read the affected window and PATCH the pre-existing
- * slots toward their desired status (available→blocked, blocked→available).
- * Slots with a real booking are reported, never overwritten — the club's print
- * does not outrank a paid reservation in our own ledger.
+ * what the club sold; "available" for what it offered or for the free rest of
+ * the day in "completar o dia"). The add endpoint skips instants that already
+ * have a slot, so this runs in two passes: create the missing ones, then
+ * re-read the affected window and PATCH the pre-existing slots toward their
+ * desired status (available→blocked, blocked→available). Slots with a real
+ * booking are reported, never overwritten — the club's print does not outrank
+ * a paid reservation in our own ledger.
  */
 export async function applyPrintSlotsAction(
   courtId: string,
@@ -377,6 +379,12 @@ export async function applyPrintSlotsAction(
   const created = addRes.data.slots_created ?? 0;
   const skipped = addRes.data.slots_skipped ?? 0;
 
+  // The created split reported back is derived by subtraction: created per
+  // side = requested per side − skipped per side (counted in the second pass).
+  const requestedBlocked = slots.filter((s) => (s.status ?? "available") === "blocked").length;
+
+  let skippedBlocked = 0;
+  let skippedAvailable = 0;
   let blockedExisting = 0;
   let alreadyBlocked = 0;
   let unblocked = 0;
@@ -409,6 +417,10 @@ export async function applyPrintSlotsAction(
     for (const slot of listRes.data.slots ?? []) {
       const desired = wanted.get(new Date(slot.slot_start).toISOString());
       if (!desired) continue;
+      // Which side of the request this skipped instant came from — feeds the
+      // created split reported back (created = requested − skipped, per side).
+      if (desired === "blocked") skippedBlocked++;
+      else skippedAvailable++;
       if (slot.status === "booked") {
         // A real reservation in our ledger — surfaced either way: the club
         // "selling" it again or "offering" it free are both conflicts.
@@ -434,13 +446,43 @@ export async function applyPrintSlotsAction(
   revalidatePath("/quadras");
   return {
     ok: true,
-    created,
+    createdBlocked: requestedBlocked - skippedBlocked,
+    createdAvailable: slots.length - requestedBlocked - skippedAvailable,
     blockedExisting,
     alreadyBlocked,
     unblocked,
     bookedConflicts,
     patchFailed,
   };
+}
+
+export type DeleteSlotsState = {
+  ok: boolean;
+  slotsDeleted?: number;
+  bookedKept?: number;
+  error?: string;
+};
+
+/** Wipes the court's grid (available + blocked, past and future). Booked slots
+    survive on the BFF side — a real reservation outranks a cleanup. */
+export async function deleteCourtSlotsAction(id: string): Promise<DeleteSlotsState> {
+  const api = await getApi();
+  const { data, error, response } = await api.DELETE("/v1/ops/courts/{id}/slots", {
+    params: { path: { id } },
+  });
+  if (error) {
+    // A deployed BFF that predates this endpoint 404s the route itself.
+    if (response.status === 404 && !error.detail?.includes("court")) {
+      return {
+        ok: false,
+        error:
+          "O backend em produção ainda não tem este endpoint — publique o bff-backoffice e tente de novo.",
+      };
+    }
+    return { ok: false, error: error.detail || error.title || "Falha ao apagar horários." };
+  }
+  revalidatePath("/quadras");
+  return { ok: true, slotsDeleted: data.slots_deleted, bookedKept: data.booked_kept };
 }
 
 export async function updateFranchiseAction(
@@ -489,6 +531,18 @@ export async function updateFranchiseAction(
     // The form pre-validates it, so this mapping is belt-and-braces.
     if (response.status === 400 && params.lat === 0 && params.lng === 0) {
       return { ok: false, error: "O par (0, 0) não é uma localização válida — confira as coordenadas." };
+    }
+    // A deployed BFF that predates the kind field rejects the unknown key with
+    // Huma's bare "validation failed" — name the real cause during the rollout
+    // window instead of leaking that string.
+    if (response.status === 422 && params.kind !== undefined) {
+      return {
+        ok: false,
+        error:
+          "O backend em produção ainda não aceita mudança de tipo — publique o " +
+          "bff-backoffice com o campo kind (lits-backend, branch feat/franchise-kind-update) " +
+          "e tente de novo. Os demais campos salvam se você desfazer a troca de tipo.",
+      };
     }
     return { ok: false, error: error.detail || error.title || "Falha ao atualizar franquia." };
   }
