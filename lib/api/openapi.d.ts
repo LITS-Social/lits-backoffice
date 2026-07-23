@@ -315,8 +315,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Reprice a court going forward (all future, unbooked slots)
-         * @description Sets price_cents on every future slot that is still available (slot_start > now AND status = 'available'). Past slots and booked/blocked slots are never touched. Returns the number of slots repriced.
+         * Reprice a court going forward and set the franchise default
+         * @description Sets price_cents on every future slot that is not booked (slot_start > now AND status <> 'booked') — available and blocked alike, so a slot unblocked later resurfaces at the new price. Past slots and real bookings are never touched. The value also becomes the owning franchise's default_price_cents, inherited by future grid generation. Returns the number of slots repriced. 404 if the court does not exist.
          */
         post: operations["ops-reprice-court"];
         delete?: never;
@@ -1433,6 +1433,11 @@ export interface components {
         CourtListItem: {
             /** @description Owning franchise brand (e.g. 'playtennis'), or null */
             franchise_brand: string | null;
+            /**
+             * Format: int64
+             * @description Owning franchise default slot price in cents, or null when unset
+             */
+            franchise_default_price_cents: number | null;
             /** @description Owning franchise UUID */
             franchise_id: string;
             /** @description Owning franchise kind: partner | public | listing */
@@ -2848,7 +2853,7 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: int64
-             * @description New price in cents applied to all future available slots
+             * @description New price in cents applied to all future non-booked slots; also becomes the franchise default_price_cents
              */
             price_cents: number;
         };

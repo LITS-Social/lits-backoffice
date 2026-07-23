@@ -315,23 +315,29 @@ export async function parseSchedulePrintAction(formData: FormData): Promise<Pars
 
 export type ApplyPrintState = {
   ok: boolean;
-  created?: number;
-  /** Slots that already existed as available and were PATCHed to blocked. */
+  /** New slots created, split by the status they were created with. */
+  createdBlocked?: number;
+  createdAvailable?: number;
+  /** Existing slots PATCHed to blocked because the print shows them occupied. */
   blockedExisting?: number;
-  /** Slots already blocked before the import — nothing to do. */
-  alreadyBlocked?: number;
+  /** Existing blocked slots PATCHed back to available — the print shows them open. */
+  freedExisting?: number;
+  /** Existing slots that already matched the print — nothing to do. */
+  alreadyOk?: number;
   /** Slots with a real booking at that instant — never touched. */
   bookedConflicts?: number;
-  /** Pre-existing available slots whose block PATCH failed — retry-worthy. */
+  /** Existing slots whose status PATCH failed — retry-worthy. */
   patchFailed?: number;
   error?: string;
 };
 
 /**
- * Applies the occupied blocks of a print as BLOCKED slots. The add endpoint
- * skips instants that already have a slot, so this runs in two passes:
- * create the missing ones, then re-read the affected window and PATCH the
- * pre-existing available slots to blocked. Slots with a real booking are
+ * Applies a print as the day's source of truth. Each requested slot carries the
+ * status the print implies — blocked for occupied blocks, available for the
+ * free hours around them. The add endpoint skips instants that already have a
+ * slot, so this runs in two passes: create the missing ones, then re-read the
+ * window and PATCH pre-existing slots whose status contradicts the print
+ * (available→blocked AND blocked→available). Slots with a real booking are
  * reported, never overwritten — the club's print does not outrank a paid
  * reservation in our own ledger.
  */
@@ -355,18 +361,27 @@ export async function applyPrintSlotsAction(
   const created = addRes.data.slots_created ?? 0;
   const skipped = addRes.data.slots_skipped ?? 0;
 
+  // What the print wants at each instant. Skipped instants are resolved against
+  // this map in the second pass; the created split is derived by subtraction.
+  const desired = new Map(
+    slots.map((s) => [new Date(s.slot_start).toISOString(), s.status ?? "blocked"])
+  );
+  const requestedBlocked = slots.filter((s) => (s.status ?? "blocked") === "blocked").length;
+
+  let skippedBlocked = 0;
+  let skippedAvailable = 0;
   let blockedExisting = 0;
-  let alreadyBlocked = 0;
+  let freedExisting = 0;
+  let alreadyOk = 0;
   let bookedConflicts = 0;
   let patchFailed = 0;
 
   if (skipped > 0) {
     // The skipped instants already exist in the grid — fetch the window and
-    // block the ones still selling as available.
+    // flip the ones whose status contradicts the print.
     const starts = slots.map((s) => new Date(s.slot_start).getTime());
     const from = new Date(Math.min(...starts) - 1).toISOString();
     const to = new Date(Math.max(...starts) + 1).toISOString();
-    const wanted = new Set(slots.map((s) => new Date(s.slot_start).toISOString()));
 
     const listRes = await api.GET("/v1/ops/courts/{id}/slots", {
       params: { path: { id: courtId }, query: { from, to } },
@@ -381,24 +396,41 @@ export async function applyPrintSlotsAction(
     }
 
     for (const slot of listRes.data.slots ?? []) {
-      if (!wanted.has(new Date(slot.slot_start).toISOString())) continue;
-      if (slot.status === "blocked") {
-        alreadyBlocked++;
+      const want = desired.get(new Date(slot.slot_start).toISOString());
+      if (!want) continue;
+      if (want === "blocked") skippedBlocked++;
+      else skippedAvailable++;
+
+      if (slot.status === want) {
+        alreadyOk++;
       } else if (slot.status === "booked") {
         bookedConflicts++;
       } else {
         const patch = await api.PATCH("/v1/ops/courts/{id}/slots/{slot_start}", {
           params: { path: { id: courtId, slot_start: slot.slot_start } },
-          body: { status: "blocked", block_reason: "Importado do print do clube" },
+          body:
+            want === "blocked"
+              ? { status: "blocked", block_reason: "Importado do print do clube" }
+              : { status: "available" },
         });
         if (patch.error) patchFailed++;
-        else blockedExisting++;
+        else if (want === "blocked") blockedExisting++;
+        else freedExisting++;
       }
     }
   }
 
   revalidatePath("/quadras");
-  return { ok: true, created, blockedExisting, alreadyBlocked, bookedConflicts, patchFailed };
+  return {
+    ok: true,
+    createdBlocked: requestedBlocked - skippedBlocked,
+    createdAvailable: slots.length - requestedBlocked - skippedAvailable,
+    blockedExisting,
+    freedExisting,
+    alreadyOk,
+    bookedConflicts,
+    patchFailed,
+  };
 }
 
 export async function updateFranchiseAction(

@@ -393,8 +393,19 @@ function CourtBasicsSection({ court }: { court: CourtListItem }) {
 
 /* ══ reprice ══════════════════════════════════════════════════════════════ */
 
-function RepriceSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
+function RepriceSection({
+  courtId,
+  defaultPriceCents,
+  onDone,
+}: {
+  courtId: string;
+  defaultPriceCents: number | null | undefined;
+  onDone: () => void;
+}) {
   const [price, setPrice] = useState("");
+  // The franchise default the BFF reported on load — updated locally after a
+  // reprice so "último preço" is always visible without a refetch.
+  const [currentDefault, setCurrentDefault] = useState<number | null>(defaultPriceCents ?? null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
@@ -414,6 +425,7 @@ function RepriceSection({ courtId, onDone }: { courtId: string; onDone: () => vo
         return;
       }
       setResult(res.slotsUpdated ?? 0);
+      setCurrentDefault(cents);
       setPrice("");
       onDone();
     });
@@ -422,9 +434,15 @@ function RepriceSection({ courtId, onDone }: { courtId: string; onDone: () => vo
   return (
     <SectionCard
       title="Repreçar"
-      description="Aplica o novo preço a todos os horários futuros ainda disponíveis. Horários passados, reservados ou bloqueados não são tocados."
+      description="Aplica o novo preço a todos os horários futuros — disponíveis e bloqueados — e o grava como preço padrão da academia (herdado pelas próximas grades). Horários passados e reservas reais não são tocados."
     >
       <div className="space-y-4">
+        <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 text-[12px] leading-snug text-[var(--text-secondary)]">
+          Preço padrão atual:{" "}
+          <span className="numeral text-[13px] text-[var(--text-primary)]">
+            {currentDefault != null ? formatCurrency(currentDefault) : "nenhum — fórmula por horário"}
+          </span>
+        </p>
         <div className="flex items-end gap-3">
           <div className="flex-1">
             <label htmlFor="reprice_value" className={labelClass}>
@@ -635,6 +653,7 @@ function FranchiseSection({
   franchiseId,
   franchiseName,
   initialKind,
+  initialDefaultPriceCents,
   initialLat,
   initialLng,
   initialAddress,
@@ -642,6 +661,7 @@ function FranchiseSection({
   franchiseId: string;
   franchiseName: string;
   initialKind: string;
+  initialDefaultPriceCents: number | null | undefined;
   initialLat: number | null | undefined;
   initialLng: number | null | undefined;
   initialAddress: string | null | undefined;
@@ -669,7 +689,9 @@ function FranchiseSection({
   const [geoError, setGeoError] = useState("");
   const [geoPending, startGeoTransition] = useTransition();
   const [error, setError] = useState("");
-  const [savedPrice, setSavedPrice] = useState<number | null | undefined>(undefined);
+  const [savedPrice, setSavedPrice] = useState<number | null | undefined>(
+    initialDefaultPriceCents
+  );
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -1699,7 +1721,11 @@ export function EditCourt({
         </p>
       )}
       <CourtBasicsSection court={court} />
-      <RepriceSection courtId={court.id} onDone={reloadSlots} />
+      <RepriceSection
+        courtId={court.id}
+        defaultPriceCents={court.franchise_default_price_cents}
+        onDone={reloadSlots}
+      />
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />
       {/* "#academia" — the courts list deep-links here via "Editar academia". */}
       <span id="academia" className="block scroll-mt-6" aria-hidden />
@@ -1707,6 +1733,7 @@ export function EditCourt({
         franchiseId={court.franchise_id}
         franchiseName={court.franchise_name}
         initialKind={court.franchise_kind}
+        initialDefaultPriceCents={court.franchise_default_price_cents}
         initialLat={court.franchise_lat}
         initialLng={court.franchise_lng}
         initialAddress={court.franchise_street_address}

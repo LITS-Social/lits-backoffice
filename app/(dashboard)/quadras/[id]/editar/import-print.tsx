@@ -68,12 +68,19 @@ const fieldClass =
 
 type Parsed = { date: string; courts: PrintCourt[] };
 type ApplyResult = {
-  created: number;
+  createdBlocked: number;
+  createdAvailable: number;
   blockedExisting: number;
-  alreadyBlocked: number;
+  freedExisting: number;
+  alreadyOk: number;
   bookedConflicts: number;
   patchFailed: number;
 };
+
+/** The day window the import lays down when "completar o dia" is on — mirrors
+    the app's grid (first start 06:00, last start 23:00). */
+const DAY_START_HOUR = 6;
+const DAY_END_HOUR = 24;
 
 export function ImportPrintSection({
   courtId,
@@ -91,6 +98,7 @@ export function ImportPrintSection({
   const [courtIdx, setCourtIdx] = useState(0);
   const [date, setDate] = useState("");
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [fillDay, setFillDay] = useState(true);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ApplyResult | null>(null);
   const [parsing, startParsing] = useTransition();
@@ -184,12 +192,14 @@ export function ImportPrintSection({
     // remainder). Everything imports as BLOCKED — the print shows what the
     // club already sold, which is exactly what LITS must stop offering.
     const slots: AddSlotInput[] = [];
+    const occupiedByDay = new Map<string, [number, number][]>();
     for (const [i, block] of blocks.entries()) {
       if (!checked.has(i)) continue;
       const ymd = validYmd(block.date) ? block.date : date;
       const start = toMin(block.start);
       const end = toMin(block.end === "00:00" ? "24:00" : block.end);
       if (start == null || end == null || end <= start) continue;
+      occupiedByDay.set(ymd, [...(occupiedByDay.get(ymd) ?? []), [start, end]]);
       for (let t = start; t < end; t += 60) {
         const sliceEnd = Math.min(t + 60, end);
         const startMs = spStartMs(ymd, minToHm(t));
@@ -205,6 +215,27 @@ export function ImportPrintSection({
       return;
     }
 
+    // "Completar o dia": every hour of the imported days that the print does
+    // NOT mark occupied goes in as available — the grid ends up mirroring the
+    // club (bloqueado onde ocupado, disponível no resto), instead of a day
+    // that exists only where the red blocks were. Price stays unset so the
+    // franchise default (o "preço padrão") applies.
+    if (fillDay) {
+      for (const [ymd, ranges] of occupiedByDay) {
+        for (let h = DAY_START_HOUR; h < DAY_END_HOUR; h++) {
+          const hourStart = h * 60;
+          const hourEnd = hourStart + 60;
+          if (ranges.some(([a, b]) => a < hourEnd && b > hourStart)) continue;
+          const startMs = spStartMs(ymd, minToHm(hourStart));
+          slots.push({
+            slot_start: new Date(startMs).toISOString(),
+            slot_end: new Date(startMs + 3_600_000).toISOString(),
+            status: "available",
+          });
+        }
+      }
+    }
+
     startApplying(async () => {
       const res = await applyPrintSlotsAction(courtId, slots);
       if (!res.ok) {
@@ -212,9 +243,11 @@ export function ImportPrintSection({
         return;
       }
       setResult({
-        created: res.created ?? 0,
+        createdBlocked: res.createdBlocked ?? 0,
+        createdAvailable: res.createdAvailable ?? 0,
         blockedExisting: res.blockedExisting ?? 0,
-        alreadyBlocked: res.alreadyBlocked ?? 0,
+        freedExisting: res.freedExisting ?? 0,
+        alreadyOk: res.alreadyOk ?? 0,
         bookedConflicts: res.bookedConflicts ?? 0,
         patchFailed: res.patchFailed ?? 0,
       });
@@ -385,14 +418,41 @@ export function ImportPrintSection({
               )}
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setFillDay((v) => !v)}
+                aria-pressed={fillDay}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-[11.5px] font-500 leading-snug transition-colors",
+                  fillDay
+                    ? "border-[var(--color-success)]/40 bg-[var(--color-success-bg)] text-[var(--color-success)]"
+                    : "border-[var(--border)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border",
+                    fillDay ? "border-current bg-current/10" : "border-[var(--border-strong)]"
+                  )}
+                >
+                  {fillDay && <Check size={10} strokeWidth={3} />}
+                </span>
+                Completar o dia: o resto (06h–00h) entra como disponível, no preço padrão
+              </button>
+
               <button
                 type="button"
                 onClick={submit}
                 disabled={applying || checked.size === 0}
                 className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {applying ? "Aplicando…" : `Bloquear ${checked.size} selecionado${checked.size === 1 ? "" : "s"}`}
+                {applying
+                  ? "Aplicando…"
+                  : fillDay
+                    ? `Aplicar dia completo (${checked.size} bloqueado${checked.size === 1 ? "" : "s"})`
+                    : `Bloquear ${checked.size} selecionado${checked.size === 1 ? "" : "s"}`}
               </button>
             </div>
           </>
@@ -409,10 +469,11 @@ export function ImportPrintSection({
           <p className="flex items-center gap-2 rounded-lg border border-[var(--color-success)]/25 bg-[var(--color-success-bg)] px-3 py-2.5 text-[12px] leading-snug text-[var(--color-success)]">
             <Check size={13} strokeWidth={2.5} className="shrink-0" />
             <span>
-              {result.created} criado{result.created === 1 ? "" : "s"} como bloqueado
-              {result.created === 1 ? "" : "s"}
-              {result.blockedExisting > 0 && <> · {result.blockedExisting} já existiam e foram bloqueados</>}
-              {result.alreadyBlocked > 0 && <> · {result.alreadyBlocked} já estavam bloqueados</>}
+              {result.createdBlocked} bloqueado{result.createdBlocked === 1 ? "" : "s"} e{" "}
+              {result.createdAvailable} disponíve{result.createdAvailable === 1 ? "l" : "is"} criados
+              {result.blockedExisting > 0 && <> · {result.blockedExisting} existentes bloqueados</>}
+              {result.freedExisting > 0 && <> · {result.freedExisting} existentes liberados</>}
+              {result.alreadyOk > 0 && <> · {result.alreadyOk} já estavam certos</>}
               {result.bookedConflicts > 0 && (
                 <>
                   {" "}
@@ -426,7 +487,7 @@ export function ImportPrintSection({
         {result && result.patchFailed > 0 && (
           <p className="flex items-start gap-2 rounded-lg border border-[var(--color-error)]/25 bg-[var(--color-error-bg)] px-3 py-2.5 text-[12px] leading-snug text-[var(--color-error)]">
             <AlertCircle size={13} className="mt-px shrink-0" />
-            {result.patchFailed} falharam ao bloquear — tente de novo.
+            {result.patchFailed} falharam ao atualizar — tente de novo.
           </p>
         )}
       </div>
