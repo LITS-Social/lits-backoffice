@@ -18,6 +18,7 @@ import { cn, formatCurrency, reaisToCents } from "@/lib/utils";
 import type { CourtListItem } from "../../actions";
 import {
   addCourtSlotsAction,
+  deleteCourtSlotsAction,
   geocodeAction,
   regenerateAvailabilityAction,
   repriceCourtAction,
@@ -1369,6 +1370,89 @@ function SlotEditorSection({
   );
 }
 
+/* ══ wipe slots ═══════════════════════════════════════════════════════════ */
+
+function DeleteSlotsSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
+  const [armed, setArmed] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ deleted: number; kept: number } | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function run() {
+    setError("");
+    startTransition(async () => {
+      const res = await deleteCourtSlotsAction(courtId);
+      if (!res.ok) {
+        setError(res.error ?? "Falha ao apagar horários.");
+        setArmed(false);
+        return;
+      }
+      setResult({ deleted: res.slotsDeleted ?? 0, kept: res.bookedKept ?? 0 });
+      setArmed(false);
+      onDone();
+    });
+  }
+
+  return (
+    <SectionCard
+      title="Apagar todos os horários"
+      description="Remove a grade inteira desta quadra — disponíveis e bloqueados, passados e futuros — para recomeçar do zero (novo import ou nova grade). Horários com reserva real nunca são apagados."
+    >
+      <div className="space-y-4">
+        {!armed ? (
+          <button
+            type="button"
+            onClick={() => {
+              setResult(null);
+              setArmed(true);
+            }}
+            className="rounded-md border border-[var(--color-error)]/40 px-4 py-2 text-[12px] font-500 text-[var(--color-error)] transition-colors hover:bg-[var(--color-error-bg)]"
+          >
+            Apagar todos os horários…
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[12px] leading-snug text-[var(--text-secondary)]">
+              Tem certeza? Isso apaga toda a grade desta quadra. Não dá para desfazer — só
+              recriando (import ou gerar grade).
+            </span>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={run}
+              className="rounded-md bg-[var(--color-error)] px-4 py-2 text-[12px] font-600 text-white transition-opacity disabled:opacity-50"
+            >
+              {pending ? "Apagando…" : "Confirmar exclusão"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setArmed(false)}
+              className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+
+        {error && <ErrorBanner message={error} />}
+        {result && (
+          <SuccessNote>
+            {result.deleted.toLocaleString("pt-BR")} horário{result.deleted === 1 ? "" : "s"}{" "}
+            apagado{result.deleted === 1 ? "" : "s"}
+            {result.kept > 0 && (
+              <>
+                {" "}
+                · <strong>{result.kept} com reserva real mantidos</strong>
+              </>
+            )}
+            .
+          </SuccessNote>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 /* ══ add slots ════════════════════════════════════════════════════════════ */
 
 function AddSlotsSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
@@ -1752,6 +1836,7 @@ export function EditCourt({
         error={slotsError}
         onSlotUpdated={handleSlotUpdated}
       />
+      <DeleteSlotsSection courtId={court.id} onDone={reloadSlots} />
     </div>
   );
 }

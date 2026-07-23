@@ -433,6 +433,35 @@ export async function applyPrintSlotsAction(
   };
 }
 
+export type DeleteSlotsState = {
+  ok: boolean;
+  slotsDeleted?: number;
+  bookedKept?: number;
+  error?: string;
+};
+
+/** Wipes the court's grid (available + blocked, past and future). Booked slots
+    survive on the BFF side — a real reservation outranks a cleanup. */
+export async function deleteCourtSlotsAction(id: string): Promise<DeleteSlotsState> {
+  const api = await getApi();
+  const { data, error, response } = await api.DELETE("/v1/ops/courts/{id}/slots", {
+    params: { path: { id } },
+  });
+  if (error) {
+    // A deployed BFF that predates this endpoint 404s the route itself.
+    if (response.status === 404 && !error.detail?.includes("court")) {
+      return {
+        ok: false,
+        error:
+          "O backend em produção ainda não tem este endpoint — publique o bff-backoffice e tente de novo.",
+      };
+    }
+    return { ok: false, error: error.detail || error.title || "Falha ao apagar horários." };
+  }
+  revalidatePath("/quadras");
+  return { ok: true, slotsDeleted: data.slots_deleted, bookedKept: data.booked_kept };
+}
+
 export async function updateFranchiseAction(
   id: string,
   params: {
