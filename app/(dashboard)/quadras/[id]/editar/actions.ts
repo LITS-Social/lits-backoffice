@@ -57,19 +57,48 @@ export async function repriceCourtAction(id: string, priceCents: number): Promis
 
 export async function regenerateAvailabilityAction(
   id: string,
-  params: { startHour: number; endHour: number; daysForward: number; priceCents?: number | null }
+  params: {
+    startHour: number;
+    endHour: number;
+    daysForward: number;
+    priceCents?: number | null;
+    /** Weekend windows; only sent when they differ from the base window, so
+        the request stays compatible with a BFF that predates the field. */
+    saturday?: { startHour: number; endHour: number };
+    sunday?: { startHour: number; endHour: number };
+  }
 ): Promise<RegenerateState> {
   const api = await getApi();
-  const { data, error } = await api.POST("/v1/ops/courts/{id}/regenerate-availability", {
+  const differs = (w?: { startHour: number; endHour: number }) =>
+    w && (w.startHour !== params.startHour || w.endHour !== params.endHour) ? w : undefined;
+  const saturday = differs(params.saturday);
+  const sunday = differs(params.sunday);
+
+  const { data, error, response } = await api.POST("/v1/ops/courts/{id}/regenerate-availability", {
     params: { path: { id } },
     body: {
       start_hour: params.startHour,
       end_hour: params.endHour,
       days_forward: params.daysForward,
       ...(params.priceCents != null ? { price_cents: params.priceCents } : {}),
+      ...(saturday
+        ? { saturday: { start_hour: saturday.startHour, end_hour: saturday.endHour } }
+        : {}),
+      ...(sunday ? { sunday: { start_hour: sunday.startHour, end_hour: sunday.endHour } } : {}),
     },
   });
-  if (error) return { ok: false, error: error.detail || error.title || "Falha ao regerar disponibilidade." };
+  if (error) {
+    // A deployed BFF that predates the weekend windows 422s the unknown keys.
+    if (response.status === 422 && (saturday || sunday)) {
+      return {
+        ok: false,
+        error:
+          "O backend em produção ainda não aceita janelas de fim de semana — publique o " +
+          "bff-backoffice, ou iguale sábado/domingo à semana para regerar já.",
+      };
+    }
+    return { ok: false, error: error.detail || error.title || "Falha ao regerar disponibilidade." };
+  }
   revalidatePath("/quadras");
   return { ok: true, slotsDeleted: data.slots_deleted, slotsCreated: data.slots_created };
 }

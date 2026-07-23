@@ -480,6 +480,12 @@ function RepriceSection({
 function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
   const [startHour, setStartHour] = useState(6);
   const [endHour, setEndHour] = useState(22);
+  // Weekend windows start mirroring the weekday one; the action only sends
+  // them when they actually differ, so equal values keep the request minimal.
+  const [satStart, setSatStart] = useState(6);
+  const [satEnd, setSatEnd] = useState(22);
+  const [sunStart, setSunStart] = useState(6);
+  const [sunEnd, setSunEnd] = useState(22);
   const [daysForward, setDaysForward] = useState(90);
   const [price, setPrice] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -491,7 +497,15 @@ function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () =>
     setError("");
     setResult(null);
     if (startHour >= endHour) {
-      setError("Hora de início deve ser menor que a hora de fim.");
+      setError("Hora de início deve ser menor que a hora de fim (Seg–Sex).");
+      return;
+    }
+    if (satStart >= satEnd) {
+      setError("Hora de início deve ser menor que a hora de fim (Sábado).");
+      return;
+    }
+    if (sunStart >= sunEnd) {
+      setError("Hora de início deve ser menor que a hora de fim (Domingo).");
       return;
     }
     const cents = reaisToCents(price);
@@ -510,6 +524,8 @@ function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () =>
         endHour,
         daysForward,
         priceCents: cents,
+        saturday: { startHour: satStart, endHour: satEnd },
+        sunday: { startHour: sunStart, endHour: sunEnd },
       });
       if (!res.ok) {
         setError(res.error ?? "Falha ao regerar disponibilidade.");
@@ -528,49 +544,65 @@ function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () =>
       description="Apaga os horários futuros disponíveis e recria a grade horária. Horários reservados ou bloqueados são preservados."
     >
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label htmlFor="regen_days" className={labelClass}>
-              Dias à frente
-            </label>
-            <input
-              id="regen_days"
-              type="number"
-              min={1}
-              max={365}
-              value={daysForward}
-              onChange={(e) => setDaysForward(Number(e.target.value))}
-              className={fieldClass}
-            />
-          </div>
-          <div>
-            <label htmlFor="regen_start" className={labelClass}>
-              Hora início
-            </label>
-            <input
-              id="regen_start"
-              type="number"
-              min={0}
-              max={22}
-              value={startHour}
-              onChange={(e) => setStartHour(Number(e.target.value))}
-              className={fieldClass}
-            />
-          </div>
-          <div>
-            <label htmlFor="regen_end" className={labelClass}>
-              Hora fim
-            </label>
-            <input
-              id="regen_end"
-              type="number"
-              min={1}
-              max={23}
-              value={endHour}
-              onChange={(e) => setEndHour(Number(e.target.value))}
-              className={fieldClass}
-            />
-          </div>
+        <div className="max-w-[220px]">
+          <label htmlFor="regen_days" className={labelClass}>
+            Dias à frente
+          </label>
+          <input
+            id="regen_days"
+            type="number"
+            min={1}
+            max={365}
+            value={daysForward}
+            onChange={(e) => setDaysForward(Number(e.target.value))}
+            className={fieldClass}
+          />
+        </div>
+
+        {/* One window per day group — clubs run shorter weekends. */}
+        <div className="space-y-2.5">
+          {(
+            [
+              ["Seg–Sex", "regen_week", startHour, setStartHour, endHour, setEndHour],
+              ["Sábado", "regen_sat", satStart, setSatStart, satEnd, setSatEnd],
+              ["Domingo", "regen_sun", sunStart, setSunStart, sunEnd, setSunEnd],
+            ] as const
+          ).map(([label, idBase, start, setStart, end, setEnd]) => (
+            <div key={idBase} className="grid grid-cols-[88px_1fr_1fr] items-center gap-3">
+              <span className="label-colus text-[8.5px] text-[var(--text-tertiary)]">{label}</span>
+              <div>
+                <label htmlFor={`${idBase}_start`} className="sr-only">
+                  Hora início {label}
+                </label>
+                <input
+                  id={`${idBase}_start`}
+                  type="number"
+                  min={0}
+                  max={22}
+                  value={start}
+                  onChange={(e) => setStart(Number(e.target.value))}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label htmlFor={`${idBase}_end`} className="sr-only">
+                  Hora fim {label}
+                </label>
+                <input
+                  id={`${idBase}_end`}
+                  type="number"
+                  min={1}
+                  max={23}
+                  value={end}
+                  onChange={(e) => setEnd(Number(e.target.value))}
+                  className={fieldClass}
+                />
+              </div>
+            </div>
+          ))}
+          <p className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            Hora início · hora fim (última hora de começo de jogo) por grupo de dias.
+          </p>
         </div>
 
         <div>
@@ -600,8 +632,14 @@ function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () =>
           <div className="rounded-lg border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-4 py-3.5">
             <p className="text-[12.5px] font-500 leading-snug text-[var(--color-clay)]">
               Isto apaga todos os horários futuros disponíveis desta quadra e recria a grade das{" "}
-              {String(startHour).padStart(2, "0")}h às {String(endHour).padStart(2, "0")}h pelos
-              próximos {daysForward} dias. Reservas e bloqueios são mantidos.
+              {String(startHour).padStart(2, "0")}h às {String(endHour).padStart(2, "0")}h (Seg–Sex
+              {satStart !== startHour || satEnd !== endHour
+                ? `; Sáb ${String(satStart).padStart(2, "0")}h–${String(satEnd).padStart(2, "0")}h`
+                : ""}
+              {sunStart !== startHour || sunEnd !== endHour
+                ? `; Dom ${String(sunStart).padStart(2, "0")}h–${String(sunEnd).padStart(2, "0")}h`
+                : ""}
+              ) pelos próximos {daysForward} dias. Reservas e bloqueios são mantidos.
             </p>
             <div className="mt-3 flex items-center gap-2">
               <button

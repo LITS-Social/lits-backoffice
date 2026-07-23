@@ -1600,6 +1600,18 @@ export interface components {
             /** @description Day, RFC3339 date-truncated (UTC midnight of that day) */
             date: string;
         };
+        DayWindow: {
+            /**
+             * Format: int64
+             * @description Last slot start hour for this day group, inclusive, local time (unset = inherit the base end_hour)
+             */
+            end_hour?: number;
+            /**
+             * Format: int64
+             * @description First slot hour for this day group, inclusive, local time (unset = inherit the base start_hour)
+             */
+            start_hour?: number;
+        };
         DeactivateUserRequestBody: {
             /**
              * Format: uri
@@ -2822,7 +2834,7 @@ export interface components {
             days_forward?: number;
             /**
              * Format: int64
-             * @description Last slot start hour, inclusive, local time (default 22)
+             * @description Last slot start hour, inclusive, local time (default 22) — the Monday–Friday window, and the base saturday/sunday inherit from
              */
             end_hour?: number;
             /**
@@ -2830,12 +2842,16 @@ export interface components {
              * @description Override price in cents for all slots; falls back to franchise default then ADR-0063 formula
              */
             price_cents?: number;
+            /** @description Optional Saturday window; unset = same as the base window */
+            saturday?: components["schemas"]["DayWindow"];
             /**
              * Format: int64
-             * @description First slot hour, inclusive, local time (default 6)
+             * @description First slot hour, inclusive, local time (default 6) — the Monday–Friday window, and the base saturday/sunday inherit from
              * @default 6
              */
             start_hour: number;
+            /** @description Optional Sunday window; unset = same as the base window */
+            sunday?: components["schemas"]["DayWindow"];
         };
         RegenerateAvailabilityResultBody: {
             /**
