@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { AlertCircle, Lock, RefreshCw } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, Lock, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CourtListItem } from "../../quadras/actions";
 import type { CourtSlotItem } from "../../quadras/[id]/editar/actions";
@@ -117,6 +117,17 @@ export function AcademiaCalendar({
     return [...set].sort((a, b) => a - b);
   }, [date, windows, byCourt]);
 
+  /** Step the day picker ±1 day. Noon anchor dodges DST edges: shifting the
+      calendar date never depends on the viewer's local midnight. */
+  function shiftDay(delta: number) {
+    const d = new Date(`${date}T12:00:00`);
+    d.setDate(d.getDate() + delta);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    setDate(`${y}-${m}-${day}`);
+  }
+
   function setCell(courtId: string, hour: number, slot: CourtSlotItem) {
     setLoaded((prev) => {
       if (!prev) return prev;
@@ -190,13 +201,31 @@ export function AcademiaCalendar({
             <label htmlFor="cal-date" className={labelClass}>
               Dia
             </label>
-            <input
-              id="cal-date"
-              type="date"
-              value={date}
-              onChange={(e) => e.target.value && setDate(e.target.value)}
-              className={fieldClass}
-            />
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => shiftDay(-1)}
+                aria-label="Dia anterior"
+                className="rounded-lg border border-[var(--border)] p-2.5 text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+              >
+                <ChevronLeft size={13} />
+              </button>
+              <input
+                id="cal-date"
+                type="date"
+                value={date}
+                onChange={(e) => e.target.value && setDate(e.target.value)}
+                className={fieldClass}
+              />
+              <button
+                type="button"
+                onClick={() => shiftDay(1)}
+                aria-label="Próximo dia"
+                className="rounded-lg border border-[var(--border)] p-2.5 text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+              >
+                <ChevronRight size={13} />
+              </button>
+            </div>
           </div>
           <button
             type="button"
