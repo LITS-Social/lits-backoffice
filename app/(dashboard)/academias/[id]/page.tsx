@@ -9,7 +9,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { courts, error } = await listCourtsAction();
   if (error) return <PanelError eyebrow="Gestão" title="Academia" detail={error} />;
 
-  const mine = courts.filter((c) => c.franchise_id === id);
+  // display_order is the shared drag-to-reorder preference; unordered courts
+  // trail in name order. The BFF already sorts this way — re-sorting here
+  // keeps the page honest during the deploy window where the field is absent.
+  const mine = courts
+    .filter((c) => c.franchise_id === id)
+    .sort(
+      (a, b) =>
+        (a.display_order ?? 1e9) - (b.display_order ?? 1e9) ||
+        a.name.localeCompare(b.name, "pt-BR")
+    );
   if (mine.length === 0) {
     return (
       <PanelError

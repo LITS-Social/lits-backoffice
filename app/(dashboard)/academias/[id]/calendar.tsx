@@ -9,6 +9,7 @@ import {
   addCourtSlotsAction,
   applyPrintSlotsAction,
   listCourtSlotsAction,
+  reorderCourtsAction,
   updateCourtSlotAction,
   type AddSlotInput,
 } from "../../quadras/[id]/editar/actions";
@@ -85,8 +86,9 @@ export function AcademiaCalendar({
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [, startWriting] = useTransition();
 
-  // Column order is the operator's own (drag a court name to rearrange);
-  // persisted per academia in localStorage — pure view preference, no backend.
+  // Column order — drag a court name to rearrange. Saved to the backend
+  // (courts.display_order) so EVERY operator and every login sees the same
+  // order; localStorage doubles as instant cache and rollout fallback.
   const orderKey = `lits-court-order:${courts[0]?.franchise_id ?? ""}`;
   const [order, setOrder] = useState<string[] | null>(null);
   // Ref carries the dragged id (synchronous — the drop can land in the same
@@ -125,6 +127,10 @@ export function AcademiaCalendar({
     } catch {
       /* private mode etc. — order still applies for the session */
     }
+    startWriting(async () => {
+      const res = await reorderCourtsAction(next);
+      if (!res.ok) setWriteError(res.error ?? "Falha ao salvar a ordem das colunas.");
+    });
   }
 
   // "Bloquear dia(s)": every window hour of the shown day (and the next N−1)
@@ -300,7 +306,7 @@ export function AcademiaCalendar({
             de uma quadra para reordenar as colunas. Horários com reserva real ficam travados.
           </p>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex w-full flex-wrap items-end gap-x-2 gap-y-3">
           <div>
             <label htmlFor="cal-date" className={labelClass}>
               Dia
@@ -342,7 +348,7 @@ export function AcademiaCalendar({
           >
             <RefreshCw size={13} className={cn(loading && "animate-spin")} />
           </button>
-          <div className="flex items-end gap-2">
+          <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
             <div className="w-[92px]">
               <label htmlFor="block-days" className={labelClass}>
                 Dias seguidos

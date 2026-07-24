@@ -1435,6 +1435,11 @@ export interface components {
             total: number;
         };
         CourtListItem: {
+            /**
+             * Format: int64
+             * @description Backoffice column position among the franchise's courts, or null
+             */
+            display_order: number | null;
             /** @description Owning franchise brand (e.g. 'playtennis'), or null */
             franchise_brand: string | null;
             /**
@@ -3116,6 +3121,11 @@ export interface components {
              * @example https://example.com/schemas/UpdateCourtBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Backoffice column position among the franchise's courts (unset = unchanged)
+             */
+            display_order?: number;
             /** @description Whether the court is indoors (unset = unchanged) */
             indoor?: boolean;
             /** @description New court name (unset = unchanged) */

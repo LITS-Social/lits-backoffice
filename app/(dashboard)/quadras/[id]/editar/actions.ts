@@ -128,6 +128,37 @@ export async function regenerateAvailabilityAction(
   return { ok: true, slotsDeleted: del.data.slots_deleted, slotsCreated: add.data.slots_created };
 }
 
+export type ReorderState = { ok: boolean; error?: string };
+
+/**
+ * Persists the academia's column order (drag-to-reorder in the calendar) as
+ * courts.display_order — shared by every operator and every login, not a
+ * browser preference. One PATCH per court, index = position.
+ */
+export async function reorderCourtsAction(courtIds: string[]): Promise<ReorderState> {
+  const api = await getApi();
+  for (const [i, id] of courtIds.entries()) {
+    const { error, response } = await api.PATCH("/v1/ops/courts/{id}", {
+      params: { path: { id } },
+      body: { display_order: i },
+    });
+    if (error) {
+      // A deployed BFF that predates display_order 422s the unknown key.
+      if (response.status === 422) {
+        return {
+          ok: false,
+          error:
+            "Ordem salva só neste navegador por enquanto — publique o bff-backoffice " +
+            "(branch feat/delete-court-slots) para valer para todos os logins.",
+        };
+      }
+      return { ok: false, error: error.detail || error.title || "Falha ao salvar a ordem." };
+    }
+  }
+  revalidatePath("/quadras");
+  return { ok: true };
+}
+
 export async function listCourtSlotsAction(
   id: string,
   from: string,
