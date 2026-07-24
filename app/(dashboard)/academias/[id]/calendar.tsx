@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight, Lock, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { AlertCircle, Ban, Check, ChevronLeft, ChevronRight, GripVertical, Lock, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CourtListItem } from "../../quadras/actions";
 import type { CourtSlotItem } from "../../quadras/[id]/editar/actions";
 import {
   addCourtSlotsAction,
+  applyPrintSlotsAction,
   listCourtSlotsAction,
   updateCourtSlotAction,
+  type AddSlotInput,
 } from "../../quadras/[id]/editar/actions";
 import { SP_OFFSET, spStartMs } from "../../quadras/[id]/editar/print-lib";
 import type { HourWindows } from "./academia";
@@ -82,6 +84,108 @@ export function AcademiaCalendar({
   // Cells with a write in flight — locked against double-clicks.
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [, startWriting] = useTransition();
+
+  // Column order is the operator's own (drag a court name to rearrange);
+  // persisted per academia in localStorage — pure view preference, no backend.
+  const orderKey = `lits-court-order:${courts[0]?.franchise_id ?? ""}`;
+  const [order, setOrder] = useState<string[] | null>(null);
+  // Ref carries the dragged id (synchronous — the drop can land in the same
+  // tick); the state twin only drives the dimmed-column styling.
+  const dragRef = useRef<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  useEffect(() => {
+    // rAF defers the setState out of the effect body (lint: no sync setState
+    // in effects); localStorage is only readable on the client anyway.
+    const raf = requestAnimationFrame(() => {
+      try {
+        const raw = localStorage.getItem(orderKey);
+        if (raw) setOrder(JSON.parse(raw));
+      } catch {
+        /* stale/corrupt preference — fall back to natural order */
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [orderKey]);
+  const orderedCourts = useMemo(() => {
+    if (!order) return courts;
+    const rank = new Map(order.map((id, i) => [id, i]));
+    return [...courts].sort(
+      (a, b) => (rank.get(a.id) ?? courts.indexOf(a)) - (rank.get(b.id) ?? courts.indexOf(b))
+    );
+  }, [courts, order]);
+  function dropOn(targetId: string) {
+    const dragged = dragRef.current;
+    if (!dragged || dragged === targetId) return;
+    const ids = orderedCourts.map((c) => c.id);
+    const next = ids.filter((id) => id !== dragged);
+    next.splice(next.indexOf(targetId), 0, dragged);
+    setOrder(next);
+    try {
+      localStorage.setItem(orderKey, JSON.stringify(next));
+    } catch {
+      /* private mode etc. — order still applies for the session */
+    }
+  }
+
+  // "Bloquear dia(s)": every window hour of the shown day (and the next N−1)
+  // becomes blocked on every court — existing available slots are blocked,
+  // missing ones are created blocked, booked ones are reported and untouched.
+  const [blockDaysN, setBlockDaysN] = useState("1");
+  const [confirmingBlock, setConfirmingBlock] = useState(false);
+  const [blockNote, setBlockNote] = useState("");
+  const [blocking, startBlocking] = useTransition();
+
+  function blockDays() {
+    const n = Number(blockDaysN);
+    if (!Number.isInteger(n) || n < 1 || n > 60) {
+      setWriteError("Dias em sequência deve ser um inteiro entre 1 e 60.");
+      setConfirmingBlock(false);
+      return;
+    }
+    setWriteError("");
+    setBlockNote("");
+    setConfirmingBlock(false);
+    startBlocking(async () => {
+      const slots: AddSlotInput[] = [];
+      for (let d = 0; d < n; d++) {
+        const day = new Date(`${date}T12:00:00${SP_OFFSET}`);
+        day.setDate(day.getDate() + d);
+        const ymd = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+        const w = windowFor(ymd, windows);
+        for (let h = w.start; h <= w.end; h++) {
+          const startMs = spStartMs(ymd, `${String(h).padStart(2, "0")}:00`);
+          slots.push({
+            slot_start: new Date(startMs).toISOString(),
+            slot_end: new Date(startMs + 3_600_000).toISOString(),
+            status: "blocked",
+          });
+        }
+      }
+      let blocked = 0;
+      let booked = 0;
+      const failures: string[] = [];
+      for (const c of courts) {
+        const res = await applyPrintSlotsAction(c.id, slots);
+        if (res.ok) {
+          blocked +=
+            (res.createdBlocked ?? 0) + (res.blockedExisting ?? 0) + (res.alreadyBlocked ?? 0);
+          booked += res.bookedConflicts ?? 0;
+        } else {
+          failures.push(`${c.name}: ${res.error ?? "falha"}`);
+        }
+      }
+      if (failures.length > 0) setWriteError(failures.join(" · "));
+      if (failures.length < courts.length) {
+        setBlockNote(
+          `${blocked} horários bloqueados em ${courts.length - failures.length} quadra${courts.length - failures.length === 1 ? "" : "s"}` +
+            (n > 1 ? ` × ${n} dias` : "") +
+            (booked > 0 ? ` · ${booked} com reserva real — não tocados` : "") +
+            "."
+        );
+      }
+      setTick((t) => t + 1);
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -192,8 +296,8 @@ export function AcademiaCalendar({
           <h2 className="eyebrow">Calendário das quadras</h2>
           <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
             Todas as quadras lado a lado, como numa planilha. Clique numa célula para alternar{" "}
-            <strong>disponível ↔ bloqueado</strong>; célula vazia vira disponível. Horários com
-            reserva real ficam travados.
+            <strong>disponível ↔ bloqueado</strong>; célula vazia vira disponível. Arraste o nome
+            de uma quadra para reordenar as colunas. Horários com reserva real ficam travados.
           </p>
         </div>
         <div className="flex items-end gap-2">
@@ -238,20 +342,96 @@ export function AcademiaCalendar({
           >
             <RefreshCw size={13} className={cn(loading && "animate-spin")} />
           </button>
+          <div className="flex items-end gap-2">
+            <div className="w-[92px]">
+              <label htmlFor="block-days" className={labelClass}>
+                Dias seguidos
+              </label>
+              <input
+                id="block-days"
+                type="number"
+                min={1}
+                max={60}
+                value={blockDaysN}
+                onChange={(e) => setBlockDaysN(e.target.value)}
+                className={cn(fieldClass, "w-full")}
+              />
+            </div>
+            {confirmingBlock ? (
+              <span className="flex items-center gap-2 pb-px">
+                <button
+                  type="button"
+                  onClick={blockDays}
+                  disabled={blocking}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-error)] px-4 py-2 font-700 text-[9.5px] uppercase tracking-[0.14em] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  Confirmar — {blockDaysN} dia{Number(blockDaysN) === 1 ? "" : "s"} × {courts.length}{" "}
+                  quadra{courts.length === 1 ? "" : "s"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingBlock(false)}
+                  className="text-[11px] font-500 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                >
+                  Cancelar
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingBlock(true)}
+                disabled={blocking || loading}
+                className="mb-px inline-flex items-center gap-1.5 rounded-full border border-[var(--color-clay)]/50 px-4 py-2 font-700 text-[9.5px] uppercase tracking-[0.14em] text-[var(--color-clay)] transition-colors hover:bg-[var(--color-warning-bg)] disabled:opacity-50"
+              >
+                <Ban size={11} strokeWidth={2.5} />
+                {blocking ? "Bloqueando…" : "Bloquear dia"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {blockNote && (
+        <p className="mb-4 flex items-center gap-2 rounded-lg border border-[var(--color-success)]/25 bg-[var(--color-success-bg)] px-3 py-2.5 text-[12px] leading-snug text-[var(--color-success)]">
+          <Check size={13} strokeWidth={2.5} className="shrink-0" />
+          {blockNote}
+        </p>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] border-separate border-spacing-1">
           <thead>
             <tr>
               <th className="sticky left-0 z-10 w-[56px] bg-[var(--surface)] sm:w-[64px]" />
-              {courts.map((c) => (
+              {orderedCourts.map((c) => (
                 <th
                   key={c.id}
-                  className="min-w-[84px] rounded-md bg-[var(--surface-raised)] px-2 py-2 text-center text-[11px] font-600 text-[var(--text-secondary)]"
+                  draggable
+                  onDragStart={(e) => {
+                    dragRef.current = c.id;
+                    setDragId(c.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    dropOn(c.id);
+                    dragRef.current = null;
+                    setDragId(null);
+                  }}
+                  onDragEnd={() => {
+                    dragRef.current = null;
+                    setDragId(null);
+                  }}
+                  className={cn(
+                    "min-w-[84px] cursor-grab rounded-md bg-[var(--surface-raised)] px-2 py-2 text-center text-[11px] font-600 text-[var(--text-secondary)] transition-opacity active:cursor-grabbing",
+                    dragId === c.id && "opacity-40"
+                  )}
                 >
-                  {c.name}
+                  <span className="inline-flex items-center gap-1">
+                    <GripVertical size={10} className="shrink-0 opacity-40" />
+                    {c.name}
+                  </span>
                 </th>
               ))}
             </tr>
@@ -262,7 +442,7 @@ export function AcademiaCalendar({
                 <td className="sticky left-0 z-10 bg-[var(--surface)] pr-2 text-right text-[11px] font-500 tabular-nums text-[var(--text-tertiary)]">
                   {String(h).padStart(2, "0")}:00
                 </td>
-                {courts.map((c) => {
+                {orderedCourts.map((c) => {
                   const slot = byCourt.get(c.id)?.get(h) ?? null;
                   const key = `${c.id}:${h}`;
                   const busy = pending.has(key);

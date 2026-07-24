@@ -540,8 +540,8 @@ function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () =>
 
   return (
     <SectionCard
-      title="Regerar disponibilidade"
-      description="Apaga os horários futuros disponíveis e recria a grade horária. Horários reservados ou bloqueados são preservados."
+      title="Regerar grade"
+      description="Apaga a grade atual e recria todos os horários como BLOQUEADOS — um horário só vende depois de um import ou de um desbloqueio no calendário. Reservas reais são preservadas."
     >
       <div className="space-y-4">
         <div className="max-w-[220px]">

@@ -189,7 +189,7 @@ function OperatingHoursSection({
       if (failures.length < courts.length) {
         setApplyNote(
           `Grade aplicada em ${courts.length - failures.length} de ${courts.length} quadras — ` +
-            `${created} horários criados, ${deleted} antigos removidos (reservas reais preservadas).`
+            `${created} horários criados (bloqueados), ${deleted} antigos removidos (reservas reais preservadas).`
         );
         onApplied();
       }
@@ -203,8 +203,9 @@ function OperatingHoursSection({
         <>
           O horário padrão da academia — a grade de <strong>todas as quadras</strong> segue estas
           janelas. O fim é a hora do último horário que começa (22 = último slot 22h–23h). Salve
-          para registrar, e use “Aplicar grade” para regerar os horários de todas as quadras de uma
-          vez. Reservas reais nunca são apagadas.
+          para registrar, e use “Aplicar grade” para recriar os horários de todas as quadras de uma
+          vez — a grade nova entra inteira <strong>bloqueada</strong>; libere horários pelo import
+          do print ou clicando no calendário. Reservas reais nunca são apagadas.
         </>
       }
     >

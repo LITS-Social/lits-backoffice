@@ -69,38 +69,63 @@ export async function regenerateAvailabilityAction(
   }
 ): Promise<RegenerateState> {
   const api = await getApi();
-  const differs = (w?: { startHour: number; endHour: number }) =>
-    w && (w.startHour !== params.startHour || w.endHour !== params.endHour) ? w : undefined;
-  const saturday = differs(params.saturday);
-  const sunday = differs(params.sunday);
 
-  const { data, error, response } = await api.POST("/v1/ops/courts/{id}/regenerate-availability", {
-    params: { path: { id } },
-    body: {
-      start_hour: params.startHour,
-      end_hour: params.endHour,
-      days_forward: params.daysForward,
-      ...(params.priceCents != null ? { price_cents: params.priceCents } : {}),
-      ...(saturday
-        ? { saturday: { start_hour: saturday.startHour, end_hour: saturday.endHour } }
-        : {}),
-      ...(sunday ? { sunday: { start_hour: sunday.startHour, end_hour: sunday.endHour } } : {}),
-    },
-  });
-  if (error) {
-    // A deployed BFF that predates the weekend windows 422s the unknown keys.
-    if (response.status === 422 && (saturday || sunday)) {
-      return {
-        ok: false,
-        error:
-          "O backend em produção ainda não aceita janelas de fim de semana — publique o " +
-          "bff-backoffice, ou iguale sábado/domingo à semana para regerar já.",
-      };
-    }
-    return { ok: false, error: error.detail || error.title || "Falha ao regerar disponibilidade." };
+  // A grade padrão nasce BLOQUEADA (pedido do produto): um horário só vende
+  // depois de um import do clube ou de um desbloqueio explícito no calendário.
+  // Implementação: apaga a grade inteira (só reservas reais sobrevivem) e
+  // recria cada janela como blocked via POST — o que também elimina qualquer
+  // slot fantasma fora da janela nova (ex.: domingo 20h–22h após encurtar o
+  // funcionamento). O endpoint regenerate do BFF (que cria disponíveis) deixa
+  // de ser usado pelo painel.
+  const del = await api.DELETE("/v1/ops/courts/{id}/slots", { params: { path: { id } } });
+  if (del.error) {
+    return {
+      ok: false,
+      error: del.error.detail || del.error.title || "Falha ao limpar a grade atual.",
+    };
   }
+
+  const windowFor = (dow: number) => {
+    if (dow === 0) return params.sunday ?? { startHour: params.startHour, endHour: params.endHour };
+    if (dow === 6) return params.saturday ?? { startHour: params.startHour, endHour: params.endHour };
+    return { startHour: params.startHour, endHour: params.endHour };
+  };
+  const spYmd = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
+  const spDow = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short" });
+  const DOW: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const now = Date.now();
+  const slots: AddSlotInput[] = [];
+  for (let d = 0; d < params.daysForward; d++) {
+    const day = new Date(now + d * 24 * 3_600_000);
+    const ymd = spYmd.format(day);
+    const w = windowFor(DOW[spDow.format(day)] ?? 1);
+    for (let h = w.startHour; h <= w.endHour; h++) {
+      const startMs = new Date(`${ymd}T${String(h).padStart(2, "0")}:00:00-03:00`).getTime();
+      if (startMs <= now) continue; // today's past hours stay gone
+      slots.push({
+        slot_start: new Date(startMs).toISOString(),
+        slot_end: new Date(startMs + 3_600_000).toISOString(),
+        status: "blocked",
+        ...(params.priceCents != null ? { price_cents: params.priceCents } : {}),
+      });
+    }
+  }
+
+  const add = await api.POST("/v1/ops/courts/{id}/slots", {
+    params: { path: { id } },
+    body: { slots },
+  });
+  if (add.error) {
+    return {
+      ok: false,
+      error:
+        "Grade antiga apagada, mas falhou ao criar a nova: " +
+        (add.error.detail || add.error.title || "erro"),
+    };
+  }
+
   revalidatePath("/quadras");
-  return { ok: true, slotsDeleted: data.slots_deleted, slotsCreated: data.slots_created };
+  return { ok: true, slotsDeleted: del.data.slots_deleted, slotsCreated: add.data.slots_created };
 }
 
 export async function listCourtSlotsAction(
