@@ -61,15 +61,23 @@ const ALERTING_PANELS = ["06", "07", "09"];
 export function Sidebar({
   summary = {},
   searchSlot,
+  mobileOpen = false,
 }: {
   summary?: OpsSummary;
   /** Global-search trigger. Owned by another agent; mounts at #global-search-slot. */
   searchSlot?: React.ReactNode;
+  /** Below lg the sidebar is a drawer; AppShell owns this state. */
+  mobileOpen?: boolean;
 }) {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed top-0 left-0 z-30 flex h-screen w-60 flex-col border-r border-[var(--border)] bg-[var(--surface)]">
+    <aside
+      className={cn(
+        "fixed top-0 left-0 z-40 flex h-screen w-60 flex-col border-r border-[var(--border)] bg-[var(--surface)] transition-transform duration-200 lg:z-30 lg:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full"
+      )}
+    >
       {/* ── Lockup ─────────────────────────────────────────────────────── */}
       <div className="px-5 pt-6 pb-4">
         <Link href="/" className="group flex items-center gap-2.5" aria-label="LITS — Operações">

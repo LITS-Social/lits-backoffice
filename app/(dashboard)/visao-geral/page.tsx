@@ -85,7 +85,7 @@ export default async function DashboardPage() {
         description="O estado operacional do beta fechado, agora."
       />
 
-      <div className="space-y-6 px-8 py-6">
+      <div className="space-y-6 px-4 sm:px-8 py-6">
         {/* A panel that failed to load is worth saying out loud: the cards below
             would otherwise just be missing a number, which reads as "nothing to do"
             rather than "we don't know". */}

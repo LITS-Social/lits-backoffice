@@ -57,7 +57,7 @@ export default async function PartidasFinalizadasPage() {
         ]}
       />
 
-      <div className="space-y-3 px-8 py-6">
+      <div className="space-y-3 px-4 sm:px-8 py-6">
         <TruncationNote shown={matches.length} total={total} noun="partidas" />
         <FinishedMatchesTable matches={matches} />
       </div>

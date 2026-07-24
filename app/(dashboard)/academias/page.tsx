@@ -49,7 +49,7 @@ export default async function AcademiasPage() {
         title="Academias"
         description={`${academias.length} academia${academias.length === 1 ? "" : "s"} · ${totalCourts} quadra${totalCourts === 1 ? "" : "s"}. Clique numa academia para gerenciar definições, horários, quadras e importar prints.`}
       />
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <AcademiasTable academias={academias} />
       </div>
     </div>

@@ -72,7 +72,7 @@ export default async function AvaliacoesPage() {
         ]}
       />
 
-      <div className="space-y-3 px-8 py-6">
+      <div className="space-y-3 px-4 sm:px-8 py-6">
         <TruncationNote
           shown={evaluations.length}
           total={total}

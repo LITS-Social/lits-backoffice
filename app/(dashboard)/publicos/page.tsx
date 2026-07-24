@@ -30,7 +30,7 @@ export default async function PublicosPage() {
         description="Segmentos salvos para os anúncios: uma combinação de classe, sexo e clube. Crie um público, veja quantos membros ele alcança e use-o no painel Enviar Anúncio."
       />
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <AudiencesTable initial={data.audiences ?? []} />
       </div>
     </div>

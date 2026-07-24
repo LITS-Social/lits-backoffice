@@ -30,7 +30,7 @@ export default async function PostsPage() {
         description="Conteúdo do feed. Busque pela legenda, inclua deletados, e remova publicações que violam as regras — toda remoção é registrada no audit log."
       />
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <PostsView
           initial={{
             rows: data.posts ?? [],

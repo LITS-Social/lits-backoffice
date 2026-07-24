@@ -126,7 +126,7 @@ export default async function PagamentosPage() {
         ]}
       />
 
-      <div className="space-y-3 px-8 py-6">
+      <div className="space-y-3 px-4 sm:px-8 py-6">
         {/*
           TruncationNote renders nothing when shown === total, which is the normal
           case now that the endpoint pages. It stays because the cap is real: it is

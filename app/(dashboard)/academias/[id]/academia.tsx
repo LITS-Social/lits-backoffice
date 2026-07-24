@@ -47,7 +47,7 @@ function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+    <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
       <div className="mb-5">
         <h2 className="eyebrow">{eyebrow}</h2>
         <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
@@ -212,7 +212,7 @@ function OperatingHoursSection({
         <div className="space-y-2.5">
           {rows.map(([label, ks, ke]) => (
             <div key={ks} className="flex flex-wrap items-end gap-3">
-              <p className="w-[130px] pb-2 text-[12px] font-500 text-[var(--text-secondary)]">
+              <p className="w-full pb-0.5 text-[12px] font-500 text-[var(--text-secondary)] sm:w-[130px] sm:pb-2">
                 {label}
               </p>
               <div className="w-[110px]">
@@ -409,7 +409,7 @@ export function AcademiaPage({ courts }: { courts: CourtListItem[] }) {
         title={base.franchise_name}
         description={`${courts.length} quadra${courts.length === 1 ? "" : "s"}. Definições, horário de funcionamento, calendário e importação de print — tudo da academia num lugar só.`}
       />
-      <div className="space-y-5 px-8 py-6">
+      <div className="space-y-5 px-4 sm:px-8 py-6">
         <Link
           href="/academias"
           className="inline-flex items-center gap-1.5 text-[11px] font-600 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"

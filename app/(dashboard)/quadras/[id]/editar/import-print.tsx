@@ -177,7 +177,7 @@ export function ImportPrintSection({
   const blocks = parsed?.courts[courtIdx]?.occupied ?? [];
 
   return (
-    <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+    <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
       <div className="mb-5">
         <h2 className="eyebrow">Importar do print</h2>
         <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">

@@ -55,7 +55,7 @@ export default async function DashboardPage() {
 
       <StatRail stats={stats} />
 
-      <div className="space-y-8 px-8 py-6">
+      <div className="space-y-8 px-4 sm:px-8 py-6">
         <PanelNote>
           Sem avaliação média (não existe tabela de rating) nem usuários ativos/7d
           (last_seen_at só é confiável desde 15/07/2026) — nenhum dos dois aparece

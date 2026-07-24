@@ -15,7 +15,7 @@ export default function DashboardError({
   }, [error]);
 
   return (
-    <div className="flex min-h-[70vh] w-full items-center justify-center px-8">
+    <div className="flex min-h-[70vh] w-full items-center justify-center px-4 sm:px-8">
       <div className="grain w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8">
         <span className="mb-5 flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-error)]/25 bg-[var(--color-error-bg)] text-[var(--color-error)]">
           <AlertTriangle size={19} strokeWidth={1.75} />

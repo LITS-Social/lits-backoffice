@@ -90,7 +90,7 @@ function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+    <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
       <div className="mb-5">
         <h2 className="eyebrow">{title}</h2>
         {description && (

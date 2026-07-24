@@ -463,7 +463,7 @@ export default async function MetricsPage() {
         description="As metas do beta e onde estamos agora. O que o backend ainda não mede fica marcado como sem dado — nunca como zero."
       />
 
-      <div className="space-y-6 px-8 py-6">
+      <div className="space-y-6 px-4 sm:px-8 py-6">
         {broken.length > 0 && (
           <div className="flex items-start gap-2.5 rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning-bg)] px-4 py-3">
             <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[var(--color-clay)]" />

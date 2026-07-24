@@ -14,7 +14,7 @@ export function PageHeader({ eyebrow, title, description, action }: PageHeaderPr
   const num = eyebrow.replace("#", "");
 
   return (
-    <div className="relative overflow-hidden border-b border-[var(--border)] px-8 pt-9 pb-7">
+    <div className="relative overflow-hidden border-b border-[var(--border)] px-4 sm:px-8 pt-9 pb-7">
       {/* Folio watermark — depth, not decoration: it tells you which panel you
           are standing in from across the room. */}
       <span

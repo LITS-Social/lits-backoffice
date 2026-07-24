@@ -144,7 +144,7 @@ export function AnnouncementForm({ audiences }: { audiences: Audience[] }) {
       : `Enviar para ${selectedName}?`;
 
   return (
-    <div className="px-8 py-6">
+    <div className="px-4 sm:px-8 py-6">
       <div className="max-w-xl">
         {/* ── Result banner ─────────────────────────────────────────────────
             Only ever shown after a real attempt. Success is green and states the

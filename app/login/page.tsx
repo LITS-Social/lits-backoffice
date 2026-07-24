@@ -60,7 +60,7 @@ export default async function LoginPage({
           Always dark, in both themes. It is the printed object; the panel to
           its right is the console. */}
       <section
-        className="grain relative isolate flex min-h-[38vh] flex-col justify-between overflow-hidden px-8 py-10 lg:min-h-screen lg:w-[55%] lg:px-16 lg:py-14"
+        className="grain relative isolate flex min-h-[38vh] flex-col justify-between overflow-hidden px-4 sm:px-8 py-10 lg:min-h-screen lg:w-[55%] lg:px-16 lg:py-14"
         style={{ background: STAGE_GRADIENT, color: OFF }}
       >
         <CourtLines />

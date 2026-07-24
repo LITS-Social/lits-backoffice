@@ -104,7 +104,7 @@ export default async function ModeracaoPage() {
 
       <StatRail stats={stats} />
 
-      <div className="space-y-10 px-8 py-6">
+      <div className="space-y-10 px-4 sm:px-8 py-6">
         <section>
           <p className="eyebrow mb-3">Denúncias de pessoas</p>
           <PanelNote>

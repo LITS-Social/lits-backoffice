@@ -75,7 +75,7 @@ export function PanelError({
   return (
     <div>
       <PageHeader eyebrow={eyebrow} title={title} description="Não foi possível carregar este painel." />
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <div className="flex items-start gap-3 rounded-lg border border-[var(--color-error)]/30 bg-[var(--color-error-bg)] px-4 py-3.5">
           <AlertTriangle size={15} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--color-error)]" />
           <div>

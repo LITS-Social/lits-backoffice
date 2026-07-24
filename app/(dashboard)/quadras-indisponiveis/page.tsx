@@ -54,7 +54,7 @@ export default async function QuadrasIndisponiveisPage() {
         ]}
       />
 
-      <div className="space-y-3 px-8 py-6">
+      <div className="space-y-3 px-4 sm:px-8 py-6">
         <TruncationNote shown={issues.length} total={total} noun="bloqueios" />
         {/*
           Deleted from here: a note asserting that "a API só retorna o host de cada

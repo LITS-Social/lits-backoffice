@@ -186,7 +186,7 @@ export function AcademiaCalendar({
   }
 
   return (
-    <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+    <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="eyebrow">Calendário das quadras</h2>
@@ -245,11 +245,11 @@ export function AcademiaCalendar({
         <table className="w-full min-w-[560px] border-separate border-spacing-1">
           <thead>
             <tr>
-              <th className="w-[64px]" />
+              <th className="sticky left-0 z-10 w-[56px] bg-[var(--surface)] sm:w-[64px]" />
               {courts.map((c) => (
                 <th
                   key={c.id}
-                  className="rounded-md bg-[var(--surface-raised)] px-2 py-2 text-center text-[11px] font-600 text-[var(--text-secondary)]"
+                  className="min-w-[84px] rounded-md bg-[var(--surface-raised)] px-2 py-2 text-center text-[11px] font-600 text-[var(--text-secondary)]"
                 >
                   {c.name}
                 </th>
@@ -259,7 +259,7 @@ export function AcademiaCalendar({
           <tbody>
             {hours.map((h) => (
               <tr key={h}>
-                <td className="pr-2 text-right text-[11px] font-500 tabular-nums text-[var(--text-tertiary)]">
+                <td className="sticky left-0 z-10 bg-[var(--surface)] pr-2 text-right text-[11px] font-500 tabular-nums text-[var(--text-tertiary)]">
                   {String(h).padStart(2, "0")}:00
                 </td>
                 {courts.map((c) => {
@@ -281,7 +281,7 @@ export function AcademiaCalendar({
                               : "Sem horário — clique para criar como disponível"
                         }
                         className={cn(
-                          "flex h-9 w-full items-center justify-center gap-1 rounded-md border text-[10.5px] font-600 transition-colors",
+                          "flex h-11 w-full min-w-[84px] items-center justify-center gap-1 rounded-md border text-[10.5px] font-600 transition-colors sm:h-9 sm:min-w-0",
                           busy && "opacity-50",
                           status === "available" &&
                             "border-[var(--color-success)]/35 bg-[var(--color-success-bg)] text-[var(--color-success)] hover:opacity-80",

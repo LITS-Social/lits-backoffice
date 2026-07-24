@@ -62,7 +62,7 @@ export default async function ConvitesPage() {
         ]}
       />
 
-      <div className="space-y-3 px-8 py-6">
+      <div className="space-y-3 px-4 sm:px-8 py-6">
         {/* Still honest if the set ever outgrows the 500-row fetch: the table paginates
             what it holds, and this says so when it does not hold everything. */}
         <TruncationNote

@@ -78,7 +78,7 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
 
   return (
     <div>
-      <div className="px-8 pt-5">
+      <div className="px-4 sm:px-8 pt-5">
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
@@ -98,7 +98,7 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
         }
       />
 
-      <div className="space-y-10 px-8 py-7">
+      <div className="space-y-10 px-4 sm:px-8 py-7">
         <Signals
           account={d.account}
           stats={d.stats}
@@ -709,7 +709,7 @@ function ErrorShell({ message }: { message: string }) {
   return (
     <div>
       <PageHeader eyebrow="Dossiê" title="Erro ao carregar" />
-      <div className="px-8 py-6 text-[13px] text-[var(--color-error)]">{message}</div>
+      <div className="px-4 sm:px-8 py-6 text-[13px] text-[var(--color-error)]">{message}</div>
     </div>
   );
 }

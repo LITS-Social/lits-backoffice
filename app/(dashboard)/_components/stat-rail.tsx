@@ -48,7 +48,7 @@ const toneClass: Record<StatTone, string> = {
 
 export function StatRail({ stats }: { stats: Stat[] }) {
   return (
-    <div className="border-b border-[var(--border)] bg-[var(--surface)]/60 px-8 py-5">
+    <div className="border-b border-[var(--border)] bg-[var(--surface)]/60 px-4 sm:px-8 py-5">
       <dl className="flex flex-wrap items-stretch gap-y-4">
         {stats.map((stat) => {
           const tone = stat.tone ?? "neutral";

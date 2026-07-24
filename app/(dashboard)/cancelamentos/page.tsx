@@ -62,7 +62,7 @@ export default async function CancelamentosPage() {
         ]}
       />
 
-      <div className="space-y-3 px-8 py-6">
+      <div className="space-y-3 px-4 sm:px-8 py-6">
         <TruncationNote shown={cancellations.length} total={total} noun="cancelamentos" />
         <PanelNote>
           O motivo distingue uma desistência de verdade de um cancelamento automático do

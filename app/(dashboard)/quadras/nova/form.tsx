@@ -717,7 +717,7 @@ export function NovaQuadraForm({
     <div className="mx-auto grid max-w-4xl gap-8 lg:grid-cols-[210px_minmax(0,1fr)]">
       <StepRail current={step} franchiseName={franchiseName} />
 
-      <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
+      <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
         {step === "franchise" && (
           <FranchiseStep franchises={franchises} onNext={handleFranchiseNext} />
         )}

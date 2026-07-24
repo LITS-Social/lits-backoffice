@@ -33,7 +33,7 @@ export default async function NovaQuadraPage({
         description="Crie uma franquia (se necessário) e cadastre a quadra com disponibilidade gerada automaticamente."
       />
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <NovaQuadraForm franchises={franchises} initialFranchise={initialFranchise} />
       </div>
     </div>

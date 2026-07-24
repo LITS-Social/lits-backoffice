@@ -31,7 +31,7 @@ export default async function UsuariosPage() {
         description="Todos os jogadores cadastrados. Busque por nome, @usuário, email ou telefone; um clique no nome abre o dossiê completo."
       />
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <UsersTable
           initial={{
             rows: data.users ?? [],

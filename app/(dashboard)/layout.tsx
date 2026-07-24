@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout/sidebar";
+import { AppShell } from "@/components/layout/app-shell";
 import { CommandPalette } from "@/components/command-palette";
 import { getOpsSummary } from "@/lib/ops";
 
@@ -14,17 +14,12 @@ export default async function DashboardLayout({
   const summary = await getOpsSummary();
 
   return (
-    <div className="flex min-h-screen">
-      {/* The palette is a client component handed to the (also client) Sidebar as
-          a prop — it renders into the #global-search-slot the design agent left.
-          Mounting it in the layout is what makes ⌘K reachable from every panel:
-          the layout is the only thing that persists across route changes. */}
-      <Sidebar summary={summary} searchSlot={<CommandPalette />} />
-      <main className="ml-60 flex-1 min-h-screen bg-[var(--bg)]">
-        <div className="animate-fade-in-up">
-          {children}
-        </div>
-      </main>
-    </div>
+    // The palette is a client component handed down as a prop — it renders into
+    // the #global-search-slot the design agent left. Mounting it in the layout
+    // is what makes ⌘K reachable from every panel: the layout is the only thing
+    // that persists across route changes. AppShell adds the mobile drawer.
+    <AppShell summary={summary} searchSlot={<CommandPalette />}>
+      {children}
+    </AppShell>
   );
 }

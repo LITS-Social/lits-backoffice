@@ -10,14 +10,14 @@ export default function DashboardLoading() {
   return (
     <div className="animate-pulse" aria-busy="true" aria-label="Carregando painel">
       {/* Masthead */}
-      <div className="border-b border-[var(--border)] px-8 pt-9 pb-7">
+      <div className="border-b border-[var(--border)] px-4 sm:px-8 pt-9 pb-7">
         <div className="h-2 w-20 rounded-full bg-[var(--surface-raised)]" />
         <div className="mt-4 h-7 w-72 rounded bg-[var(--surface-raised)]" />
         <div className="mt-3 h-3 w-96 max-w-full rounded bg-[var(--surface-raised)]" />
       </div>
 
       {/* Stat rail */}
-      <div className="flex gap-6 border-b border-[var(--border)] bg-[var(--surface)]/60 px-8 py-5">
+      <div className="flex gap-6 border-b border-[var(--border)] bg-[var(--surface)]/60 px-4 sm:px-8 py-5">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="min-w-[132px]">
             <div className="h-2 w-16 rounded-full bg-[var(--surface-raised)]" />
@@ -27,7 +27,7 @@ export default function DashboardLoading() {
       </div>
 
       {/* Table */}
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
           <div className="h-9 border-b border-[var(--border)] bg-[var(--surface-sunken)]" />
           {Array.from({ length: 8 }, (_, i) => (

@@ -202,6 +202,11 @@ export function DataTable<T>({
         <EmptyState message={noResultsMessage} tone="neutral" />
       ) : (
         <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+          {/* Header and rows share one horizontal scroller — on a phone the
+              grid keeps its column widths and pans, instead of crushing every
+              cell; the pager stays put below, outside the pan. */}
+          <div className="overflow-x-auto">
+          <div className="min-w-[640px]">
           {/* Column heads: Colus, wide-tracked, on a recessed band — the masthead
               rule of a newspaper table, and unmistakably not a data row. */}
           <div
@@ -308,6 +313,8 @@ export function DataTable<T>({
                 </div>
               );
             })}
+          </div>
+          </div>
           </div>
 
           {/* Pager. Only earns its space once there is more than one page. */}
