@@ -64,7 +64,7 @@ export default async function AuditoriaPage() {
           {connectors.length === 0 ? (
             <EmptyState message="Nenhum conector cadastrado." />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {connectors.map((c) => (
                 <div
                   key={c.id}

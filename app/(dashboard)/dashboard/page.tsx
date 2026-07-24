@@ -63,7 +63,7 @@ export default async function DashboardPage() {
           comportamental, ver o Amplitude.
         </PanelNote>
 
-        <div className="grid gap-8 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
           <div>
             <p className="eyebrow mb-3">Cadastros por dia · 14d</p>
             <DailyBars data={m.signups_daily ?? []} tone="calm" />

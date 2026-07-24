@@ -284,6 +284,10 @@ html {
 body {
   background: var(--bg);
   transition: background 400ms var(--ease-brand), color 400ms var(--ease-brand);
+  /* The document never scrolls sideways — wide content pans inside its own
+     overflow-x-auto container. Without this, any overflowing element makes
+     iOS Safari zoom the page out to fit it (the "cut off header" look). */
+  overflow-x: clip;
 }
 
 h1, h2, h3, h4 {

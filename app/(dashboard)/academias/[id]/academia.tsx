@@ -437,7 +437,7 @@ export function AcademiaPage({ courts }: { courts: CourtListItem[] }) {
           eyebrow="Quadras"
           description="As quadras desta academia. Edite superfície, preço e horários individuais na página da quadra — o calendário abaixo mostra todas juntas."
         >
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {courts.map((c) => (
               <CourtCard key={c.id} court={c} />
             ))}

@@ -443,7 +443,7 @@ export function ChartsGrid({
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <ChartCard eyebrow="Crescimento da base" hint={growthHint} className="lg:col-span-2">
           {growthPoints ? (
             mounted ? (

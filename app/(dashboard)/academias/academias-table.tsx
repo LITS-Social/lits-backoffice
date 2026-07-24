@@ -94,7 +94,7 @@ export function AcademiasTable({ academias }: { academias: AcademiaRow[] }) {
           Nenhuma academia encontrada.
         </p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((a) => {
             const badge = kindBadge(a);
             const active = a.courts.filter((c) => c.is_active).length;

@@ -528,7 +528,7 @@ export default async function MetricsPage() {
         </div>
 
         {/* ── Onde estamos contra a meta da fase ───────────────────────────────── */}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <ProgressCard
             eyebrow="Usuários · meta da fase"
             value={users.total}
