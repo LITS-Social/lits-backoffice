@@ -622,7 +622,11 @@ export function FranchiseSection({
   initialAddress: string | null | undefined;
 }) {
   const [name, setName] = useState(franchiseName);
-  const [price, setPrice] = useState("");
+  // The field IS the current default price, edited in place (destaque grande
+  // — não mais um hint miúdo embaixo de um campo vazio).
+  const [price, setPrice] = useState(
+    initialDefaultPriceCents != null ? reaisFromCents(initialDefaultPriceCents) : ""
+  );
   const normalizedInitialKind: FranchiseKind = (
     ["partner", "public", "listing"] as const
   ).includes(initialKind as FranchiseKind)
@@ -754,6 +758,9 @@ export function FranchiseSection({
       setError("Preço padrão inválido. Use ex: 220 ou 220,50.");
       return;
     }
+    // Touched-only: só envia o preço quando difere do padrão salvo (o campo
+    // vem preenchido; mandar sempre reenviaria o mesmo valor a cada save).
+    const priceChanged = cents != null && cents !== (savedPrice ?? null);
     // Always a complete pair; clearing is its own flag (a JSON null pair would
     // be silently ignored by the BFF) — see updateFranchiseAction.
     let geo: { lat: number; lng: number } | { clearGeo: true } | undefined;
@@ -797,7 +804,7 @@ export function FranchiseSection({
     startTransition(async () => {
       const res = await updateFranchiseAction(franchiseId, {
         name: name.trim(),
-        ...(cents != null ? { defaultPriceCents: cents } : {}),
+        ...(priceChanged ? { defaultPriceCents: cents! } : {}),
         ...(kindDirty ? { kind } : {}),
         ...(geo ?? {}),
         ...(addr !== undefined ? { streetAddress: addr } : {}),
@@ -810,7 +817,8 @@ export function FranchiseSection({
       setLastSavedKind(kind);
       setSaved(true);
       setSavedPrice(res.franchise.default_price_cents);
-      setPrice("");
+      if (res.franchise.default_price_cents != null)
+        setPrice(reaisFromCents(res.franchise.default_price_cents));
       if (addr !== undefined) {
         setAddressDirty(false);
         setAddress(addr);
@@ -889,23 +897,22 @@ export function FranchiseSection({
           <label htmlFor="franchise_price" className={labelClass}>
             Preço padrão da academia (R$)
           </label>
-          <input
-            id="franchise_price"
-            inputMode="decimal"
-            value={price}
-            onChange={(e) => {
-              setPrice(e.target.value);
-              touched();
-            }}
-            placeholder="ex: 220"
-            className={fieldClass}
-          />
+          <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-4 py-3 transition-colors focus-within:border-[var(--primary)] hover:border-[var(--border-strong)]">
+            <span className="numeral text-[22px] leading-none text-[var(--text-tertiary)]">R$</span>
+            <input
+              id="franchise_price"
+              inputMode="decimal"
+              value={price}
+              onChange={(e) => {
+                setPrice(e.target.value);
+                touched();
+              }}
+              placeholder={savedPrice == null ? "sem preço padrão" : "ex: 220"}
+              className="numeral w-full bg-transparent text-[26px] leading-none text-[var(--text-primary)] placeholder:font-sans placeholder:text-[13px] placeholder:font-300 placeholder:text-[var(--text-tertiary)] focus:outline-none"
+            />
+          </div>
           <p className="mt-1 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            {savedPrice !== undefined
-              ? savedPrice == null
-                ? "Preço padrão atual: nenhum. Deixe em branco para manter."
-                : `Preço padrão atual: ${formatCurrency(savedPrice)}. Deixe em branco para manter.`
-              : "A API não expõe o preço padrão atual na leitura; deixe em branco para não alterá-lo."}
+            O preço da hora nas quadras sem preço próprio. Edite e salve para mudar.
           </p>
         </div>
 
