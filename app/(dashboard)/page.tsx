@@ -496,7 +496,7 @@ export default async function MetricsPage() {
             context={
               matches.failed
                 ? "falha ao carregar"
-                : `na semana · ${matches.prev7} na anterior`
+                : `desde o início · ${matches.last7} na semana · ${matches.prev7} na anterior`
             }
           />
           <Kpi
@@ -505,7 +505,7 @@ export default async function MetricsPage() {
             context={
               users.failed || users.total === 0
                 ? "falha ao carregar"
-                : `${pct(wau / users.total)} da base viva nos últimos 7 dias`
+                : `${pct(wau / users.total)} da base abriu o app nos últimos 7 dias`
             }
           />
           <Kpi
@@ -519,9 +519,9 @@ export default async function MetricsPage() {
               : {})}
             context={
               completion
-                ? `meta ≥ ${pct(META_CONCLUSAO)} · ${completion.cancelled} canceladas${
+                ? `meta ≥ ${pct(META_CONCLUSAO)} · ${completion.finished} concluídas vs ${completion.cancelled} canceladas${
                     completion.expiredNeverConfirmed != null ? " (confirmadas)" : ""
-                  }`
+                  }${completion.finished + completion.cancelled < 10 ? " · amostra pequena" : ""}`
                 : "sem dado de cancelamentos"
             }
           />
