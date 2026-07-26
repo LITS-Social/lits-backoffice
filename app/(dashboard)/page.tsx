@@ -231,11 +231,13 @@ function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
 }
 
 export default async function MetricsPage() {
-  const { users, matches, north, completion, partnerRating } = await getProductMetrics();
+  const { users, matches, scorePosts, north, completion, partnerRating } =
+    await getProductMetrics();
 
   const broken = [
     users.failed && "Usuários",
     matches.failed && "Partidas concluídas",
+    scorePosts.failed && "Posts do feed",
     north.failed && "Métricas de produto",
   ].filter(Boolean) as string[];
 
@@ -491,12 +493,29 @@ export default async function MetricsPage() {
           />
           <Kpi
             label="Partidas com placar"
-            value={matches.failed ? "—" : String(matches.total)}
-            {...(wow ? { delta: `+${matches.last7}`, deltaGood: wow.ok } : {})}
+            value={
+              !scorePosts.failed
+                ? `${scorePosts.total}${scorePosts.truncated ? "+" : ""}`
+                : matches.failed
+                  ? "—"
+                  : String(matches.total)
+            }
+            {...(!scorePosts.failed
+              ? {
+                  delta: `+${scorePosts.last7}`,
+                  deltaGood: scorePosts.last7 >= scorePosts.prev7,
+                }
+              : wow
+                ? { delta: `+${matches.last7}`, deltaGood: wow.ok }
+                : {})}
             context={
-              matches.failed
-                ? "falha ao carregar"
-                : `desde o início · ${matches.last7} na semana · ${matches.prev7} na anterior`
+              !scorePosts.failed
+                ? `placares no feed desde o início · ${scorePosts.prev7} na semana anterior${
+                    matches.failed ? "" : ` · ${matches.total} reservas marcadas como jogadas`
+                  }`
+                : matches.failed
+                  ? "falha ao carregar"
+                  : `reservas jogadas · ${matches.last7} na semana · ${matches.prev7} na anterior`
             }
           />
           <Kpi

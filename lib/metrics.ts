@@ -113,9 +113,66 @@ export type NorthMetrics = {
   completion: components["schemas"]["Completion"] | null;
 };
 
+/**
+ * Score posts straight from the feed — the source of truth for "partidas com
+ * placar". The booking-side `played` status undercounts it: feed-service only
+ * flips a booking when the score post carries that booking's match_id, so
+ * placares posted without a booking link (jogo combinado fora do app) and
+ * best-effort MarkPlayed failures never reach /finished-matches.
+ */
+export type ScorePostsMetrics = {
+  failed: boolean;
+  total: number;
+  truncated: boolean;
+  last7: number;
+  prev7: number;
+};
+
+async function crawlScorePosts(): Promise<ScorePostsMetrics> {
+  const api = await getApi();
+  const now = Date.now();
+  type Row = { post_type: string; created_at?: string; deleted_at?: string };
+  const rows: Row[] = [];
+  let cursor: string | undefined;
+  let truncated = false;
+  try {
+    for (let page = 0; ; page++) {
+      if (page >= 10) {
+        truncated = true;
+        break;
+      }
+      const { data, error } = await api.GET("/v1/ops/posts", {
+        params: { query: { limit: 200, ...(cursor ? { cursor } : {}) } },
+      });
+      if (error || data.posts == null) throw new Error("posts page failed");
+      rows.push(...data.posts);
+      if (!data.has_more || !data.next_cursor) break;
+      cursor = data.next_cursor;
+    }
+  } catch {
+    return { failed: true, total: 0, truncated: false, last7: 0, prev7: 0 };
+  }
+  const scores = rows.filter((r) => r.post_type === "score" && !r.deleted_at);
+  const within = (from: number, to: number) =>
+    scores.filter((r) => {
+      if (!r.created_at) return false;
+      const t = new Date(r.created_at).getTime();
+      return t > from && t <= to;
+    }).length;
+  return {
+    failed: false,
+    total: scores.length,
+    truncated,
+    last7: within(now - WEEK_MS, now),
+    prev7: within(now - 2 * WEEK_MS, now - WEEK_MS),
+  };
+}
+
 export type ProductMetrics = {
   users: UsersMetrics;
   matches: MatchesMetrics;
+  /** Placares publicados no feed (post_type=score, não deletados). */
+  scorePosts: ScorePostsMetrics;
   north: NorthMetrics;
   /**
    * Preferred source is the server's completion block: finished = played,
@@ -289,9 +346,10 @@ async function fetchNorth(): Promise<NorthMetrics> {
 export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
   const api = await getApi();
 
-  const [users, matches, north, cancellations, evaluations] = await Promise.all([
+  const [users, matches, scorePosts, north, cancellations, evaluations] = await Promise.all([
     crawlUsers(),
     fetchMatches(),
+    crawlScorePosts(),
     fetchNorth(),
     // Only the server-side `total` is read; one row is the cheapest way to get it.
     api.GET("/v1/ops/cancellations", { params: { query: { limit: 1, offset: 0 } } }),
@@ -335,5 +393,5 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
     }
   }
 
-  return { users, matches, north, completion, partnerRating };
+  return { users, matches, scorePosts, north, completion, partnerRating };
 });
