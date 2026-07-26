@@ -2226,6 +2226,28 @@ export interface components {
              */
             status?: "available" | "blocked";
         };
+        MatchFunnel: {
+            /**
+             * Format: int64
+             * @description Direct guest invites created, all time. LOWER BOUND: a declined/expired free invite clears guest_id and leaves no trace
+             */
+            invites_sent: number;
+            /**
+             * Format: int64
+             * @description Bookings with status='played', all time
+             */
+            played: number;
+            /**
+             * Format: int64
+             * @description Quick-match bookings created, all time
+             */
+            quick_matches_opened: number;
+            /**
+             * Format: double
+             * @description played / (invites_sent + quick_matches_opened); 0 when the denominator is 0
+             */
+            rate: number;
+        };
         MetricsBody: {
             /**
              * Format: uri
@@ -2829,6 +2851,8 @@ export interface components {
              * @description Direct guest invites in the last 7 days — same figure as invite_acceptance_7d.sent (see its caveats)
              */
             invites_sent_7d: number | null;
+            /** @description Intent→game conversion: played over invites sent + quick matches opened, all time */
+            match_funnel: components["schemas"]["MatchFunnel"];
             /**
              * Format: int64
              * @description Users created in the last 7 days with last_seen_at stamped (>=1 authenticated request since signup). Excludes deleted accounts

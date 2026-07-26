@@ -111,6 +111,9 @@ export type NorthMetrics = {
    * hence nullable (deploy window).
    */
   completion: components["schemas"]["Completion"] | null;
+  /** Intent→game conversion: played over invites + quick matches (all time).
+      Null on the old-BFF deploy window. */
+  matchFunnel: components["schemas"]["MatchFunnel"] | null;
 };
 
 /**
@@ -316,7 +319,7 @@ async function fetchNorth(): Promise<NorthMetrics> {
     invitesSent7d: null, inviteAcceptance: null, newActive7d: null,
     onboarding: null, retentionWeek2: null, referralCodesUsed7d: null,
     woToday: null, appOpenNoAction: null, validMatchesPerUser: null,
-    completion: null,
+    completion: null, matchFunnel: null,
   };
 
   try {
@@ -337,6 +340,7 @@ async function fetchNorth(): Promise<NorthMetrics> {
       // ?? null is the deploy-window guard: the schema says required, but an
       // old running BFF still omits the block.
       completion: data.completion ?? null,
+      matchFunnel: data.match_funnel ?? null,
     };
   } catch {
     return failed;

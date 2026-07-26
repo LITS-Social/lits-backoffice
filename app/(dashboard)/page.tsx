@@ -529,19 +529,27 @@ export default async function MetricsPage() {
           />
           <Kpi
             label="Taxa de conclusão"
-            value={completion ? pct(completion.rate) : "—"}
-            {...(completion
+            value={
+              north.matchFunnel
+                ? pct(north.matchFunnel.rate)
+                : completion
+                  ? pct(completion.rate)
+                  : "—"
+            }
+            {...(!north.matchFunnel && completion
               ? {
                   delta: completion.rate >= META_CONCLUSAO ? "na meta" : "abaixo",
                   deltaGood: completion.rate >= META_CONCLUSAO,
                 }
               : {})}
             context={
-              completion
-                ? `meta ≥ ${pct(META_CONCLUSAO)} · ${completion.finished} concluídas vs ${completion.cancelled} canceladas${
-                    completion.expiredNeverConfirmed != null ? " (confirmadas)" : ""
-                  }${completion.finished + completion.cancelled < 10 ? " · amostra pequena" : ""}`
-                : "sem dado de cancelamentos"
+              north.matchFunnel
+                ? `${north.matchFunnel.played} jogadas ÷ ${north.matchFunnel.invites_sent} convites + ${north.matchFunnel.quick_matches_opened} quick matches`
+                : completion
+                  ? `meta ≥ ${pct(META_CONCLUSAO)} · ${completion.finished} concluídas vs ${completion.cancelled} canceladas${
+                      completion.expiredNeverConfirmed != null ? " (confirmadas)" : ""
+                    }${completion.finished + completion.cancelled < 10 ? " · amostra pequena" : ""}`
+                  : "sem dado de cancelamentos"
             }
           />
         </div>
