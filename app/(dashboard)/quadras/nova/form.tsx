@@ -10,6 +10,17 @@ import {
   type FranchiseItem,
   type CreateCourtState,
 } from "./actions";
+import { regenerateAvailabilityAction } from "../[id]/editar/actions";
+
+/** As três janelas do funcionamento da academia, colhidas no passo 1. */
+export type AcademiaHours = {
+  weekStart: number;
+  weekEnd: number;
+  satStart: number;
+  satEnd: number;
+  sunStart: number;
+  sunEnd: number;
+};
 
 type Surface = "clay" | "hard" | "grass" | "beach" | "carpet";
 type Step = "franchise" | "court" | "done";
@@ -151,7 +162,7 @@ function FranchiseStep({
   onNext,
 }: {
   franchises: FranchiseItem[];
-  onNext: (id: string, name: string, kind: string) => void;
+  onNext: (id: string, name: string, kind: string, hours?: AcademiaHours) => void;
 }) {
   // The directory has 160+ active venues, so the picker is search-first and
   // demands an explicit click — a silent default under that many rows is how a
@@ -165,6 +176,12 @@ function FranchiseStep({
   const [kind, setKind] = useState<"partner" | "public" | "listing">("partner");
   const [defaultPrice, setDefaultPrice] = useState("");
   const [freeFranchise, setFreeFranchise] = useState(false);
+  const [address, setAddress] = useState("");
+  const [latText, setLatText] = useState("");
+  const [lngText, setLngText] = useState("");
+  const [hours, setHours] = useState<AcademiaHours>({
+    weekStart: 6, weekEnd: 22, satStart: 6, satEnd: 22, sunStart: 6, sunEnd: 22,
+  });
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -187,13 +204,42 @@ function FranchiseStep({
         setError("Preço padrão inválido. Use ex: 220 ou 220,50.");
         return;
       }
+      const num = (t: string) => (t.trim() === "" ? null : Number(t.trim().replace(",", ".")));
+      const lat = num(latText);
+      const lng = num(lngText);
+      if ((lat == null) !== (lng == null)) {
+        setError("Localização: preencha latitude E longitude (ou deixe as duas vazias).");
+        return;
+      }
+      if (lat != null && (Number.isNaN(lat) || Math.abs(lat) > 90)) {
+        setError("Latitude inválida (entre -90 e 90).");
+        return;
+      }
+      if (lng != null && (Number.isNaN(lng) || Math.abs(lng) > 180)) {
+        setError("Longitude inválida (entre -180 e 180).");
+        return;
+      }
+      for (const [label, ks, ke] of [
+        ["Seg–Sex", hours.weekStart, hours.weekEnd],
+        ["Sábado", hours.satStart, hours.satEnd],
+        ["Domingo", hours.sunStart, hours.sunEnd],
+      ] as const) {
+        if (ks >= ke) {
+          setError(`Horário de funcionamento (${label}): início deve ser antes do fim.`);
+          return;
+        }
+      }
       startTransition(async () => {
-        const result = await createFranchiseAction(slug.trim(), name.trim(), kind, defaultPriceCents);
+        const result = await createFranchiseAction(slug.trim(), name.trim(), kind, defaultPriceCents, {
+          ...(lat != null && lng != null ? { lat, lng } : {}),
+          ...(address.trim() ? { streetAddress: address.trim() } : {}),
+          hours,
+        });
         if (!result.ok || !result.franchise) {
           setError(result.error ?? "Falha ao criar franquia.");
           return;
         }
-        onNext(result.franchise.id, result.franchise.name, result.franchise.kind);
+        onNext(result.franchise.id, result.franchise.name, result.franchise.kind, hours);
       });
     }
   }
@@ -354,6 +400,90 @@ function FranchiseStep({
                 : "Opcional. Aplicado às quadras desta academia quando não houver preço próprio."}
             </p>
           </div>
+
+          <div>
+            <label htmlFor="new_address" className={labelClass}>
+              Localização — endereço
+            </label>
+            <input
+              id="new_address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="ex: R. Tucumã, 500 — Jardim Europa"
+              className={fieldClass}
+            />
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <div>
+                <label htmlFor="new_lat" className="sr-only">
+                  Latitude
+                </label>
+                <input
+                  id="new_lat"
+                  value={latText}
+                  onChange={(e) => setLatText(e.target.value)}
+                  placeholder="lat · ex: -23.567755"
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label htmlFor="new_lng" className="sr-only">
+                  Longitude
+                </label>
+                <input
+                  id="new_lng"
+                  value={lngText}
+                  onChange={(e) => setLngText(e.target.value)}
+                  placeholder="lng · ex: -46.644376"
+                  className={fieldClass}
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-[10.5px] font-300 text-[var(--text-tertiary)]">
+              Opcional agora — posiciona a academia no app (distância e mapa). Dá para buscar
+              coordenadas depois na página da academia.
+            </p>
+          </div>
+
+          <div>
+            <p className={labelClass}>Horário de funcionamento</p>
+            <div className="space-y-2">
+              {(
+                [
+                  ["Seg–Sex", "weekStart", "weekEnd"],
+                  ["Sábado", "satStart", "satEnd"],
+                  ["Domingo", "sunStart", "sunEnd"],
+                ] as const
+              ).map(([label, ks, ke]) => (
+                <div key={ks} className="grid grid-cols-[72px_1fr_1fr] items-center gap-2">
+                  <span className="label-colus text-[8.5px] text-[var(--text-tertiary)]">
+                    {label}
+                  </span>
+                  <input
+                    aria-label={`Hora início ${label}`}
+                    type="number"
+                    min={0}
+                    max={22}
+                    value={hours[ks]}
+                    onChange={(e) => setHours({ ...hours, [ks]: Number(e.target.value) })}
+                    className={fieldClass}
+                  />
+                  <input
+                    aria-label={`Última hora de início ${label}`}
+                    type="number"
+                    min={1}
+                    max={23}
+                    value={hours[ke]}
+                    onChange={(e) => setHours({ ...hours, [ke]: Number(e.target.value) })}
+                    className={fieldClass}
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="mt-1 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+              Hora início · última hora de começo de jogo. Vira o horário padrão da academia — a
+              grade das quadras segue estas janelas.
+            </p>
+          </div>
         </div>
       )}
 
@@ -377,11 +507,15 @@ function FranchiseStep({
 function CourtStep({
   franchiseId,
   franchiseKind,
+  academiaHours,
   onDone,
   onBack,
 }: {
   franchiseId: string;
   franchiseKind: string;
+  /** Funcionamento colhido no passo 1 (nova franquia) — pré-preenche a janela
+      e leva sábado/domingo para a grade. */
+  academiaHours?: AcademiaHours;
   onDone: (result: CreateCourtState) => void;
   onBack: () => void;
 }) {
@@ -389,9 +523,9 @@ function CourtStep({
   const [surface, setSurface] = useState<Surface>("clay");
   const [indoor, setIndoor] = useState(false);
   const [availabilityMode, setAvailabilityMode] = useState<"auto" | "manual">("auto");
-  const [daysForward, setDaysForward] = useState(90);
-  const [startHour, setStartHour] = useState(6);
-  const [endHour, setEndHour] = useState(22);
+  const [daysForward, setDaysForward] = useState(30);
+  const [startHour, setStartHour] = useState(academiaHours?.weekStart ?? 6);
+  const [endHour, setEndHour] = useState(academiaHours?.weekEnd ?? 22);
   const [price, setPrice] = useState("");
   const [freeCourt, setFreeCourt] = useState(false);
   const [error, setError] = useState("");
@@ -409,6 +543,10 @@ function CourtStep({
       return;
     }
     startTransition(async () => {
+      // A quadra nasce SEM grade do backend (auto_generate off): a grade
+      // padrão do produto é bloqueada, então quem gera é o mesmo fluxo do
+      // "Aplicar horário" — janelas por dia (fim de semana do passo 1
+      // incluído), tudo blocked, liberação via import ou calendário.
       const result = await createCourtAction({
         franchiseId,
         name: name.trim(),
@@ -418,13 +556,37 @@ function CourtStep({
         startHour,
         endHour,
         priceCents,
-        autoGenerate: !manual,
+        autoGenerate: false,
       });
-      if (!result.ok) {
+      if (!result.ok || !result.courtId) {
         setError(result.error ?? "Falha ao criar quadra.");
         return;
       }
-      onDone(result);
+      if (manual) {
+        onDone(result);
+        return;
+      }
+      const grid = await regenerateAvailabilityAction(result.courtId, {
+        startHour,
+        endHour,
+        daysForward,
+        priceCents,
+        saturday: academiaHours
+          ? { startHour: academiaHours.satStart, endHour: academiaHours.satEnd }
+          : undefined,
+        sunday: academiaHours
+          ? { startHour: academiaHours.sunStart, endHour: academiaHours.sunEnd }
+          : undefined,
+      });
+      if (!grid.ok) {
+        setError(
+          "Quadra criada, mas a grade falhou: " +
+            (grid.error ?? "erro") +
+            " — gere pelo editor da quadra."
+        );
+        return;
+      }
+      onDone({ ...result, slotsCreated: grid.slotsCreated ?? 0 });
     });
   }
 
@@ -595,8 +757,9 @@ function CourtStep({
           "A quadra é criada sem horários. Adicione os horários manualmente na edição da quadra."
         ) : (
           <>
-            Gera slots das {String(startHour).padStart(2, "0")}h às {String(endHour).padStart(2, "0")}h para os próximos {daysForward} dias.
-            Preço personalizado (quadra ou padrão da academia) sobrepõe a fórmula 10h–17h59 → R$&nbsp;220; demais → R$&nbsp;280; quadras públicas e do diretório → R$&nbsp;0.
+            Gera a grade das {String(startHour).padStart(2, "0")}h às {String(endHour).padStart(2, "0")}h para os próximos {daysForward} dias — toda{" "}
+            <strong>bloqueada</strong>: os horários só vendem depois de um import do print ou de um
+            desbloqueio no calendário da academia.
           </>
         )}
       </p>
@@ -635,7 +798,7 @@ function DoneStep({ courtId, slotsCreated, onNew }: { courtId: string; slotsCrea
         <p className="text-[17px] font-600 text-[var(--text-primary)]">Quadra criada</p>
         <p className="mt-1 text-[12.5px] font-300 text-[var(--text-tertiary)]">
           {slotsCreated > 0
-            ? `${slotsCreated.toLocaleString("pt-BR")} slots de disponibilidade gerados.`
+            ? `${slotsCreated.toLocaleString("pt-BR")} horários criados, todos bloqueados — libere pelo import ou pelo calendário da academia.`
             : "Criada sem horários. Adicione os horários manualmente na edição."}
         </p>
       </div>
@@ -676,12 +839,14 @@ export function NovaQuadraForm({
   const [franchiseId, setFranchiseId] = useState(initialFranchise?.id ?? "");
   const [franchiseName, setFranchiseName] = useState(initialFranchise?.name ?? "");
   const [franchiseKind, setFranchiseKind] = useState(initialFranchise?.kind ?? "");
+  const [academiaHours, setAcademiaHours] = useState<AcademiaHours | undefined>(undefined);
   const [result, setResult] = useState<CreateCourtState | null>(null);
 
-  function handleFranchiseNext(id: string, name: string, kind: string) {
+  function handleFranchiseNext(id: string, name: string, kind: string, hours?: AcademiaHours) {
     setFranchiseId(id);
     setFranchiseName(name);
     setFranchiseKind(kind);
+    setAcademiaHours(hours);
     setStep("court");
   }
 
@@ -725,6 +890,7 @@ export function NovaQuadraForm({
           <CourtStep
             franchiseId={franchiseId}
             franchiseKind={franchiseKind}
+            academiaHours={academiaHours}
             onDone={handleCourtDone}
             onBack={() => setStep("franchise")}
           />

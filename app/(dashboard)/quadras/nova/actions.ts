@@ -25,11 +25,26 @@ export async function listFranchisesAction(): Promise<{ franchises: FranchiseIte
   return { franchises: data.franchises ?? [] };
 }
 
+export type FranchiseExtras = {
+  lat?: number;
+  lng?: number;
+  streetAddress?: string;
+  hours?: {
+    weekStart: number;
+    weekEnd: number;
+    satStart: number;
+    satEnd: number;
+    sunStart: number;
+    sunEnd: number;
+  };
+};
+
 export async function createFranchiseAction(
   slug: string,
   name: string,
   kind: "partner" | "public" | "listing",
-  defaultPriceCents?: number | null
+  defaultPriceCents?: number | null,
+  extras?: FranchiseExtras
 ): Promise<CreateFranchiseState> {
   const api = await getApi();
   const { data, error } = await api.POST("/v1/ops/franchises", {
@@ -41,6 +56,34 @@ export async function createFranchiseAction(
     },
   });
   if (error) return { ok: false, error: error.detail || error.title || "Falha ao criar franquia." };
+
+  // Localização + horário de funcionamento chegam pelo wizard mas o POST de
+  // criação não os aceita — um PATCH logo em seguida grava tudo. Se o PATCH
+  // falhar a franquia já existe; o wizard segue e o editor da academia cobre.
+  if (
+    extras &&
+    (extras.lat != null || extras.lng != null || extras.streetAddress || extras.hours)
+  ) {
+    await api.PATCH("/v1/ops/franchises/{id}", {
+      params: { path: { id: data.id } },
+      body: {
+        ...(extras.lat != null && extras.lng != null
+          ? { lat: extras.lat, lng: extras.lng }
+          : {}),
+        ...(extras.streetAddress ? { street_address: extras.streetAddress } : {}),
+        ...(extras.hours
+          ? {
+              hours_week_start: extras.hours.weekStart,
+              hours_week_end: extras.hours.weekEnd,
+              hours_sat_start: extras.hours.satStart,
+              hours_sat_end: extras.hours.satEnd,
+              hours_sun_start: extras.hours.sunStart,
+              hours_sun_end: extras.hours.sunEnd,
+            }
+          : {}),
+      },
+    });
+  }
   return { ok: true, franchise: data };
 }
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
-import { AlertCircle, ArrowLeft, Check, Pencil, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Pencil, Plus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import type { CourtListItem } from "../../quadras/actions";
@@ -442,6 +442,17 @@ export function AcademiaPage({ courts }: { courts: CourtListItem[] }) {
             {courts.map((c) => (
               <CourtCard key={c.id} court={c} />
             ))}
+            <li>
+              <Link
+                href={`/quadras/nova?franquia=${base.franchise_id}`}
+                className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border-strong)] p-4 text-[var(--text-tertiary)] transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)]"
+              >
+                <Plus size={16} strokeWidth={2} />
+                <span className="font-700 text-[9.5px] uppercase tracking-[0.16em]">
+                  Adicionar quadra
+                </span>
+              </Link>
+            </li>
           </ul>
         </SectionCard>
 
