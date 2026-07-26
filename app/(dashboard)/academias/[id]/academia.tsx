@@ -107,7 +107,6 @@ function OperatingHoursSection({
 }) {
   const [w, setW] = useState<HourWindows>(() => initialWindows(courts[0]));
   const [saved, setSaved] = useState<HourWindows | null>(null);
-  const [days, setDays] = useState("30");
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
   const [savedNote, setSavedNote] = useState(false);
@@ -155,12 +154,8 @@ function OperatingHoursSection({
       setConfirming(false);
       return;
     }
-    const daysForward = Number(days);
-    if (!Number.isInteger(daysForward) || daysForward < 1 || daysForward > 90) {
-      setError("Dias à frente deve ser um inteiro entre 1 e 90.");
-      setConfirming(false);
-      return;
-    }
+    // Horizonte fixo: um mês rolante — não é decisão do operador.
+    const daysForward = 30;
     setError("");
     setApplyNote("");
     setConfirming(false);
@@ -257,21 +252,7 @@ function OperatingHoursSection({
           ))}
         </div>
 
-        <div className="flex flex-wrap items-end justify-between gap-3 border-t border-[var(--border)] pt-4">
-          <div className="w-[130px]">
-            <label htmlFor="hours-days" className={labelClass}>
-              Dias à frente
-            </label>
-            <input
-              id="hours-days"
-              type="number"
-              min={1}
-              max={90}
-              value={days}
-              onChange={(e) => setDays(e.target.value)}
-              className={fieldClass}
-            />
-          </div>
+        <div className="flex flex-wrap items-end justify-end gap-3 border-t border-[var(--border)] pt-4">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={save} disabled={saving} className={primaryBtn}>
               {saving ? "Salvando…" : "Salvar horário"}
