@@ -125,7 +125,13 @@ export type NorthMetrics = {
  */
 export type ScorePostsMetrics = {
   failed: boolean;
+  /** score + match posts — as duas formas de registrar que o jogo aconteceu
+      (o MarkPlayed do feed-service dispara para ambas). */
   total: number;
+  /** Posts com placar formal (post_type=score). */
+  scoreOnly: number;
+  /** Registros de partida sem placar (post_type=match). */
+  matchOnly: number;
   truncated: boolean;
   last7: number;
   prev7: number;
@@ -155,18 +161,22 @@ async function crawlScorePosts(): Promise<ScorePostsMetrics> {
       cursor = data.next_cursor;
     }
   } catch {
-    return { failed: true, total: 0, truncated: false, last7: 0, prev7: 0 };
+    return { failed: true, total: 0, scoreOnly: 0, matchOnly: 0, truncated: false, last7: 0, prev7: 0 };
   }
-  const scores = rows.filter((r) => r.post_type === "score" && !r.deleted_at);
+  const games = rows.filter(
+    (r) => (r.post_type === "score" || r.post_type === "match") && !r.deleted_at
+  );
   const within = (from: number, to: number) =>
-    scores.filter((r) => {
+    games.filter((r) => {
       if (!r.created_at) return false;
       const t = new Date(r.created_at).getTime();
       return t > from && t <= to;
     }).length;
   return {
     failed: false,
-    total: scores.length,
+    total: games.length,
+    scoreOnly: games.filter((r) => r.post_type === "score").length,
+    matchOnly: games.filter((r) => r.post_type === "match").length,
     truncated,
     last7: within(now - WEEK_MS, now),
     prev7: within(now - 2 * WEEK_MS, now - WEEK_MS),

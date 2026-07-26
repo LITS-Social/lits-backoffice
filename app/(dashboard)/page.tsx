@@ -492,7 +492,7 @@ export default async function MetricsPage() {
             }
           />
           <Kpi
-            label="Partidas com placar"
+            label="Partidas registradas"
             value={
               !scorePosts.failed
                 ? `${scorePosts.total}${scorePosts.truncated ? "+" : ""}`
@@ -510,8 +510,8 @@ export default async function MetricsPage() {
                 : {})}
             context={
               !scorePosts.failed
-                ? `placares no feed desde o início · ${scorePosts.prev7} na semana anterior${
-                    matches.failed ? "" : ` · ${matches.total} reservas marcadas como jogadas`
+                ? `partidas no feed desde o início (${scorePosts.scoreOnly} com placar + ${scorePosts.matchOnly} registradas) · ${scorePosts.prev7} na semana anterior${
+                    matches.failed ? "" : ` · ${matches.total} reservas jogadas`
                   }`
                 : matches.failed
                   ? "falha ao carregar"
