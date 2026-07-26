@@ -140,12 +140,14 @@ async function crawlScorePosts(): Promise<ScorePostsMetrics> {
   let truncated = false;
   try {
     for (let page = 0; ; page++) {
-      if (page >= 10) {
+      if (page >= 20) {
         truncated = true;
         break;
       }
+      // O endpoint valida limit ≤ 100 (huma 422 acima disso — foi exatamente
+      // o que derrubou este crawl em produção com limit: 200).
       const { data, error } = await api.GET("/v1/ops/posts", {
-        params: { query: { limit: 200, ...(cursor ? { cursor } : {}) } },
+        params: { query: { limit: 100, ...(cursor ? { cursor } : {}) } },
       });
       if (error || data.posts == null) throw new Error("posts page failed");
       rows.push(...data.posts);
