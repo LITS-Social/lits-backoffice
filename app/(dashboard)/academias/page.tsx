@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PanelError } from "../_components/notes";
 import { listCourtsAction, type CourtListItem } from "../quadras/actions";
@@ -48,6 +50,14 @@ export default async function AcademiasPage() {
         eyebrow="Gestão"
         title="Academias"
         description={`${academias.length} academia${academias.length === 1 ? "" : "s"} · ${totalCourts} quadra${totalCourts === 1 ? "" : "s"}. Clique numa academia para gerenciar definições, horários, quadras e importar prints.`}
+        action={
+          <Link
+            href="/quadras/nova"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90"
+          >
+            <Plus size={11} strokeWidth={2.5} /> Nova academia
+          </Link>
+        }
       />
       <div className="px-4 sm:px-8 py-6">
         <AcademiasTable academias={academias} />

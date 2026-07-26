@@ -19,7 +19,7 @@ export default async function NovaQuadraPage({
     return (
       <PanelError
         eyebrow="Quadras"
-        title="Nova Quadra"
+        title="Nova Academia"
         detail={error}
       />
     );
@@ -29,7 +29,7 @@ export default async function NovaQuadraPage({
     <div>
       <PageHeader
         eyebrow="Gestão"
-        title="Nova Quadra"
+        title="Nova Academia"
         description="Crie uma franquia (se necessário) e cadastre a quadra com disponibilidade gerada automaticamente."
       />
 
