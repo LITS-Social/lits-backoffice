@@ -403,10 +403,11 @@ function RepriceSection({
   defaultPriceCents: number | null | undefined;
   onDone: () => void;
 }) {
-  const [price, setPrice] = useState("");
-  // The franchise default the BFF reported on load — updated locally after a
-  // reprice so "último preço" is always visible without a refetch.
-  const [currentDefault, setCurrentDefault] = useState<number | null>(defaultPriceCents ?? null);
+  // The field IS the price: starts at the franchise default and applying
+  // writes it back — same in-place shape as the operating-hours section.
+  const [price, setPrice] = useState(
+    defaultPriceCents != null ? reaisFromCents(defaultPriceCents) : ""
+  );
   const [error, setError] = useState("");
   const [result, setResult] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
@@ -426,28 +427,20 @@ function RepriceSection({
         return;
       }
       setResult(res.slotsUpdated ?? 0);
-      setCurrentDefault(cents);
-      setPrice("");
       onDone();
     });
   }
 
   return (
     <SectionCard
-      title="Repreçar"
-      description="Aplica o novo preço a todos os horários futuros — disponíveis e bloqueados — e o grava como preço padrão da academia (herdado pelas próximas grades). Horários passados e reservas reais não são tocados."
+      title="Preço"
+      description="O preço da hora nesta quadra. Mude e aplique: vale para todos os horários futuros — disponíveis e bloqueados — e vira o preço padrão da academia (herdado pelas próximas grades). Horários passados e reservas reais não são tocados."
     >
       <div className="space-y-4">
-        <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 text-[12px] leading-snug text-[var(--text-secondary)]">
-          Preço padrão atual:{" "}
-          <span className="numeral text-[13px] text-[var(--text-primary)]">
-            {currentDefault != null ? formatCurrency(currentDefault) : "nenhum — fórmula por horário"}
-          </span>
-        </p>
         <div className="flex items-end gap-3">
           <div className="flex-1">
             <label htmlFor="reprice_value" className={labelClass}>
-              Novo preço (R$)
+              Preço da hora (R$)
             </label>
             <input
               id="reprice_value"
@@ -459,15 +452,14 @@ function RepriceSection({
             />
           </div>
           <button type="button" onClick={submit} disabled={pending} className={primaryBtn}>
-            {pending ? "Repreçando…" : "Repreçar"}
+            {pending ? "Aplicando…" : "Aplicar preço"}
           </button>
         </div>
 
         {error && <ErrorBanner message={error} />}
         {result !== null && (
           <SuccessNote>
-            {result.toLocaleString("pt-BR")} slot{result === 1 ? "" : "s"} repreçado
-            {result === 1 ? "" : "s"}.
+            Preço aplicado em {result.toLocaleString("pt-BR")} horário{result === 1 ? "" : "s"}.
           </SuccessNote>
         )}
       </div>
@@ -480,20 +472,18 @@ function RepriceSection({
 function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
   const [startHour, setStartHour] = useState(6);
   const [endHour, setEndHour] = useState(22);
-  // Weekend windows start mirroring the weekday one; the action only sends
-  // them when they actually differ, so equal values keep the request minimal.
   const [satStart, setSatStart] = useState(6);
   const [satEnd, setSatEnd] = useState(22);
   const [sunStart, setSunStart] = useState(6);
   const [sunEnd, setSunEnd] = useState(22);
-  const [daysForward, setDaysForward] = useState(90);
-  const [price, setPrice] = useState("");
-  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ deleted: number; created: number } | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function requestConfirm() {
+  // The grid horizon is not the operator's problem — one month rolling.
+  const DAYS_FORWARD = 30;
+
+  function apply() {
     setError("");
     setResult(null);
     if (startHour >= endHour) {
@@ -508,57 +498,29 @@ function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () =>
       setError("Hora de início deve ser menor que a hora de fim (Domingo).");
       return;
     }
-    const cents = reaisToCents(price);
-    if (price.trim() !== "" && cents === null) {
-      setError("Preço inválido. Use ex: 250 ou 250,50.");
-      return;
-    }
-    setConfirming(true);
-  }
-
-  function confirm() {
-    const cents = reaisToCents(price);
     startTransition(async () => {
       const res = await regenerateAvailabilityAction(courtId, {
         startHour,
         endHour,
-        daysForward,
-        priceCents: cents,
+        daysForward: DAYS_FORWARD,
         saturday: { startHour: satStart, endHour: satEnd },
         sunday: { startHour: sunStart, endHour: sunEnd },
       });
       if (!res.ok) {
-        setError(res.error ?? "Falha ao regerar disponibilidade.");
-        setConfirming(false);
+        setError(res.error ?? "Falha ao aplicar o horário.");
         return;
       }
       setResult({ deleted: res.slotsDeleted ?? 0, created: res.slotsCreated ?? 0 });
-      setConfirming(false);
       onDone();
     });
   }
 
   return (
     <SectionCard
-      title="Regerar grade"
-      description="Apaga a grade atual e recria todos os horários como BLOQUEADOS — um horário só vende depois de um import ou de um desbloqueio no calendário. Reservas reais são preservadas."
+      title="Horário de funcionamento"
+      description="Mude as janelas e aplique: a grade do próximo mês é recriada inteira como BLOQUEADA — um horário só vende depois de um import ou de um desbloqueio no calendário. Reservas reais são preservadas."
     >
       <div className="space-y-4">
-        <div className="max-w-[220px]">
-          <label htmlFor="regen_days" className={labelClass}>
-            Dias à frente
-          </label>
-          <input
-            id="regen_days"
-            type="number"
-            min={1}
-            max={365}
-            value={daysForward}
-            onChange={(e) => setDaysForward(Number(e.target.value))}
-            className={fieldClass}
-          />
-        </div>
-
         {/* One window per day group — clubs run shorter weekends. */}
         <div className="space-y-2.5">
           {(
@@ -605,68 +567,22 @@ function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () =>
           </p>
         </div>
 
-        <div>
-          <label htmlFor="regen_price" className={labelClass}>
-            Preço (R$) — opcional, sobrepõe o padrão
-          </label>
-          <input
-            id="regen_price"
-            inputMode="decimal"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="ex: 250"
-            className={fieldClass}
-          />
-        </div>
-
         {error && <ErrorBanner message={error} />}
         {result !== null && (
           <SuccessNote>
-            {result.deleted.toLocaleString("pt-BR")} removido
-            {result.deleted === 1 ? "" : "s"} / {result.created.toLocaleString("pt-BR")} criado
-            {result.created === 1 ? "" : "s"}.
+            Horário aplicado — {result.created.toLocaleString("pt-BR")} horário
+            {result.created === 1 ? "" : "s"} criado{result.created === 1 ? "" : "s"} (bloqueados),{" "}
+            {result.deleted.toLocaleString("pt-BR")} antigo{result.deleted === 1 ? "" : "s"} removido
+            {result.deleted === 1 ? "" : "s"}.
           </SuccessNote>
         )}
 
-        {confirming ? (
-          <div className="rounded-lg border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-4 py-3.5">
-            <p className="text-[12.5px] font-500 leading-snug text-[var(--color-clay)]">
-              Isto apaga todos os horários futuros disponíveis desta quadra e recria a grade das{" "}
-              {String(startHour).padStart(2, "0")}h às {String(endHour).padStart(2, "0")}h (Seg–Sex
-              {satStart !== startHour || satEnd !== endHour
-                ? `; Sáb ${String(satStart).padStart(2, "0")}h–${String(satEnd).padStart(2, "0")}h`
-                : ""}
-              {sunStart !== startHour || sunEnd !== endHour
-                ? `; Dom ${String(sunStart).padStart(2, "0")}h–${String(sunEnd).padStart(2, "0")}h`
-                : ""}
-              ) pelos próximos {daysForward} dias. Reservas e bloqueios são mantidos.
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={confirm}
-                disabled={pending}
-                className="rounded-full bg-[var(--color-error)] px-4 py-1.5 text-[11.5px] font-600 text-white transition-opacity disabled:opacity-50"
-              >
-                {pending ? "Regerando…" : "Confirmar e regerar"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex justify-end border-t border-[var(--border)] pt-4">
-            <button type="button" onClick={requestConfirm} disabled={pending} className={primaryBtn}>
-              <RefreshCw size={11} strokeWidth={2.5} />
-              Regerar
-            </button>
-          </div>
-        )}
+        <div className="flex justify-end border-t border-[var(--border)] pt-4">
+          <button type="button" onClick={apply} disabled={pending} className={primaryBtn}>
+            <RefreshCw size={11} strokeWidth={2.5} />
+            {pending ? "Aplicando…" : "Aplicar horário"}
+          </button>
+        </div>
       </div>
     </SectionCard>
   );
