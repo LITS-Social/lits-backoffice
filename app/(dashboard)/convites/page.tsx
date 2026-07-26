@@ -29,18 +29,24 @@ export default async function ConvitesPage() {
   }).length;
   const expired = invites.filter((i) => new Date(i.expires_at).getTime() <= now).length;
   const alreadyPlayed = invites.filter((i) => new Date(i.starts_at).getTime() < now).length;
+  const quickMatches = invites.filter((i) => i.kind === "quick_match").length;
 
   return (
     <div>
       <PageHeader
         eyebrow="#03"
         title="Convites em Aberto"
-        description="A janela de 2h correndo em tempo real. O topo da lista é quem precisa de um WhatsApp agora."
+        description="Convites aguardando resposta e jogos rápidos ainda sem ninguém. O topo da lista é quem precisa de um WhatsApp agora."
       />
 
       <StatRail
         stats={[
           { label: "Em aberto", value: total },
+          {
+            label: "Jogo rápido",
+            value: quickMatches,
+            hint: "no mural, esperando alguém entrar — não há convidado",
+          },
           {
             label: "Expirando",
             value: expiring,

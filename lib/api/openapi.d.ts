@@ -2239,11 +2239,6 @@ export interface components {
         MatchFunnel: {
             /**
              * Format: int64
-             * @description Direct invites that got accepted (booking reached awaiting_guest_payment/confirmed/live/played), all time
-             */
-            invites_accepted: number;
-            /**
-             * Format: int64
              * @description Direct guest invites created, all time. LOWER BOUND: a declined/expired free invite clears guest_id and leaves no trace
              */
             invites_sent: number;
@@ -2252,16 +2247,6 @@ export interface components {
              * @description Bookings with status='played', all time
              */
             played: number;
-            /**
-             * Format: double
-             * @description Median hours from quick-match creation to confirmation, over the filled ones; null when none filled yet. Fill-rate says IF it filled; this says how much slack was left
-             */
-            quick_match_median_fill_hours: number | null;
-            /**
-             * Format: int64
-             * @description Quick-match bookings that got confirmed (confirmed_at set — an opponent filled it), all time
-             */
-            quick_matches_filled: number;
             /**
              * Format: int64
              * @description Quick-match bookings created, all time
@@ -2674,6 +2659,26 @@ export interface components {
             /** @description users.username; absent when the player never set one */
             username?: string;
         };
+        OpsUserDevice: {
+            /** @description LITS build on this device; empty on rows written before the app sent it */
+            app_version?: string;
+            /** @description push_tokens.device_id — stable per-install identifier */
+            device_id?: string;
+            /**
+             * Format: date-time
+             * @description When this device first registered for push
+             */
+            first_seen?: string;
+            /**
+             * Format: date-time
+             * @description Last push-token refresh from this device — NOT app activity (that is last_seen_at on the account)
+             */
+            last_seen?: string;
+            /** @description Handset OS version WITHOUT the OS name: '18.2' (iOS) / '14' (Android). Pair with platform to render 'iOS 18.2'. Empty until the device re-registers its push token after 2026-07-31. */
+            os_version?: string;
+            /** @description ios | android | web */
+            platform: string;
+        };
         OpsUserDossierResponseBody: {
             /**
              * Format: uri
@@ -2686,6 +2691,12 @@ export interface components {
             bookings: components["schemas"]["OpsDossierBooking"][] | null;
             /** @description True when the booking list hit the 100-row cap and is therefore incomplete */
             bookings_truncated: boolean;
+            /** @description Push-registered devices, newest refresh first. Empty is a valid answer — read devices_caveat before interpreting it. */
+            devices: components["schemas"]["OpsUserDevice"][] | null;
+            /** @description Why the device list may be incomplete — always populated */
+            devices_caveat: string;
+            /** @description Set when the device lookup failed; the empty device list then means nothing */
+            devices_unavailable_reason?: string;
             /** @description Absent when the user row exists but no profile row does (onboarding abandoned) */
             profile?: components["schemas"]["OpsDossierProfile"];
             ratings_received: components["schemas"]["OpsDossierRatings"];
@@ -2720,6 +2731,8 @@ export interface components {
              * @description Account creation (RFC3339)
              */
             created_at?: string;
+            /** @description Push-registered devices, newest refresh first. EMPTY DOES NOT MEAN 'no device' — see the panel note. */
+            devices?: components["schemas"]["OpsUserDevice"][] | null;
             /** @description users.email (staff-only contact field) */
             email?: string;
             /** @description profiles.gender: male|female|non_binary|prefer_not_say; absent when unset */
@@ -2863,8 +2876,6 @@ export interface components {
             readonly $schema?: string;
             /** @description Today's (SP day) DAU vs users who opened the app but took no action; frontend computes the % */
             app_open_no_action: components["schemas"]["AppOpenNoAction"];
-            /** @description Rolling 7-day twin of app_open_no_action: WAU (last_seen_at in 7d) vs those with no product action in 7d — the stable window the dashboard rates read */
-            app_open_no_action_7d: components["schemas"]["AppOpenNoAction"];
             /**
              * Format: double
              * @description Always null: game_feedback has only a 1–5 partner rating, no balance/equilíbrio field. Partner rating lives in GET /v1/ops/player-evaluations

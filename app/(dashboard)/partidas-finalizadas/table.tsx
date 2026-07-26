@@ -29,8 +29,10 @@ type FinishedMatchItem = components["schemas"]["FinishedMatchItem"];
 const ALERT_META: Record<string, { label: string; variant: "error" | "warning" }> = {
   host_unpaid: { label: "Host não pagou", variant: "error" },
   guest_unpaid: { label: "Convidado não pagou", variant: "error" },
-  // Phase 2 — dormant until the score-capture backend emits them.
+  // Vivo: o BFF marca toda partida cujo horário já passou e que nunca virou
+  // `played` — o único caminho pra esse status é alguém publicar o placar.
   no_score: { label: "Sem placar", variant: "warning" },
+  // Phase 2 — dormant until the score-capture backend emits them.
   score_disputed: { label: "Placar em disputa", variant: "error" },
   no_show: { label: "No-show", variant: "warning" },
 };
@@ -56,6 +58,16 @@ function AlertBadges({ alerts }: { alerts?: string[] | null }) {
 }
 
 const filters: DataTableFilterGroup<FinishedMatchItem>[] = [
+  {
+    // Primeiro grupo de propósito: é a divisão que o painel inteiro existe pra
+    // mostrar. Antes só as COM placar chegavam aqui, então o corte nem existia.
+    id: "score",
+    label: "Placar",
+    options: [
+      { value: "with", label: "Com placar", predicate: (m) => m.has_score },
+      { value: "without", label: "Sem placar", predicate: (m) => !m.has_score },
+    ],
+  },
   {
     id: "payment",
     label: "Pagamento",

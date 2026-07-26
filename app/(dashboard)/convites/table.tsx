@@ -13,6 +13,17 @@ type OpenInviteItem = components["schemas"]["OpenInviteItem"];
 
 const filters: DataTableFilterGroup<OpenInviteItem>[] = [
   {
+    // Duas coisas diferentes na mesma lista, com ações opostas: no convite você
+    // cobra a resposta de UMA pessoa; no jogo rápido você precisa ACHAR alguém,
+    // porque não há convidado nenhum. Separável logo de cara.
+    id: "kind",
+    label: "Tipo",
+    options: [
+      { value: "invite", label: "Convite", predicate: (i) => i.kind !== "quick_match" },
+      { value: "quick", label: "Jogo rápido", predicate: (i) => i.kind === "quick_match" },
+    ],
+  },
+  {
     id: "urgency",
     label: "Prazo",
     options: [
@@ -72,7 +83,15 @@ const columns: DataTableColumn<OpenInviteItem>[] = [
     id: "guest",
     header: "Convidado",
     sortAccessor: (i) => i.guest.name,
-    render: (i) => <Player name={i.guest.name} id={i.guest.user_id} strong />,
+    // Jogo rápido não TEM convidado — está no mural esperando qualquer um. Cair
+    // no render de Player deixaria a célula vazia, que se lê como dado faltando
+    // em vez de "aberto pra quem quiser".
+    render: (i) =>
+      i.kind === "quick_match" ? (
+        <Badge variant="warning">Mural aberto</Badge>
+      ) : (
+        <Player name={i.guest.name} id={i.guest.user_id} strong />
+      ),
   },
   {
     id: "host",
@@ -150,7 +169,9 @@ const columns: DataTableColumn<OpenInviteItem>[] = [
         priceCents={i.price_cents}
         host={i.host_payment}
         guest={i.guest_payment}
-        hasGuest
+        // Jogo rápido do mural não tem segunda perna: ninguém entrou ainda, logo
+        // não existe convidado devendo nem aguardando aceite.
+        hasGuest={i.kind !== "quick_match"}
         guestAwaitingAccept
       />
     ),
@@ -165,10 +186,10 @@ export function OpenInvitesTable({ invites }: { invites: OpenInviteItem[] }) {
       filters={filters}
       initialSort={{ columnId: "expires_at", direction: "asc" }}
       rowKey={(i) => i.booking_id}
-      searchText={(i) => `${i.host.name} ${i.guest.name} ${i.court_label}`}
+      searchText={(i) => `${i.host.name} ${i.guest.name} ${i.court_label} ${i.kind === "quick_match" ? "jogo rápido mural aberto" : "convite"}`}
       searchPlaceholder="Buscar por jogador ou quadra..."
-      emptyMessage="Nenhum convite em aberto."
-      noResultsMessage="Nenhum convite encontrado para esse filtro ou busca."
+      emptyMessage="Nenhum convite ou jogo rápido em aberto."
+      noResultsMessage="Nada encontrado para esse filtro ou busca."
       /**
        * Clay, not red: a closing invite is time pressure, not money owed. Red is
        * spent on the unpaid legs in the "Pagou?" column and nowhere else on this
@@ -186,7 +207,7 @@ export function OpenInvitesTable({ invites }: { invites: OpenInviteItem[] }) {
         <DetailGrid
           fields={[
             { label: "Booking ID", value: i.booking_id, mono: true, span: true },
-            { label: "Convidado", value: i.guest.name },
+            { label: "Convidado", value: i.kind === "quick_match" ? "— mural aberto" : i.guest.name },
             { label: "Convidado ID", value: i.guest.user_id, mono: true },
             // Both sides, because the founder chases whichever one has not answered.
             { label: "Contato do convidado", value: <Contact user={i.guest} /> },

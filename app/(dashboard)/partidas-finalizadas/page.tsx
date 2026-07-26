@@ -24,6 +24,10 @@ export default async function PartidasFinalizadasPage() {
 
   const matches = data.matches ?? [];
   const total = data.total ?? matches.length;
+  // Contados no servidor sobre o conjunto INTEIRO, não sobre a página em mãos —
+  // é a diferença entre "quantas partidas aconteceram" e "quantas couberam aqui".
+  const withScore = data.with_score ?? matches.filter((m) => m.has_score).length;
+  const withoutScore = data.without_score ?? matches.filter((m) => !m.has_score).length;
 
   // Counts of rows actually in hand — nothing extrapolated from the page to the
   // whole. `payment_settled` is the BFF's own verdict (a free public-court match
@@ -36,12 +40,23 @@ export default async function PartidasFinalizadasPage() {
       <PageHeader
         eyebrow="#02"
         title="Partidas Finalizadas"
-        description="Partidas realizadas. Destaque para casos sem placar, conflitos ou no-show."
+        description="Partidas realizadas — com e sem placar registrado. Destaque para conflitos e no-show."
       />
 
       <StatRail
         stats={[
           { label: "Partidas", value: total },
+          {
+            label: "Com placar",
+            value: withScore,
+            hint: "alguém publicou o resultado no feed",
+          },
+          {
+            label: "Sem placar",
+            value: withoutScore,
+            tone: "attention",
+            hint: "horário já passou e ninguém registrou o resultado",
+          },
           {
             label: "Falta pagar",
             value: unpaid,
