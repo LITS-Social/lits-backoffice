@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { AlertCircle, Check, ChevronRight, Plus } from "lucide-react";
+import { AlertCircle, Check, ChevronRight, MapPin, Plus, Search } from "lucide-react";
 import { cn, reaisToCents } from "@/lib/utils";
 import {
   createFranchiseAction,
@@ -10,7 +10,11 @@ import {
   type FranchiseItem,
   type CreateCourtState,
 } from "./actions";
-import { regenerateAvailabilityAction } from "../[id]/editar/actions";
+import {
+  geocodeAction,
+  regenerateAvailabilityAction,
+  type GeocodeCandidate,
+} from "../[id]/editar/actions";
 
 /** As três janelas do funcionamento da academia, colhidas no passo 1. */
 export type AcademiaHours = {
@@ -179,6 +183,41 @@ function FranchiseStep({
   const [address, setAddress] = useState("");
   const [latText, setLatText] = useState("");
   const [lngText, setLngText] = useState("");
+  const [geoError, setGeoError] = useState("");
+  const [candidates, setCandidates] = useState<GeocodeCandidate[] | null>(null);
+  const [geoPending, startGeo] = useTransition();
+
+  // Mesmo buscador da página da academia: endereço → candidatos → clique
+  // preenche lat/lng e adota o endereço canônico do resultado.
+  function searchAddress() {
+    setGeoError("");
+    setCandidates(null);
+    const q = address.trim();
+    if (q.length < 3) {
+      setGeoError("Endereço muito curto — descreva rua, número e cidade.");
+      return;
+    }
+    if (q.length > 300) {
+      setGeoError("Endereço muito longo — máximo 300 caracteres.");
+      return;
+    }
+    startGeo(async () => {
+      const res = await geocodeAction(q);
+      if (!res.ok) {
+        setGeoError(res.error ?? "Falha ao buscar o endereço.");
+        return;
+      }
+      setCandidates(res.results ?? []);
+    });
+  }
+
+  function pickCandidate(c: GeocodeCandidate) {
+    setLatText(String(c.lat));
+    setLngText(String(c.lng));
+    setAddress(c.formatted_address);
+    setCandidates(null);
+    setGeoError("");
+  }
   const [hours, setHours] = useState<AcademiaHours>({
     weekStart: 6, weekEnd: 22, satStart: 6, satEnd: 22, sunStart: 6, sunEnd: 22,
   });
@@ -405,13 +444,65 @@ function FranchiseStep({
             <label htmlFor="new_address" className={labelClass}>
               Localização — endereço
             </label>
-            <input
-              id="new_address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="ex: R. Tucumã, 500 — Jardim Europa"
-              className={fieldClass}
-            />
+            <div className="flex items-stretch gap-2">
+              <input
+                id="new_address"
+                value={address}
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  setGeoError("");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    searchAddress();
+                  }
+                }}
+                placeholder="ex: R. Tucumã, 500 — Jardim Europa"
+                className={cn(fieldClass, "flex-1")}
+              />
+              <button
+                type="button"
+                onClick={searchAddress}
+                disabled={geoPending}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--surface-raised)] px-3.5 text-[11.5px] font-600 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+              >
+                <Search size={12} strokeWidth={2} />
+                {geoPending ? "Buscando…" : "Buscar coordenadas"}
+              </button>
+            </div>
+
+            {geoError && <p className="mt-1.5 text-[11px] text-[var(--color-error)]">{geoError}</p>}
+
+            {candidates !== null &&
+              (candidates.length === 0 ? (
+                <p className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 text-[11.5px] text-[var(--text-tertiary)]">
+                  Nenhum resultado — refine o endereço (rua, número, bairro, cidade).
+                </p>
+              ) : (
+                <ul className="mt-2 divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                  {candidates.map((c) => (
+                    <li key={`${c.lat},${c.lng},${c.formatted_address}`}>
+                      <button
+                        type="button"
+                        onClick={() => pickCandidate(c)}
+                        className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-raised)]"
+                      >
+                        <MapPin size={12} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--text-tertiary)]" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[12px] text-[var(--text-primary)]">
+                            {c.formatted_address}
+                          </span>
+                          <span className="block tabular-nums text-[10.5px] text-[var(--text-tertiary)]">
+                            {c.lat}, {c.lng}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ))}
+
             <div className="mt-2 grid grid-cols-2 gap-2">
               <div>
                 <label htmlFor="new_lat" className="sr-only">
@@ -439,8 +530,8 @@ function FranchiseStep({
               </div>
             </div>
             <p className="mt-1 text-[10.5px] font-300 text-[var(--text-tertiary)]">
-              Opcional agora — posiciona a academia no app (distância e mapa). Dá para buscar
-              coordenadas depois na página da academia.
+              Opcional agora — busque pelo endereço e clique numa sugestão para preencher as
+              coordenadas; o app usa isso para distância e mapa.
             </p>
           </div>
 
