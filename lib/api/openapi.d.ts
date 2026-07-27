@@ -2681,6 +2681,8 @@ export interface components {
         OpsUserRow: {
             /** @description URL of the first profile photo; empty when none */
             avatar_url?: string;
+            /** @description profiles.birthdate as YYYY-MM-DD; absent when unset */
+            birthdate?: string;
             /**
              * Format: int32
              * @description Always 0 — no cheap per-user count RPC exists; best-effort, see the user dossier for real per-user rollups
@@ -2693,6 +2695,8 @@ export interface components {
             created_at?: string;
             /** @description users.email (staff-only contact field) */
             email?: string;
+            /** @description profiles.gender: male|female|non_binary|prefer_not_say; absent when unset */
+            gender?: string;
             /** @description UUIDv7 of the user */
             id: string;
             /**

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { AlertCircle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Download } from "lucide-react";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
 import { PlayerLink } from "@/components/ui/player-link";
@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn, formatRelative } from "@/lib/utils";
 import type { components } from "@/lib/api/openapi";
 import { Absent, Avatar, When } from "../_components/cells";
-import { listUsersAction, type UsersPage } from "./actions";
+import type { UsersAll } from "./actions";
 
 type OpsUserRow = components["schemas"]["OpsUserRow"];
 
@@ -26,105 +26,278 @@ const QUIET_LINK = cn(
 
 const HEADS = ["Jogador", "Usuário", "Contato", "Cadastro", "Nível", "Últ. acesso"];
 
-export function UsersTable({ initial }: { initial: UsersPage }) {
+const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
+const fieldClass =
+  "w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:bg-[var(--surface)] focus:outline-none";
+
+const LEVELS = ["A", "B", "C", "D", "PRO", "não nivelado"] as const;
+
+const GENDER_LABEL: Record<string, string> = {
+  male: "Masculino",
+  female: "Feminino",
+  non_binary: "Não binário",
+  prefer_not_say: "Prefere não dizer",
+};
+
+/** gender/birthdate ship in a pending BFF deploy — read them defensively so
+    the console (and the CSV) light up the moment the fields arrive. */
+function genderOf(u: OpsUserRow): string | undefined {
+  const g = (u as Record<string, unknown>).gender;
+  return typeof g === "string" && g !== "" ? g : undefined;
+}
+function birthdateOf(u: OpsUserRow): string | undefined {
+  const b = (u as Record<string, unknown>).birthdate;
+  return typeof b === "string" && b !== "" ? b : undefined;
+}
+function ageOf(u: OpsUserRow): number | null {
+  const b = birthdateOf(u);
+  if (!b) return null;
+  const d = new Date(`${b}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  if (
+    now.getMonth() < d.getMonth() ||
+    (now.getMonth() === d.getMonth() && now.getDate() < d.getDate())
+  )
+    age--;
+  return age;
+}
+
+/** Excel-friendly CSV: BOM (so pt-BR Excel opens UTF-8 right) + semicolon
+    separator (the list delimiter in pt-BR locales). */
+function exportCsv(rows: OpsUserRow[]) {
+  const esc = (v: string | number | null | undefined) => {
+    const s = v == null ? "" : String(v);
+    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = [
+    "id", "nome", "usuario", "email", "telefone", "nivel", "xp",
+    "sexo", "idade", "nascimento", "entrou_em", "ultimo_acesso",
+  ];
+  const lines = rows.map((u) =>
+    [
+      u.id,
+      u.name,
+      u.username ?? "",
+      u.email ?? "",
+      u.phone_e164 ?? "",
+      u.level ?? "",
+      u.xp_level,
+      genderOf(u) ? (GENDER_LABEL[genderOf(u)!] ?? genderOf(u)) : "",
+      ageOf(u) ?? "",
+      birthdateOf(u) ?? "",
+      u.created_at ?? "",
+      u.last_seen_at ?? "",
+    ]
+      .map(esc)
+      .join(";")
+  );
+  const blob = new Blob(["﻿" + [header.join(";"), ...lines].join("\r\n")], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `lits-usuarios-${stamp}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+const dayMs = (ymd: string, endOfDay = false) =>
+  new Date(`${ymd}T${endOfDay ? "23:59:59" : "00:00:00"}`).getTime();
+
+export function UsersTable({ initial }: { initial: UsersAll }) {
+  const rows = initial.rows;
   const [query, setQuery] = useState("");
-  const [rows, setRows] = useState<OpsUserRow[]>(initial.rows);
-  const [cursor, setCursor] = useState<string | undefined>(initial.nextCursor);
-  const [hasMore, setHasMore] = useState(initial.hasMore);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo] = useState("");
+  const [seenFrom, setSeenFrom] = useState("");
+  const [seenTo, setSeenTo] = useState("");
+  const [levels, setLevels] = useState<Set<string>>(new Set());
+  const [genders, setGenders] = useState<Set<string>>(new Set());
+  const [ageMin, setAgeMin] = useState("");
+  const [ageMax, setAgeMax] = useState("");
 
-  // Monotonic id: a slow response for "jo" must not overwrite a newer one for
-  // "joao". Only the response whose id still matches the latest request wins.
-  const reqId = useRef(0);
-  const didMount = useRef(false);
+  // Sexo/idade só ganham filtro quando o dado existe na listagem (campos novos
+  // do BFF); antes disso os controles seriam mentira.
+  const hasGender = useMemo(() => rows.some((u) => genderOf(u) != null), [rows]);
+  const hasBirthdate = useMemo(() => rows.some((u) => birthdateOf(u) != null), [rows]);
 
-  useEffect(() => {
-    // The server already rendered the first page — do not immediately re-fetch it.
-    if (!didMount.current) {
-      didMount.current = true;
-      return;
-    }
+  const filtered = useMemo(() => {
+    const norm = (s: string) =>
+      s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const q = norm(query.trim());
+    return rows.filter((u) => {
+      if (
+        q &&
+        !norm(`${u.name} ${u.username ?? ""} ${u.email ?? ""} ${u.phone_e164 ?? ""}`).includes(q)
+      )
+        return false;
+      if (createdFrom || createdTo) {
+        if (!u.created_at) return false;
+        const t = new Date(u.created_at).getTime();
+        if (createdFrom && t < dayMs(createdFrom)) return false;
+        if (createdTo && t > dayMs(createdTo, true)) return false;
+      }
+      if (seenFrom || seenTo) {
+        if (!u.last_seen_at) return false;
+        const t = new Date(u.last_seen_at).getTime();
+        if (seenFrom && t < dayMs(seenFrom)) return false;
+        if (seenTo && t > dayMs(seenTo, true)) return false;
+      }
+      if (levels.size > 0) {
+        const lvl = u.level || "não nivelado";
+        if (!levels.has(lvl)) return false;
+      }
+      if (genders.size > 0) {
+        const g = genderOf(u);
+        if (!g || !genders.has(g)) return false;
+      }
+      if (ageMin || ageMax) {
+        const age = ageOf(u);
+        if (age == null) return false;
+        if (ageMin && age < Number(ageMin)) return false;
+        if (ageMax && age > Number(ageMax)) return false;
+      }
+      return true;
+    });
+  }, [rows, query, createdFrom, createdTo, seenFrom, seenTo, levels, genders, ageMin, ageMax]);
 
-    const id = ++reqId.current;
-    const t = setTimeout(() => {
-      startTransition(async () => {
-        const res = await listUsersAction({ q: query });
-        if (id !== reqId.current) return; // a newer query already fired
-        if (!res.ok) {
-          setError(res.error);
-          return;
-        }
-        setError(null);
-        setRows(res.rows);
-        setCursor(res.nextCursor);
-        setHasMore(res.hasMore);
-      });
-    }, 300);
+  const toggle = (set: Set<string>, v: string, apply: (s: Set<string>) => void) => {
+    const next = new Set(set);
+    if (next.has(v)) next.delete(v);
+    else next.add(v);
+    apply(next);
+  };
 
-    return () => clearTimeout(t);
-  }, [query]);
-
-  async function loadMore() {
-    if (!cursor || loadingMore) return;
-    const id = reqId.current; // tie this page to the current query
-    setLoadingMore(true);
-    const res = await listUsersAction({ q: query, cursor });
-    setLoadingMore(false);
-    if (id !== reqId.current) return; // query changed mid-load — drop it
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-    setError(null);
-    setRows((prev) => [...prev, ...res.rows]);
-    setCursor(res.nextCursor);
-    setHasMore(res.hasMore);
-  }
-
-  const searching = query.trim().length > 0;
+  const narrowed = filtered.length !== rows.length;
 
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-[11px] tabular-nums text-[var(--text-tertiary)]">
-          <span className="font-600 text-[var(--text-secondary)]">{rows.length}</span>{" "}
-          {searching ? "resultado(s)" : "carregado(s)"}
-          {hasMore && " — há mais"}
+          <span className="font-600 text-[var(--text-secondary)]">{filtered.length}</span>
+          {narrowed ? ` de ${rows.length}` : ""} usuário{filtered.length === 1 ? "" : "s"}
+          {initial.truncated && " (pelo menos — varredura truncada)"}
         </span>
-        <div className="sm:w-80">
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Buscar por nome, @usuário, email ou telefone..."
-          />
+        <div className="flex items-center gap-2">
+          <div className="w-full sm:w-72">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Buscar por nome, @usuário, email ou telefone..."
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => exportCsv(filtered)}
+            disabled={filtered.length === 0}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            <Download size={11} strokeWidth={2.5} />
+            Exportar CSV
+          </button>
         </div>
       </div>
 
-      {error && (
-        <p className="flex items-start gap-2 rounded-lg border border-[var(--color-error)]/25 bg-[var(--color-error-bg)] px-3 py-2.5 text-[12px] text-[var(--color-error)]">
-          <AlertCircle size={13} className="mt-px shrink-0" />
-          {error}
-        </p>
-      )}
+      {/* ── Filtros ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <p className={labelClass}>Entrou entre</p>
+          <div className="flex items-center gap-1.5">
+            <input type="date" value={createdFrom} onChange={(e) => setCreatedFrom(e.target.value)} className={fieldClass} aria-label="Entrou a partir de" />
+            <span className="text-[var(--text-tertiary)]">–</span>
+            <input type="date" value={createdTo} onChange={(e) => setCreatedTo(e.target.value)} className={fieldClass} aria-label="Entrou até" />
+          </div>
+        </div>
+        <div>
+          <p className={labelClass}>Ativo entre</p>
+          <div className="flex items-center gap-1.5">
+            <input type="date" value={seenFrom} onChange={(e) => setSeenFrom(e.target.value)} className={fieldClass} aria-label="Ativo a partir de" />
+            <span className="text-[var(--text-tertiary)]">–</span>
+            <input type="date" value={seenTo} onChange={(e) => setSeenTo(e.target.value)} className={fieldClass} aria-label="Ativo até" />
+          </div>
+        </div>
+        <div>
+          <p className={labelClass}>Nível</p>
+          <div className="flex flex-wrap gap-1.5">
+            {LEVELS.map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => toggle(levels, l, setLevels)}
+                aria-pressed={levels.has(l)}
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[10.5px] font-600 transition-colors",
+                  levels.has(l)
+                    ? "bg-[var(--primary)] text-[var(--primary-fg)]"
+                    : "bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                )}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+        {hasGender || hasBirthdate ? (
+          <div className="space-y-2.5">
+            {hasGender && (
+              <div>
+                <p className={labelClass}>Sexo</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(GENDER_LABEL).map(([v, label]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => toggle(genders, v, setGenders)}
+                      aria-pressed={genders.has(v)}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-[10.5px] font-600 transition-colors",
+                        genders.has(v)
+                          ? "bg-[var(--primary)] text-[var(--primary-fg)]"
+                          : "bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {hasBirthdate && (
+              <div>
+                <p className={labelClass}>Idade</p>
+                <div className="flex items-center gap-1.5">
+                  <input type="number" min={13} max={99} value={ageMin} onChange={(e) => setAgeMin(e.target.value)} placeholder="mín" className={cn(fieldClass, "w-[72px]")} aria-label="Idade mínima" />
+                  <span className="text-[var(--text-tertiary)]">–</span>
+                  <input type="number" min={13} max={99} value={ageMax} onChange={(e) => setAgeMax(e.target.value)} placeholder="máx" className={cn(fieldClass, "w-[72px]")} aria-label="Idade máxima" />
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="self-center text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            Sexo e idade aparecem aqui quando o backend passar a expor esses campos na listagem
+            (deploy pendente do bff).
+          </p>
+        )}
+      </div>
 
-      {rows.length === 0 ? (
+      {filtered.length === 0 ? (
         <EmptyState
           message={
-            searching
-              ? "Nenhum usuário encontrado para essa busca."
+            narrowed || query.trim()
+              ? "Nenhum usuário encontrado para esses filtros."
               : "Nenhum usuário cadastrado."
           }
-          tone={searching ? "neutral" : "success"}
+          tone="neutral"
         />
       ) : (
-        <div
-          className={cn(
-            "overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] transition-opacity",
-            isPending && "opacity-60"
-          )}
-        >
+        <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+          <div className="overflow-x-auto">
+          <div className="min-w-[720px]">
           <div
             className="grid items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-sunken)] px-4 py-2.5"
             style={{ gridTemplateColumns: GRID }}
@@ -137,7 +310,7 @@ export function UsersTable({ initial }: { initial: UsersPage }) {
           </div>
 
           <div>
-            {rows.map((u) => (
+            {filtered.map((u) => (
               <div
                 key={u.id}
                 className="grid items-center gap-3 border-b border-[var(--border)] px-4 py-[11px] text-[12.5px] leading-snug text-[var(--text-primary)] last:border-b-0"
@@ -200,19 +373,8 @@ export function UsersTable({ initial }: { initial: UsersPage }) {
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {hasMore && rows.length > 0 && (
-        <div className="flex justify-center pt-1">
-          <button
-            type="button"
-            onClick={loadMore}
-            disabled={loadingMore || isPending}
-            className="rounded-full border border-[var(--border)] bg-[var(--surface-raised)] px-5 py-2 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
-          >
-            {loadingMore ? "Carregando…" : "Carregar mais"}
-          </button>
+          </div>
+          </div>
         </div>
       )}
     </div>

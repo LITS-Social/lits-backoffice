@@ -1,26 +1,21 @@
 import { PageHeader } from "@/components/ui/page-header";
-import { getApi } from "@/lib/api";
 import { PanelError } from "../_components/notes";
+import { listAllUsersAction } from "./actions";
 import { UsersTable } from "./users-table";
 
 export const dynamic = "force-dynamic";
 
 /**
- * First page size. The endpoint is keyset-paginated (cursor + has_more), NOT
- * limit/offset like the older panels — there is no server-side `total`, so this
- * screen never shows a headline count it cannot stand behind. It shows what it
- * has loaded and a "carregar mais" for the rest.
+ * The console loads the WHOLE base up front (the beta is a couple hundred
+ * accounts; the metrics dashboard already crawls it on every load) — filters
+ * (entrada, último acesso, nível, sexo, idade) and the CSV export only tell
+ * the truth over the full set, so search and slicing are client-side.
  */
-const PAGE_SIZE = 30;
-
 export default async function UsuariosPage() {
-  const api = await getApi();
-  const { data, error } = await api.GET("/v1/ops/users", {
-    params: { query: { limit: PAGE_SIZE } },
-  });
+  const res = await listAllUsersAction();
 
-  if (error) {
-    return <PanelError eyebrow="#11" title="Usuários" detail={error.detail || error.title} />;
+  if (!res.ok) {
+    return <PanelError eyebrow="#11" title="Usuários" detail={res.error} />;
   }
 
   return (
@@ -28,17 +23,11 @@ export default async function UsuariosPage() {
       <PageHeader
         eyebrow="#11"
         title="Usuários"
-        description="Todos os jogadores cadastrados. Busque por nome, @usuário, email ou telefone; um clique no nome abre o dossiê completo."
+        description="Todos os jogadores cadastrados. Filtre por entrada, atividade, nível — e exporte tudo em CSV; um clique no nome abre o dossiê completo."
       />
 
       <div className="px-4 sm:px-8 py-6">
-        <UsersTable
-          initial={{
-            rows: data.users ?? [],
-            nextCursor: data.next_cursor,
-            hasMore: data.has_more,
-          }}
-        />
+        <UsersTable initial={{ rows: res.rows, truncated: res.truncated }} />
       </div>
     </div>
   );
