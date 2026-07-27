@@ -315,8 +315,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Reprice a court going forward and set the franchise default
-         * @description Sets price_cents on every future slot that is not booked (slot_start > now AND status <> 'booked') — available and blocked alike, so a slot unblocked later resurfaces at the new price. Past slots and real bookings are never touched. The value also becomes the owning franchise's default_price_cents, inherited by future grid generation. Returns the number of slots repriced. 404 if the court does not exist.
+         * Reprice a court going forward and set the court's default
+         * @description Sets price_cents on every future slot of THIS court that is not booked (slot_start > now AND status <> 'booked') — available and blocked alike, so a slot unblocked later resurfaces at the new price. Past slots and real bookings are never touched. The value also becomes this court's default_price_cents (not the academy's), inherited by future grid generation for this court only; sibling courts are unaffected. Returns the number of slots repriced. 404 if the court does not exist.
          */
         post: operations["ops-reprice-court"];
         delete?: never;
@@ -1437,6 +1437,11 @@ export interface components {
         CourtListItem: {
             /**
              * Format: int64
+             * @description Court's effective default slot price in cents: the per-court default if set, else the franchise default, else null
+             */
+            default_price_cents: number | null;
+            /**
+             * Format: int64
              * @description Backoffice column position among the franchise's courts, or null
              */
             display_order: number | null;
@@ -1449,32 +1454,32 @@ export interface components {
             franchise_default_price_cents: number | null;
             /**
              * Format: int64
-             * @description Owning franchise Saturday last slot start hour, or null
+             * @description Owning franchise Saturday last-slot start hour 0..23, or null when unset
              */
             franchise_hours_sat_end: number | null;
             /**
              * Format: int64
-             * @description Owning franchise Saturday first slot hour, or null
+             * @description Owning franchise Saturday opening hour 0..23, or null when unset
              */
             franchise_hours_sat_start: number | null;
             /**
              * Format: int64
-             * @description Owning franchise Sunday last slot start hour, or null
+             * @description Owning franchise Sunday last-slot start hour 0..23, or null when unset
              */
             franchise_hours_sun_end: number | null;
             /**
              * Format: int64
-             * @description Owning franchise Sunday first slot hour, or null
+             * @description Owning franchise Sunday opening hour 0..23, or null when unset
              */
             franchise_hours_sun_start: number | null;
             /**
              * Format: int64
-             * @description Owning franchise Mon–Fri last slot start hour, or null
+             * @description Owning franchise weekday (Mon–Fri) last-slot start hour 0..23, or null when unset
              */
             franchise_hours_week_end: number | null;
             /**
              * Format: int64
-             * @description Owning franchise Mon–Fri first slot hour, or null
+             * @description Owning franchise weekday (Mon–Fri) opening hour 0..23, or null when unset
              */
             franchise_hours_week_start: number | null;
             /** @description Owning franchise UUID */
@@ -1562,7 +1567,7 @@ export interface components {
             name: string;
             /**
              * Format: int64
-             * @description Override price in cents for all slots; falls back to franchise default then ADR-0063 formula
+             * @description Override price in cents for all slots; falls back to court default then franchise default then ADR-0063 formula
              */
             price_cents?: number;
             /**
@@ -1806,6 +1811,7 @@ export interface components {
             ends_at: string;
             guest?: components["schemas"]["OpsUserRef"];
             guest_payment?: components["schemas"]["PaymentLeg"];
+            has_score: boolean;
             host: components["schemas"]["OpsUserRef"];
             host_payment: components["schemas"]["PaymentLeg"];
             /** @description Booking mode: casual | ranked | quick | social | event */
@@ -1827,6 +1833,10 @@ export interface components {
             matches: components["schemas"]["FinishedMatchItem"][] | null;
             /** Format: int32 */
             total: number;
+            /** Format: int32 */
+            with_score: number;
+            /** Format: int32 */
+            without_score: number;
         };
         FlaggedMessageItem: {
             /** @description Message content, truncated to 300 chars; null when the message has no text content */
@@ -1865,32 +1875,32 @@ export interface components {
             has_geo: boolean;
             /**
              * Format: int64
-             * @description Saturday last slot start hour (inclusive), or null
+             * @description Saturday last-slot start hour 0..23, or null when unset
              */
             hours_sat_end: number | null;
             /**
              * Format: int64
-             * @description Saturday first slot hour, or null
+             * @description Saturday opening hour 0..23, or null when unset
              */
             hours_sat_start: number | null;
             /**
              * Format: int64
-             * @description Sunday last slot start hour (inclusive), or null
+             * @description Sunday last-slot start hour 0..23, or null when unset
              */
             hours_sun_end: number | null;
             /**
              * Format: int64
-             * @description Sunday first slot hour, or null
+             * @description Sunday opening hour 0..23, or null when unset
              */
             hours_sun_start: number | null;
             /**
              * Format: int64
-             * @description Mon–Fri last slot start hour (inclusive), or null
+             * @description Weekday (Mon–Fri) last-slot start hour 0..23, or null when unset
              */
             hours_week_end: number | null;
             /**
              * Format: int64
-             * @description Mon–Fri first slot hour, or null
+             * @description Weekday (Mon–Fri) opening hour 0..23, or null when unset
              */
             hours_week_start: number | null;
             /** @description UUIDv4 franchise identifier */
@@ -2213,7 +2223,7 @@ export interface components {
         ManualSlotItem: {
             /**
              * Format: int64
-             * @description Slot price in cents; falls back to franchise default then ADR-0063 hour band (public/listing → free)
+             * @description Slot price in cents; falls back to court default then franchise default then ADR-0063 hour band (public/listing → free)
              */
             price_cents?: number;
             /** @description Slot end instant (RFC3339); defaults to slot_start + 1h */
@@ -2337,6 +2347,8 @@ export interface components {
             host: components["schemas"]["OpsUserRef"];
             /** @description Whether the host settled their half, and how much */
             host_payment: components["schemas"]["PaymentLeg"];
+            /** @description invite (convite direto, tem convidado) | quick_match (jogo rápido aberto, sem convidado) */
+            kind: string;
             /** @description Booking mode: casual | ranked | quick | social | event */
             match_type?: string;
             /**
@@ -2932,7 +2944,7 @@ export interface components {
             end_hour?: number;
             /**
              * Format: int64
-             * @description Override price in cents for all slots; falls back to franchise default then ADR-0063 formula
+             * @description Override price in cents for all slots; falls back to court default then franchise default then ADR-0063 formula
              */
             price_cents?: number;
             /** @description Optional Saturday window; unset = same as the base window */
@@ -2984,7 +2996,7 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: int64
-             * @description New price in cents applied to all future non-booked slots; also becomes the franchise default_price_cents
+             * @description New price in cents applied to all future non-booked slots of this court; also becomes the court's default_price_cents
              */
             price_cents: number;
         };
@@ -3062,6 +3074,11 @@ export interface components {
              * @example https://example.com/schemas/SendAnnouncementResponseBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Members whose notification was suppressed by the anti-spam dedup (should be 0 for announcements — they are exempt; surfaced so a regression is visible, not silently counted as sent)
+             */
+            dropped: number;
             /**
              * Format: int64
              * @description Members whose Send failed (counted, not fatal to the broadcast)
@@ -3200,32 +3217,32 @@ export interface components {
             default_price_cents?: number;
             /**
              * Format: int64
-             * @description Saturday last slot start hour, inclusive (unset = unchanged)
+             * @description Saturday last-slot start hour, 0..23 (unset = unchanged)
              */
             hours_sat_end?: number;
             /**
              * Format: int64
-             * @description Saturday first slot hour (unset = unchanged)
+             * @description Saturday opening hour, 0..23 (unset = unchanged)
              */
             hours_sat_start?: number;
             /**
              * Format: int64
-             * @description Sunday last slot start hour, inclusive (unset = unchanged)
+             * @description Sunday last-slot start hour, 0..23 (unset = unchanged)
              */
             hours_sun_end?: number;
             /**
              * Format: int64
-             * @description Sunday first slot hour (unset = unchanged)
+             * @description Sunday opening hour, 0..23 (unset = unchanged)
              */
             hours_sun_start?: number;
             /**
              * Format: int64
-             * @description Mon–Fri last slot start hour, inclusive (unset = unchanged)
+             * @description Weekday (Mon–Fri) last-slot start hour, 0..23 (unset = unchanged)
              */
             hours_week_end?: number;
             /**
              * Format: int64
-             * @description Mon–Fri first slot hour (unset = unchanged)
+             * @description Weekday (Mon–Fri) opening hour, 0..23 (unset = unchanged)
              */
             hours_week_start?: number;
             /**

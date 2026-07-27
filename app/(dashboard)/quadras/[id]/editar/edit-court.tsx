@@ -434,7 +434,7 @@ function RepriceSection({
   return (
     <SectionCard
       title="Preço"
-      description="O preço da hora nesta quadra. Mude e aplique: vale para todos os horários futuros — disponíveis e bloqueados — e vira o preço padrão da academia (herdado pelas próximas grades). Horários passados e reservas reais não são tocados."
+      description="O preço da hora nesta quadra. Mude e aplique: vale para todos os horários futuros — disponíveis e bloqueados — e vira o preço padrão desta quadra (herdado pelas próximas grades; a academia mantém o dela). Horários passados e reservas reais não são tocados."
     >
       <div className="space-y-4">
         <div className="flex items-end gap-3">
