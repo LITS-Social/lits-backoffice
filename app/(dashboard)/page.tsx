@@ -231,7 +231,7 @@ function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
 }
 
 export default async function MetricsPage() {
-  const { users, matches, scorePosts, north, completion, partnerRating, activation } =
+  const { users, matches, scorePosts, north, completion, partnerRating, activation, monthly } =
     await getProductMetrics();
 
   const broken = [
@@ -541,14 +541,37 @@ export default async function MetricsPage() {
             }
           />
           <Kpi
-            label="Taxa de ativação"
-            value={activation ? pct(activation.rate) : "—"}
+            label="Taxa de ativação (30d)"
+            value={activation ? pct(activation.d30.rate) : "—"}
             context={
               activation
-                ? `${activation.activated} de ${activation.cohort} contas com 30d+ jogaram no 1º mês${
-                    activation.cohort < 10 ? " · amostra pequena" : ""
+                ? `${activation.d30.activated} de ${activation.d30.cohort} na coorte jogaram em 30d · 14d: ${pct(activation.d14.rate)}${
+                    activation.d30.cohort < 10 ? " · amostra pequena" : ""
                   }`
                 : "sem dado de usuários ou de reservas jogadas"
+            }
+          />
+          <Kpi
+            label="Ativos no mês"
+            value={monthly ? String(monthly.currentMonthActives) : "—"}
+            context={
+              monthly
+                ? `jogaram ≥1 partida no mês corrente · mês fechado: ${monthly.prevMonthActives}`
+                : "sem dado de reservas jogadas"
+            }
+          />
+          <Kpi
+            label="Churn mensal"
+            value={monthly?.churn ? pct(monthly.churn.rate) : "—"}
+            {...(monthly?.churn
+              ? { delta: monthly.churn.month, deltaGood: monthly.churn.rate <= 0.3 }
+              : {})}
+            context={
+              monthly?.churn
+                ? `${monthly.churn.left} de ${monthly.churn.base} ativos de ${monthly.churn.baseMonth} não jogaram em ${monthly.churn.month}${
+                    monthly.churn.base < 10 ? " · amostra pequena" : ""
+                  }`
+                : "sem meses fechados suficientes para medir"
             }
           />
         </div>

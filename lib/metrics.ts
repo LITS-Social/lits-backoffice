@@ -227,12 +227,28 @@ export type ProductMetrics = {
   /** Weighted mean of all partner ratings received. Null on failure or no ratings. */
   partnerRating: { avg: number; count: number } | null;
   /**
-   * Taxa de ativação: % das contas com 30+ dias que jogaram (reserva jogada,
-   * como host ou convidado) nos primeiros 30 dias após o cadastro. Coorte só
-   * de janelas completas; jogos registrados apenas no feed sem reserva não
-   * contam (limite da fonte). Null quando usuários ou reservas falharam.
+   * Ativação do modelo: coorte que jogou ≥1 partida (reserva jogada, host ou
+   * convidado) em até N dias do cadastro ÷ coorte (contas cuja janela de N
+   * dias já fechou). 30d é a premissa do modelo; 14d acompanha. Jogos
+   * registrados apenas no feed sem reserva não contam (limite da fonte).
+   * Null quando usuários ou reservas falharam.
    */
-  activation: { rate: number; activated: number; cohort: number } | null;
+  activation: {
+    d30: { rate: number; activated: number; cohort: number };
+    d14: { rate: number; activated: number; cohort: number };
+  } | null;
+  /**
+   * Ativo (mês M) = usuários distintos com ≥1 partida concluída dentro do mês
+   * M (calendário de São Paulo). `current` é o mês corrente (parcial);
+   * `prevClosed` o último mês fechado. Churn (mês M) = ativos em M-1 que não
+   * jogaram em M ÷ ativos em M-1 — computado só sobre meses FECHADOS (churn de
+   * mês parcial encolheria dia a dia). Null quando as reservas falharam.
+   */
+  monthly: {
+    currentMonthActives: number;
+    prevMonthActives: number;
+    churn: { rate: number; left: number; base: number; month: string; baseMonth: string } | null;
+  } | null;
 };
 
 async function crawlUsers(): Promise<UsersMetrics> {
@@ -466,8 +482,7 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
   }
 
   // Ativação: primeiro jogo de cada usuário (menor starts_at das suas pernas)
-  // contra o instante do cadastro; coorte = contas cuja janela de 30 dias já
-  // fechou.
+  // contra o instante do cadastro; coorte = contas cuja janela já fechou.
   let activation: ProductMetrics["activation"] = null;
   if (users.index && matches.legs) {
     const firstPlayed = new Map<string, number>();
@@ -476,19 +491,63 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
       if (cur === undefined || leg.startsAtMs < cur) firstPlayed.set(leg.userId, leg.startsAtMs);
     }
     const now = Date.now();
-    const cohort = users.index.filter((u) => now - u.createdAtMs >= 30 * DAY_MS);
-    const activated = cohort.filter((u) => {
-      const t = firstPlayed.get(u.id);
-      return t !== undefined && t - u.createdAtMs <= 30 * DAY_MS;
-    });
-    if (cohort.length > 0) {
-      activation = {
-        rate: activated.length / cohort.length,
+    const windowRate = (days: number) => {
+      const cohort = users.index!.filter((u) => now - u.createdAtMs >= days * DAY_MS);
+      const activated = cohort.filter((u) => {
+        const t = firstPlayed.get(u.id);
+        return t !== undefined && t - u.createdAtMs <= days * DAY_MS;
+      });
+      return {
+        rate: cohort.length > 0 ? activated.length / cohort.length : 0,
         activated: activated.length,
         cohort: cohort.length,
       };
-    }
+    };
+    activation = { d30: windowRate(30), d14: windowRate(14) };
   }
 
-  return { users, matches, scorePosts, north, completion, partnerRating, activation };
+  // Ativo (mês) e churn — meses-calendário de São Paulo sobre as pernas.
+  let monthly: ProductMetrics["monthly"] = null;
+  if (matches.legs) {
+    const monthKey = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+    });
+    const monthName = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      month: "short",
+    });
+    const byMonth = new Map<string, Set<string>>();
+    for (const leg of matches.legs) {
+      const k = monthKey.format(new Date(leg.startsAtMs));
+      const set = byMonth.get(k) ?? new Set<string>();
+      set.add(leg.userId);
+      byMonth.set(k, set);
+    }
+    const now = new Date();
+    const shift = (monthsBack: number) =>
+      new Date(now.getFullYear(), now.getMonth() - monthsBack, 15);
+    const kCur = monthKey.format(shift(0));
+    const kClosed = monthKey.format(shift(1));
+    const kBase = monthKey.format(shift(2));
+    const cur = byMonth.get(kCur) ?? new Set();
+    const closed = byMonth.get(kClosed) ?? new Set();
+    const base = byMonth.get(kBase) ?? new Set();
+    // Churn do último mês FECHADO: quem jogou no mês-base e sumiu no seguinte.
+    let churn: NonNullable<ProductMetrics["monthly"]>["churn"] = null;
+    if (base.size > 0) {
+      const left = [...base].filter((id) => !closed.has(id)).length;
+      churn = {
+        rate: left / base.size,
+        left,
+        base: base.size,
+        month: monthName.format(shift(1)),
+        baseMonth: monthName.format(shift(2)),
+      };
+    }
+    monthly = { currentMonthActives: cur.size, prevMonthActives: closed.size, churn };
+  }
+
+  return { users, matches, scorePosts, north, completion, partnerRating, activation, monthly };
 });
