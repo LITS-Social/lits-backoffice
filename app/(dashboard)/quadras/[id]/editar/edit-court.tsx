@@ -1780,6 +1780,30 @@ export function EditCourt({
   const [slotsError, setSlotsError] = useState(initialSlotsError ?? "");
   const [pending, startTransition] = useTransition();
 
+  // O preço "atual" DESTA quadra, não o padrão da academia: primeiro o
+  // default_price_cents da própria quadra (o reprice grava lá — chega com o
+  // deploy do BFF), senão o preço mais frequente dos slots futuros já
+  // carregados (é o que o reprice escreveu de fato), e só então o padrão da
+  // franquia. Antes o campo re-seedava sempre da franquia e o preço aplicado
+  // "sumia" a cada visita.
+  const currentPriceCents = (() => {
+    const own = (court as { default_price_cents?: number | null }).default_price_cents;
+    if (own != null) return own;
+    // Janela a partir do início do período carregado (prop estável — Date.now()
+    // é impuro em render): pega o preço mais frequente do que está na grade.
+    const windowStart = new Date(initialFrom).getTime();
+    const counts = new Map<number, number>();
+    for (const s of initialSlots) {
+      if (s.status === "booked" || s.price_cents == null) continue;
+      if (new Date(s.slot_start).getTime() < windowStart) continue;
+      counts.set(s.price_cents, (counts.get(s.price_cents) ?? 0) + 1);
+    }
+    let best: number | null = null;
+    let bestN = 0;
+    for (const [p, n] of counts) if (n > bestN) { best = p; bestN = n; }
+    return best ?? court.franchise_default_price_cents;
+  })();
+
   function reloadSlots() {
     startTransition(async () => {
       setSlotsError("");
@@ -1811,21 +1835,10 @@ export function EditCourt({
       <CourtBasicsSection court={court} />
       <RepriceSection
         courtId={court.id}
-        defaultPriceCents={court.franchise_default_price_cents}
+        defaultPriceCents={currentPriceCents}
         onDone={reloadSlots}
       />
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />
-      {/* "#academia" — the courts list deep-links here via "Editar academia". */}
-      <span id="academia" className="block scroll-mt-6" aria-hidden />
-      <FranchiseSection
-        franchiseId={court.franchise_id}
-        franchiseName={court.franchise_name}
-        initialKind={court.franchise_kind}
-        initialDefaultPriceCents={court.franchise_default_price_cents}
-        initialLat={court.franchise_lat}
-        initialLng={court.franchise_lng}
-        initialAddress={court.franchise_street_address}
-      />
       <AddSlotsSection courtId={court.id} onDone={reloadSlots} />
       <ImportPrintSection courtId={court.id} courtName={court.name} onDone={reloadSlots} />
       <SlotEditorSection
