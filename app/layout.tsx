@@ -30,9 +30,16 @@ export default function RootLayout({
             first paint of an ops panel is a flash of Times New Roman. */}
         <link
           rel="preload"
-          href="/fonts/PPNikkeiMaru-Variable.woff2"
+          href="/fonts/PPNikkeiMaru-Regular.otf"
           as="font"
-          type="font/woff2"
+          type="font/otf"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="/fonts/PPNikkeiMaru-Light.otf"
+          as="font"
+          type="font/otf"
           crossOrigin="anonymous"
         />
         <link

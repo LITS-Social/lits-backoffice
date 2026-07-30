@@ -3,32 +3,54 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    LITS — Painel Operacional
    Design foundation on the LITS design system (brandbook V1.0, claude.ai/design
-   project "LITS"). Light = off-white paper with white cards; dark = brand brown
-   over black, the 8pm console. Surfaces feel like printed paper: 1px khaki
-   borders and value shifts, no shadows.
+   project "LITS" — tokens/*.css is the source of truth). Light = off-white
+   paper with white cards; dark = the club: Verde LITS canvas, green cards,
+   brown raised surfaces, cream ink. Surfaces feel like printed paper: 1px
+   khaki borders and value shifts, no shadows.
 
-   Two faces, a strict voice split:
+   Faces, a strict voice split (brandbook):
      Colus           400 only, never italic — titles, named things, big numbers.
                      "Colus does the talking."
-     PP Nikkei Maru  variable 300–700 — UI, body, data, and the signature
-                     tracked-uppercase labels. "Nikkei does the working."
+     PP Nikkei Maru  Light 300 + Regular 400 ONLY — the family has no bolder
+                     cuts. Weights 500–800 map to Regular (never synthesized);
+                     emphasis comes from tracking, uppercase and size.
+                     "Nikkei does the working."
+     Gravesend Sans  Bold, short highlights only — never titles, never body.
 
    Colour law of this console:
      terracotta   = the ONLY energy colour. Primary CTAs, active states
                     (nav, focus ring), key data. Never decorative.
-     court green  = institutional. The dark canvas, calm structure.
+     court green  = institutional. The dark "club" canvas, calm structure.
      RED          = money or moderation. Nothing else. An alert colour that
                     fires on healthy rows is an alert nobody reads.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ─── Brand faces (self-hosted, copied from LitsLandingPage) ──────────────── */
+/* ─── Brand faces (self-hosted, files from the design system) ─────────────── */
 
 @font-face {
   font-family: "PP Nikkei Maru";
-  font-weight: 300 700;
+  font-weight: 300;
   font-style: normal;
   font-display: swap;
-  src: url("/fonts/PPNikkeiMaru-Variable.woff2") format("woff2");
+  src: url("/fonts/PPNikkeiMaru-Light.otf") format("opentype");
+}
+
+@font-face {
+  font-family: "PP Nikkei Maru";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/PPNikkeiMaru-Regular.otf") format("opentype");
+}
+
+/* A família é só Light+Regular (brandbook). Este descritor faz 500–800
+   renderizarem o Regular de verdade — nunca um bold sintetizado. */
+@font-face {
+  font-family: "PP Nikkei Maru";
+  font-weight: 500 800;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/PPNikkeiMaru-Regular.otf") format("opentype");
 }
 
 @font-face {
@@ -39,6 +61,15 @@
   src: url("/fonts/Colus.woff2") format("woff2");
 }
 
+/* Gravesend Sans Bold — destaques curtos (brandbook). Nunca títulos. */
+@font-face {
+  font-family: "Gravesend Sans";
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/GravesendSans-Bold.ttf") format("truetype");
+}
+
 /* ─── Theme tokens ───────────────────────────────────────────────────────── */
 
 @theme inline {
@@ -47,6 +78,7 @@
   --font-sans: "PP Nikkei Maru", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-display: "Colus", "Times New Roman", ui-serif, serif;
   --font-colus: "Colus", "Times New Roman", ui-serif, serif;
+  --font-highlight: "Gravesend Sans", "PP Nikkei Maru", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
   /* Court green — Verde LITS. Institutional; the dark "club" canvas. */
@@ -88,7 +120,7 @@
   /* Brand accents */
   --color-orange: #B54A29;
   --color-orange-bright: #C85A36;
-  --color-orange-text: #8A381F;
+  --color-orange-text: #8F3A20; /* terracotta-700 — brand token */
   --color-gold: #A39175;
 
   /* Feedback — values are re-declared per theme below; these are the light
@@ -102,7 +134,7 @@
   --color-info: #6B5B3E;
   --color-info-bg: #E3DCC6;
 
-  --color-clay: #8A381F;
+  --color-clay: #8F3A20; /* terracotta-700 — brand token */
   --color-win: #2C6B45;
   --color-loss: #A82A20;
 
@@ -111,14 +143,11 @@
 }
 
 /* ─── Numeric font weights ───────────────────────────────────────────────────
-   Tailwind v4 has no bare-numeric font-weight utility: `font-600` compiles to
-   NOTHING. The codebase leans on font-500/600/700 in 51 places, so its entire
-   type hierarchy was silently rendering at 400 — invisible in review, obvious
-   the moment a variable face with a real 300–700 axis is loaded.
-
-   Declaring them here repairs every call site at once, including the panel
-   files other agents are writing right now, without editing a single one.
-   PP Nikkei Maru is variable, so these interpolate for real.
+   Tailwind v4 has no bare-numeric font-weight utility, so these exist for the
+   51 call sites that ask for font-500/600/700. Per the brandbook, PP Nikkei
+   Maru has ONLY Light (300) and Regular (400): the 500–800 @font-face
+   descriptor above resolves every one of these to the real Regular file —
+   nothing is synthesized, and emphasis comes from tracking/uppercase/size.
    ──────────────────────────────────────────────────────────────────────────── */
 
 @utility font-300 { font-weight: 300; }
@@ -126,7 +155,7 @@
 @utility font-500 { font-weight: 500; }
 @utility font-600 { font-weight: 600; }
 @utility font-700 { font-weight: 700; }
-@utility font-800 { font-weight: 700; } /* the face stops at 700; do not fake 800 */
+@utility font-800 { font-weight: 700; } /* renders Regular — a família para no 400 */
 
 /* ─── Semantic surface — LIGHT (brandbook off-white paper, white cards) ───── */
 
@@ -161,16 +190,16 @@
   --color-error-bg: #F2DDD8;
   --color-info: #6B5B3E;
   --color-info-bg: #EAE4D2;
-  --color-clay: #8A381F;
+  --color-clay: #8F3A20; /* terracotta-700 — brand token */
 
   --grain-opacity: 0.2;
   --grain-blend: multiply;
 
-  /* Categorical pair for stacked/segmented charts — same hue, lightness-stepped
-     (survives every CVD type; validated by the dataviz six-checks script).
+  /* Categorical pair for stacked/segmented charts — degraus da MATIZ terracota
+     (mesma matiz, lightness-stepped; validado pelo six-checks do dataviz).
      cat-a = série de destaque (pagas, convites); cat-b = secundária. */
-  --chart-cat-a: #8A381F;
-  --chart-cat-b: #D0761F;
+  --chart-cat-a: #8F3A20; /* terracotta-700 */
+  --chart-cat-b: #D0764A; /* degrau claro derivado da terracota */
 }
 
 /* ─── Semantic surface — DARK (brand brown over black; an 8pm console) ────── */
@@ -179,32 +208,36 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --bg: #0C0A08;
-    --surface: #1C1410;        /* Marrom family — the warm dark card */
-    --surface-raised: #2A1A12;
-    --surface-sunken: #070605;
+    /* O "club" do design system: canvas Verde LITS, card verde-700, raised em
+       Marrom, tinta creme, hairline caqui a 30%. Nada fora do brandbook. */
+    --bg: #2E433A;             /* Verde LITS — PANTONE 6189 C */
+    --surface: #243530;        /* green-700 — o card do club */
+    --surface-raised: #37241D; /* Marrom — surface-raised do DS */
+    --surface-sunken: #1C2A25; /* degrau fundo do verde */
 
-    --border: #35271F;
-    --border-strong: #4C3A2E;
+    --border: rgba(163, 145, 117, 0.30); /* caqui a 30% — border-subtle do DS */
+    --border-strong: #A39175;            /* Bege / caqui */
 
-    --primary: #E08A5B;        /* terracotta, lifted for AA on brown */
-    --primary-fg: #0C0A08;
+    --primary: #C25E38;        /* terracota, um degrau acima para marcar no verde */
+    --primary-fg: #F6F5EC;
 
-    --text-primary: #EBE5D4;
-    --text-secondary: #A79F8E;
-    --text-tertiary: #91897B;
+    --text-primary: #E2DECC;   /* Bege claro — a tinta creme do club */
+    --text-secondary: #B9B49C; /* text-secondary escuro do DS */
+    --text-tertiary: #A39175;  /* Bege / caqui — text-muted do DS */
 
-    --color-success: #6FBF8E;
-    --color-success-bg: #10241A;
-    --color-warning: #E08A5B;
-    --color-warning-bg: #2E1A0F;
+    --color-success: #8CC1A1;                     /* degrau claro do Verde LITS */
+    --color-success-bg: rgba(47, 122, 74, 0.16);
+    --color-warning: #D0764A;
+    --color-warning-bg: rgba(181, 74, 41, 0.18);  /* accent-wash escuro do DS */
     --color-error: #E8776B;
-    --color-error-bg: #2E120E;
-    --color-info: #C4B08A;
-    --chart-cat-a: #D0761F;
-    --chart-cat-b: #96401F;
-    --color-info-bg: #241E14;
-    --color-clay: #D9834F;
+    --color-error-bg: rgba(168, 42, 32, 0.20);
+    --color-info: #C9BFA8;                        /* khaki-300 */
+    --color-info-bg: rgba(163, 145, 117, 0.14);
+    --color-clay: #D0764A;
+
+    /* Par terracota validado (six-checks) contra o card verde #243530. */
+    --chart-cat-a: #D0764A;
+    --chart-cat-b: #9C4526;
 
     --grain-opacity: 0.05;
     --grain-blend: overlay;
@@ -214,32 +247,33 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0C0A08;
-  --surface: #1C1410;
-  --surface-raised: #2A1A12;
-  --surface-sunken: #070605;
+  --bg: #2E433A;
+  --surface: #243530;
+  --surface-raised: #37241D;
+  --surface-sunken: #1C2A25;
 
-  --border: #35271F;
-  --border-strong: #4C3A2E;
+  --border: rgba(163, 145, 117, 0.30);
+  --border-strong: #A39175;
 
-  --primary: #E08A5B;
-  --primary-fg: #0C0A08;
+  --primary: #C25E38;
+  --primary-fg: #F6F5EC;
 
-  --text-primary: #EBE5D4;
-  --text-secondary: #A79F8E;
-  /* WCAG AA — see the light-theme note. #91897B clears 4.5 on all four
-     surfaces (worst = 4.84 on --surface-raised). */
-  --text-tertiary: #91897B;
+  --text-primary: #E2DECC;
+  --text-secondary: #B9B49C;
+  --text-tertiary: #A39175;
 
-  --color-success: #6FBF8E;
-  --color-success-bg: #10241A;
-  --color-warning: #E08A5B;
-  --color-warning-bg: #2E1A0F;
+  --color-success: #8CC1A1;
+  --color-success-bg: rgba(47, 122, 74, 0.16);
+  --color-warning: #D0764A;
+  --color-warning-bg: rgba(181, 74, 41, 0.18);
   --color-error: #E8776B;
-  --color-error-bg: #2E120E;
-  --color-info: #C4B08A;
-  --color-info-bg: #241E14;
-  --color-clay: #D9834F;
+  --color-error-bg: rgba(168, 42, 32, 0.20);
+  --color-info: #C9BFA8;
+  --color-info-bg: rgba(163, 145, 117, 0.14);
+  --color-clay: #D0764A;
+
+  --chart-cat-a: #D0764A;
+  --chart-cat-b: #9C4526;
 
   --grain-opacity: 0.05;
   --grain-blend: overlay;
@@ -271,16 +305,13 @@
   --color-error-bg: #F2DDD8;
   --color-info: #6B5B3E;
   --color-info-bg: #EAE4D2;
-  --color-clay: #8A381F;
+  --color-clay: #8F3A20;
 
   --grain-opacity: 0.2;
   --grain-blend: multiply;
 
-  /* Categorical pair for stacked/segmented charts — same hue, lightness-stepped
-     (survives every CVD type; validated by the dataviz six-checks script).
-     cat-a = série de destaque (pagas, convites); cat-b = secundária. */
-  --chart-cat-a: #8A381F;
-  --chart-cat-b: #D0761F;
+  --chart-cat-a: #8F3A20;
+  --chart-cat-b: #D0764A;
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
