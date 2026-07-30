@@ -896,18 +896,6 @@ export default async function MetricsPage() {
             }
           />
           <Kpi
-            label="Ativos no mês"
-            value={monthly ? String(monthly.currentMonthActives) : "—"}
-            bp={bpChip("totalAtivos", monthly?.currentMonthActives ?? null, (v) =>
-              v.toLocaleString("pt-BR")
-            )}
-            context={
-              monthly
-                ? `jogaram ≥1 partida no mês corrente · mês fechado: ${monthly.prevMonthActives}`
-                : "sem dado de reservas jogadas"
-            }
-          />
-          <Kpi
             label="Ativos / base cadastrada"
             value={
               monthly && !users.failed && users.total > 0
