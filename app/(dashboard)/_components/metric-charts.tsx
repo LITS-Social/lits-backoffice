@@ -578,7 +578,7 @@ export function PaidSplitChart({
   const mounted = useMounted();
   if (!mounted) return <div className="h-[220px]" aria-hidden />;
 
-  const wins = rollingWindows(WEEK_MS);
+  const wins = rollingWindows(DAY_MS);
   const data = wins.map(({ start, end }) => {
     const inWin = (t: number) => t >= start && t <= end;
     const pagas = paidMs.filter(inWin).length;

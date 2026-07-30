@@ -688,8 +688,8 @@ export default async function MetricsPage() {
           }
           completionSlot={
             <ChartCard
-              eyebrow="Partidas por semana — pagas × normais"
-              hint="Reservas jogadas por semana, empilhadas por cobrança. Jogos registrados só no feed não têm preço rastreável e ficam fora desta série."
+              eyebrow="Partidas por dia — pagas × normais"
+              hint="Reservas jogadas por dia — últimos 12 dias — empilhadas por cobrança. Jogos registrados só no feed não têm preço rastreável e ficam fora desta série."
             >
               {matches.startsAtMs && matches.paidStartsAtMs ? (
                 <PaidSplitChart allMs={matches.startsAtMs} paidMs={matches.paidStartsAtMs} />
