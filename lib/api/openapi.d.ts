@@ -2253,6 +2253,11 @@ export interface components {
              */
             played: number;
             /**
+             * Format: double
+             * @description Median hours from quick-match creation to confirmation, over the filled ones; null when none filled yet. Fill-rate says IF it filled; this says how much slack was left
+             */
+            quick_match_median_fill_hours: number | null;
+            /**
              * Format: int64
              * @description Quick-match bookings that got confirmed (confirmed_at set — an opponent filled it), all time
              */
@@ -2858,6 +2863,8 @@ export interface components {
             readonly $schema?: string;
             /** @description Today's (SP day) DAU vs users who opened the app but took no action; frontend computes the % */
             app_open_no_action: components["schemas"]["AppOpenNoAction"];
+            /** @description Rolling 7-day twin of app_open_no_action: WAU (last_seen_at in 7d) vs those with no product action in 7d — the stable window the dashboard rates read */
+            app_open_no_action_7d: components["schemas"]["AppOpenNoAction"];
             /**
              * Format: double
              * @description Always null: game_feedback has only a 1–5 partner rating, no balance/equilíbrio field. Partner rating lives in GET /v1/ops/player-evaluations

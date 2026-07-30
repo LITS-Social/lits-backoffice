@@ -27,7 +27,7 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 /* ── KPI tile: one number, its weekly delta, nothing else ──────────────────── */
 
-/* ── Funil de partidas — barras segmentadas, tentativa → jogo ────────────── */
+/* ── Funil de partidas — convite × quick match lado a lado ───────────────── */
 
 type FunnelData = {
   played: number;
@@ -35,74 +35,50 @@ type FunnelData = {
   invites_accepted?: number;
   quick_matches_opened?: number;
   quick_matches_filled?: number;
+  quick_match_median_fill_hours?: number | null;
   rate: number;
 } | null;
 
 function FunnelBar({
   label,
-  total,
+  value,
   max,
-  segments,
+  color,
 }: {
   label: string;
-  total: number;
+  value: number;
   max: number;
-  /** Segmentos em ordem fixa; cores do par categórico validado (cat-a/cat-b). */
-  segments: { name: string; value: number; color: string }[];
+  color: string;
 }) {
-  const width = max > 0 ? Math.max((total / max) * 100, total > 0 ? 3 : 0) : 0;
+  const width = max > 0 ? Math.max((value / max) * 100, value > 0 ? 3 : 0) : 0;
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between gap-3">
-        <span className="text-[11.5px] font-500 text-[var(--text-secondary)]">{label}</span>
-        <span className="numeral text-[15px] text-[var(--text-primary)]">{total}</span>
+        <span className="text-[11px] font-500 text-[var(--text-secondary)]">{label}</span>
+        <span className="numeral text-[14px] text-[var(--text-primary)]">{value}</span>
       </div>
-      <div className="h-4 w-full overflow-hidden rounded-[4px] bg-[var(--surface-raised)]">
-        <div className="flex h-full gap-[2px]" style={{ width: `${width}%` }}>
-          {segments
-            .filter((seg) => seg.value > 0)
-            .map((seg) => (
-              <div
-                key={seg.name}
-                title={`${seg.name}: ${seg.value}`}
-                className="h-full min-w-[3px] rounded-[3px]"
-                style={{ flex: seg.value, background: seg.color }}
-              />
-            ))}
-        </div>
+      <div className="h-3.5 w-full overflow-hidden rounded-[4px] bg-[var(--surface-raised)]">
+        <div className="h-full rounded-[3px]" style={{ width: `${width}%`, background: color }} />
       </div>
-      {segments.length > 1 && (
-        <p className="mt-1 flex flex-wrap gap-x-3 text-[10.5px] font-300 text-[var(--text-tertiary)]">
-          {segments.map((seg) => (
-            <span key={seg.name} className="inline-flex items-center gap-1.5">
-              <span
-                aria-hidden
-                className="h-2 w-2 rounded-[2px]"
-                style={{ background: seg.color }}
-              />
-              {seg.value} {seg.name}
-            </span>
-          ))}
-        </p>
-      )}
     </div>
   );
 }
 
 /**
- * As métricas interligadas do funil numa visualização só: tentativas abertas
- * (convites × quick matches) → quantas viraram jogo marcado → realizadas
- * (pagas × normais), com a conversão como número-herói ao lado. Barras
- * segmentadas com o par categórico do mesmo matiz (validado p/ CVD); rótulos
- * diretos por segmento cobrem o relief de contraste exigido pela paleta.
+ * Convite e quick match são mecânicas com desempenho radicalmente diferente —
+ * somá-las num número só esconde a resposta. Cada coluna carrega seu próprio
+ * funil (tentativas → viraram jogo → conversão), e o rail à direita traz o
+ * agregado + attach rate. Barras na cor da mecânica (par categórico validado).
  */
 function FunnelSection({
   funnel,
   paid,
+  playedByMode,
   inviteAcceptance7d,
 }: {
   funnel: FunnelData;
   paid: { total: number; last7: number; prev7: number; last30: number } | null;
+  playedByMode: { invite: number; quick: number } | null;
   inviteAcceptance7d: { sent: number; accepted: number } | null;
 }) {
   if (!funnel) {
@@ -110,8 +86,8 @@ function FunnelSection({
       <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
         <h2 className="eyebrow">Funil de partidas</h2>
         <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Tentativas → jogos marcados → realizadas. Chega com o deploy do bff-backoffice
-          (bloco match_funnel).
+          Tentativas → jogos marcados → realizadas, por mecânica. Chega com o deploy do
+          bff-backoffice (bloco match_funnel).
         </p>
       </div>
     );
@@ -122,79 +98,100 @@ function FunnelSection({
   const tentativas = invites + qms;
   const accepted = funnel.invites_accepted ?? null;
   const filled = funnel.quick_matches_filled ?? null;
-  const confirmed = accepted != null && filled != null ? accepted + filled : null;
+  const fillHours = funnel.quick_match_median_fill_hours ?? null;
   const pagas = paid?.total ?? null;
+  const attach = pagas != null && funnel.played > 0 ? pagas / funnel.played : null;
   const catA = "var(--chart-cat-a)";
   const catB = "var(--chart-cat-b)";
+  const max = Math.max(invites, qms, 1);
+
+  const col = (
+    title: string,
+    color: string,
+    opened: number,
+    confirmed: number | null,
+    played: number | null,
+    extra?: string
+  ) => (
+    <div className="space-y-3.5">
+      <p className="flex items-center gap-2">
+        <span aria-hidden className="h-2.5 w-2.5 rounded-[3px]" style={{ background: color }} />
+        <span className="label-colus text-[9px] text-[var(--text-secondary)]">{title}</span>
+        <span className="ml-auto numeral text-[13px] text-[var(--text-primary)]">
+          {played != null && opened > 0 ? pct(played / opened) : "—"}
+        </span>
+      </p>
+      <FunnelBar label="Tentativas" value={opened} max={max} color={color} />
+      {confirmed != null ? (
+        <FunnelBar label="Viraram jogo marcado" value={confirmed} max={max} color={color} />
+      ) : (
+        <p className="text-[10px] font-300 text-[var(--text-tertiary)]">
+          Etapa &ldquo;virou jogo&rdquo; chega no próximo deploy do bff.
+        </p>
+      )}
+      {played != null ? (
+        <FunnelBar label="Realizadas" value={played} max={max} color={color} />
+      ) : (
+        <p className="text-[10px] font-300 text-[var(--text-tertiary)]">
+          Realizadas por mecânica indisponível (página de reservas parcial).
+        </p>
+      )}
+      {extra && <p className="text-[10px] font-300 text-[var(--text-tertiary)]">{extra}</p>}
+    </div>
+  );
 
   return (
     <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
       <div className="mb-5">
-        <h2 className="eyebrow">Funil de partidas</h2>
+        <h2 className="eyebrow">Funil de partidas · desde o início</h2>
         <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Cada tentativa aberta no produto até virar jogo — convites e quick matches lado a
-          lado, do primeiro clique à partida realizada.
+          Convite direto e quick match lado a lado — cada mecânica com sua própria conversão
+          (o % no topo de cada coluna é realizadas ÷ tentativas daquela mecânica).
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_200px]">
-        <div className="space-y-5">
-          <FunnelBar
-            label="Tentativas criadas"
-            total={tentativas}
-            max={tentativas}
-            segments={[
-              { name: "convites", value: invites, color: catA },
-              { name: "quick matches", value: qms, color: catB },
-            ]}
-          />
-          {confirmed != null ? (
-            <FunnelBar
-              label="Viraram jogo marcado"
-              total={confirmed}
-              max={tentativas}
-              segments={[
-                { name: "convites aceitos", value: accepted!, color: catA },
-                { name: "quick matches preenchidas", value: filled!, color: catB },
-              ]}
-            />
-          ) : (
-            <p className="text-[10.5px] font-300 text-[var(--text-tertiary)]">
-              Aceitação e preenchimento por etapa chegam no próximo deploy do bff
-              {inviteAcceptance7d && inviteAcceptance7d.sent > 0
-                ? ` — na janela de 7 dias, ${inviteAcceptance7d.accepted} de ${inviteAcceptance7d.sent} convites aceitos (${pct(
-                    inviteAcceptance7d.accepted / inviteAcceptance7d.sent
-                  )}).`
-                : "."}
-            </p>
-          )}
-          <FunnelBar
-            label="Partidas realizadas"
-            total={funnel.played}
-            max={tentativas}
-            segments={
-              pagas != null
-                ? [
-                    { name: "pagas", value: Math.min(pagas, funnel.played), color: catA },
-                    { name: "normais", value: Math.max(0, funnel.played - pagas), color: catB },
-                  ]
-                : [{ name: "realizadas", value: funnel.played, color: catA }]
-            }
-          />
-        </div>
-        <div className="flex flex-col items-start justify-center gap-1 border-t border-[var(--border)] pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_190px]">
+        {col(
+          "Convite direto",
+          catA,
+          invites,
+          accepted,
+          playedByMode?.invite ?? null,
+          accepted == null && inviteAcceptance7d && inviteAcceptance7d.sent > 0
+            ? `7 dias: ${inviteAcceptance7d.accepted} de ${inviteAcceptance7d.sent} aceitos (${pct(inviteAcceptance7d.accepted / inviteAcceptance7d.sent)})`
+            : undefined
+        )}
+        {col(
+          "Quick match",
+          catB,
+          qms,
+          filled,
+          playedByMode?.quick ?? null,
+          fillHours != null
+            ? `mediana de ${fillHours.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}h até preencher`
+            : undefined
+        )}
+        <div className="flex flex-col items-start justify-center gap-1 border-t border-[var(--border)] pt-4 sm:col-span-2 lg:col-span-1 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
           <span className="label-colus text-[8.5px] text-[var(--text-tertiary)]">
-            Taxa de conversão
+            Conversão agregada
           </span>
-          <span className="numeral text-[40px] leading-none text-[var(--primary)]">
+          <span className="numeral text-[36px] leading-none text-[var(--primary)]">
             {pct(funnel.rate)}
           </span>
           <span className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
             {funnel.played} realizadas ÷ {tentativas} tentativas
           </span>
-          {confirmed != null && tentativas > 0 && (
-            <span className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-              {pct(confirmed / tentativas)} viraram jogo marcado
-            </span>
+          {attach != null && (
+            <>
+              <span className="label-colus mt-3 text-[8.5px] text-[var(--text-tertiary)]">
+                Attach rate
+              </span>
+              <span className="numeral text-[22px] leading-none text-[var(--text-primary)]">
+                {pct(attach)}
+              </span>
+              <span className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+                {pagas} pagas de {funnel.played} realizadas
+              </span>
+            </>
           )}
         </div>
       </div>
@@ -406,8 +403,10 @@ function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
 }
 
 export default async function MetricsPage() {
-  const { users, matches, scorePosts, north, completion, partnerRating, activation, monthly } =
-    await getProductMetrics();
+  const {
+    users, matches, scorePosts, north, completion, partnerRating,
+    activation, monthly, playerStats, cohorts,
+  } = await getProductMetrics();
 
   const broken = [
     users.failed && "Usuários",
@@ -419,15 +418,12 @@ export default async function MetricsPage() {
   const wow = !matches.failed
     ? { ok: matches.last7 >= matches.prev7, delta: matches.last7 - matches.prev7 }
     : null;
-  // Base viva do mês (last_seen ≤ 30d) — denominador de jogos/usuário/mês.
-  const mau = users.activity.hoje + users.activity.semana + users.activity.mes;
-  // Jogos (todos, não só pagos) nos últimos 30 dias — feed primeiro; fallback
-  // para reservas jogadas quando o feed falhou e a página cobre o total.
-  const jogos30 = !scorePosts.failed ? scorePosts.last30 : matches.last30;
-  const jogosPorUsuarioMes =
-    jogos30 != null && mau > 0
-      ? (jogos30 / mau).toLocaleString("pt-BR", { maximumFractionDigits: 2 })
-      : null;
+  // Premissa do BP: participações por ativo-que-jogou por mês. Cada partida
+  // consome DOIS jogadores — o numerador certo são pernas, não jogos.
+  const PREMISSA_JOGOS_ATIVO = 1.0;
+  const TAKE_RATE = 0.227;
+  const fmtBRL = (cents: number) =>
+    (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   // One breakdown string for every completion surface. expiredNeverConfirmed
   // null = legacy fallback (old BFF): its "canceladas" still counts every
@@ -715,7 +711,14 @@ export default async function MetricsPage() {
                 <span className="font-600 text-[var(--text-secondary)]">+{users.newLast7}</span>{" "}
                 nos últimos 7 dias ·{" "}
                 <span className="font-600 text-[var(--text-secondary)]">{users.active7}</span>{" "}
-                ativos na semana
+                abriram o app na semana
+                {playerStats && (
+                  <>
+                    {" "}
+                    · <span className="font-600 text-[var(--text-secondary)]">{playerStats.players7}</span>{" "}
+                    jogaram
+                  </>
+                )}
               </>
             }
           />
@@ -727,8 +730,11 @@ export default async function MetricsPage() {
             failed={matches.failed}
             footer={
               <>
-                <span className="font-600 text-[var(--text-secondary)]">+{matches.last7}</span>{" "}
-                nos últimos 7 dias ·{" "}
+                ritmo atual:{" "}
+                <span className="font-600 text-[var(--text-secondary)]">
+                  {(matches.last7 / 7).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+                </span>{" "}
+                partidas/dia (média 7d) ·{" "}
                 <span className="font-600 text-[var(--text-secondary)]">{matches.prev7}</span>{" "}
                 na semana anterior
               </>
@@ -740,18 +746,38 @@ export default async function MetricsPage() {
         <FunnelSection
           funnel={north.matchFunnel}
           paid={matches.paid}
+          playedByMode={matches.playedByMode}
           inviteAcceptance7d={north.inviteAcceptance}
         />
 
-        {/* ── Engajamento & retenção — os cinco números do modelo ─────────────── */}
+        {/* ── Modelo & dinheiro — janela explícita em cada card ───────────────── */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
           <Kpi
-            label="Jogos / usuário / mês"
-            value={jogosPorUsuarioMes ?? "—"}
+            label="Partidas / ativo / mês"
+            value={
+              playerStats && playerStats.ativosJogaram30 > 0
+                ? (playerStats.participacoes30 / playerStats.ativosJogaram30).toLocaleString(
+                    "pt-BR",
+                    { maximumFractionDigits: 2 }
+                  )
+                : "—"
+            }
+            {...(playerStats && playerStats.ativosJogaram30 > 0
+              ? {
+                  delta:
+                    playerStats.participacoes30 / playerStats.ativosJogaram30 >=
+                    PREMISSA_JOGOS_ATIVO
+                      ? "na premissa"
+                      : "abaixo",
+                  deltaGood:
+                    playerStats.participacoes30 / playerStats.ativosJogaram30 >=
+                    PREMISSA_JOGOS_ATIVO,
+                }
+              : {})}
             context={
-              jogos30 != null && mau > 0
-                ? `${jogos30} jogo${jogos30 === 1 ? "" : "s"} em 30 dias ÷ ${mau} que abriram o app no mês`
-                : "sem dado de partidas ou de usuários"
+              playerStats && playerStats.ativosJogaram30 > 0
+                ? `30 dias: ${playerStats.participacoes30} participações ÷ ${playerStats.ativosJogaram30} que jogaram · premissa ${PREMISSA_JOGOS_ATIVO.toLocaleString("pt-BR", { minimumFractionDigits: 1 })}`
+                : "ninguém jogou nos últimos 30 dias"
             }
           />
           <Kpi
@@ -765,21 +791,23 @@ export default async function MetricsPage() {
                   ? `${activation.d30.activated} de ${activation.d30.cohort} na coorte jogaram em 30d${
                       activation.d14.cohort > 0 ? ` · 14d: ${pct(activation.d14.rate)}` : ""
                     }${activation.d30.cohort < 10 ? " · amostra pequena" : ""}`
-                  : "ninguém completou 30 dias de conta ainda"
+                  : "ninguém completou 30 dias de conta ainda — veja as coortes abaixo"
                 : "sem dado de usuários ou de reservas jogadas"
             }
           />
           <Kpi
-            label="Só olharam o feed"
+            label="Repetição (2ª partida)"
             value={
-              north.appOpenNoAction && north.appOpenNoAction.dau > 0
-                ? pct(north.appOpenNoAction.no_action / north.appOpenNoAction.dau)
+              playerStats && playerStats.repetition.cohort > 0
+                ? pct(playerStats.repetition.repeated / playerStats.repetition.cohort)
                 : "—"
             }
             context={
-              north.appOpenNoAction && north.appOpenNoAction.dau > 0
-                ? `${north.appOpenNoAction.no_action} de ${north.appOpenNoAction.dau} que abriram hoje não fizeram nenhuma ação`
-                : "sem dado de sessões de hoje"
+              playerStats
+                ? playerStats.repetition.cohort > 0
+                  ? `${playerStats.repetition.repeated} de ${playerStats.repetition.cohort} que estrearam há 30d+ repetiram em ≤30d · ${playerStats.repetition.everRepeated} de ${playerStats.repetition.everPlayers} jogaram 2+ no total`
+                  : `ninguém estreou há 30d+ ainda · ${playerStats.repetition.everRepeated} de ${playerStats.repetition.everPlayers} já jogaram 2+`
+                : "sem dado de reservas jogadas"
             }
           />
           <Kpi
@@ -805,7 +833,121 @@ export default async function MetricsPage() {
                 : "sem meses fechados suficientes para medir"
             }
           />
+          <Kpi
+            label="GMV"
+            value={matches.gmv ? fmtBRL(matches.gmv.totalCents) : "—"}
+            context={
+              matches.gmv
+                ? `partidas pagas desde o início · ${fmtBRL(matches.gmv.last30Cents)} em 30 dias`
+                : "página de reservas parcial"
+            }
+          />
+          <Kpi
+            label="Receita LITS (est.)"
+            value={matches.gmv ? fmtBRL(Math.round(matches.gmv.totalCents * TAKE_RATE)) : "—"}
+            context={
+              matches.gmv
+                ? `take rate de ${pct(TAKE_RATE)} sobre o GMV · ${fmtBRL(Math.round(matches.gmv.last30Cents * TAKE_RATE))} em 30 dias`
+                : "página de reservas parcial"
+            }
+          />
+          <Kpi
+            label="Densidade (aprox.)"
+            value={
+              north.validMatchesPerUser
+                ? north.validMatchesPerUser.avg_candidates.toLocaleString("pt-BR", {
+                    maximumFractionDigits: 1,
+                  })
+                : "—"
+            }
+            context={
+              north.validMatchesPerUser
+                ? `parceiros da MESMA categoria por usuário ativo (mín. ${north.validMatchesPerUser.min_candidates}) — clube e horário ainda não entram na conta`
+                : "sem usuários ativos nivelados"
+            }
+          />
+          <Kpi
+            label="Só olharam o feed"
+            value={
+              north.appOpenNoAction7d && north.appOpenNoAction7d.dau > 0
+                ? pct(north.appOpenNoAction7d.no_action / north.appOpenNoAction7d.dau)
+                : north.appOpenNoAction && north.appOpenNoAction.dau > 0
+                  ? pct(north.appOpenNoAction.no_action / north.appOpenNoAction.dau)
+                  : "—"
+            }
+            context={
+              north.appOpenNoAction7d && north.appOpenNoAction7d.dau > 0
+                ? `7 dias: ${north.appOpenNoAction7d.no_action} de ${north.appOpenNoAction7d.dau} sem nenhuma ação`
+                : north.appOpenNoAction && north.appOpenNoAction.dau > 0
+                  ? `hoje: ${north.appOpenNoAction.no_action} de ${north.appOpenNoAction.dau} · amostra de 1 dia — janela de 7d chega no deploy do bff`
+                  : "sem dado de sessões"
+            }
+          />
+          <Kpi
+            label="Abriram o app na semana"
+            value={users.failed ? "—" : String(users.activity.hoje + users.activity.semana)}
+            context={
+              users.failed
+                ? "falha ao carregar"
+                : `abrir ≠ jogar: ${playerStats ? playerStats.players7 : "—"} jogaram nos últimos 7 dias`
+            }
+          />
         </div>
+
+        {/* ── Coortes semanais de ativação — sinal semanas antes do card de 30d ── */}
+        {cohorts && cohorts.length > 0 && (
+          <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+            <div className="mb-4">
+              <h2 className="eyebrow">Ativação por coorte de cadastro</h2>
+              <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+                Cada linha é uma semana de cadastro; as colunas mostram quantos jogaram a 1ª
+                partida em até 7, 14 e 30 dias. Célula “aguarda” = a janela ainda não fechou.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[420px] text-[12px]">
+                <thead>
+                  <tr className="border-b border-[var(--border)]">
+                    {["Semana de cadastro", "Contas", "≤7d", "≤14d", "≤30d"].map((h) => (
+                      <th
+                        key={h}
+                        className="label-colus px-2 py-2 text-left text-[8.5px] text-[var(--text-tertiary)] first:pl-0"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cohorts.map((c) => {
+                    const cell = (v: number | null) =>
+                      v === null ? (
+                        <span className="text-[var(--text-tertiary)]">aguarda</span>
+                      ) : c.size === 0 ? (
+                        <span className="text-[var(--text-tertiary)]">—</span>
+                      ) : (
+                        <>
+                          <span className="font-600">{pct(v / c.size)}</span>{" "}
+                          <span className="text-[var(--text-tertiary)]">({v})</span>
+                        </>
+                      );
+                    return (
+                      <tr key={c.label} className="border-b border-[var(--border)] last:border-b-0">
+                        <td className="py-2 pr-2 tabular-nums text-[var(--text-secondary)]">
+                          {c.label}
+                        </td>
+                        <td className="numeral px-2 py-2 text-[13px]">{c.size}</td>
+                        <td className="px-2 py-2">{cell(c.d7)}</td>
+                        <td className="px-2 py-2">{cell(c.d14)}</td>
+                        <td className="px-2 py-2">{cell(c.d30)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* ── A planilha, viva ─────────────────────────────────────────────────── */}
         <MetricsTable title="Ação imediata — verificar todo dia" rows={daily} />

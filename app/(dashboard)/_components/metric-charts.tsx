@@ -8,7 +8,9 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
+  Line,
   Pie,
   PieChart,
   PolarAngleAxis,
@@ -271,10 +273,21 @@ function PaceChart({ points, granularity }: { points: PacePoint[]; granularity: 
   const labelFor = (label: string) =>
     granularity === "daily" ? `dia ${label}` : `semana até ${label}`;
 
+  // Média móvel de 7 dias sobre a série diária — barras de 1, 2 e 4 partidas
+  // não têm tendência legível; a linha tracejada tem. Nas primeiras posições
+  // usa o prefixo disponível (média dos dias mostrados até ali).
+  const data =
+    granularity === "daily"
+      ? points.map((pt, i) => {
+          const win = points.slice(Math.max(0, i - 6), i + 1);
+          return { ...pt, ma7: win.reduce((sum, w) => sum + w.count, 0) / win.length };
+        })
+      : points;
+
   return (
     <div className="h-[196px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -4 }} barCategoryGap="32%">
+        <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: -4 }} barCategoryGap="32%">
           <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" opacity={0.7} />
           <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} dy={6} interval="preserveStartEnd" />
           <YAxis
@@ -307,7 +320,19 @@ function PaceChart({ points, granularity }: { points: PacePoint[]; granularity: 
               />
             ))}
           </Bar>
-        </BarChart>
+          {granularity === "daily" && (
+            <Line
+              type="monotone"
+              dataKey="ma7"
+              stroke="var(--text-secondary)"
+              strokeWidth={2}
+              strokeDasharray="5 3"
+              dot={false}
+              activeDot={false}
+              isAnimationActive={false}
+            />
+          )}
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );
@@ -391,7 +416,7 @@ export function ChartsGrid({
   const paceHint = rangeSuffix
     ? `Partidas com placar publicado ${rangeSuffix}.`
     : paceMode === "daily"
-      ? "Partidas com placar publicado, por dia — últimos 12 dias; visão semanal no toggle."
+      ? "Partidas com placar publicado, por dia — últimos 12 dias; linha tracejada = média móvel de 7 dias; visão semanal no toggle."
       : "Partidas com placar publicado, por semana — últimas 12 semanas.";
 
   const hasAnySeries = growthPoints != null || pacePoints != null;

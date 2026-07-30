@@ -88,6 +88,11 @@ export type MatchesMetrics = {
   /** Instantes das reservas jogadas COM cobrança — série pagas × normais.
       Null quando a página é parcial. */
   paidStartsAtMs: number[] | null;
+  /** Reservas jogadas por mecânica (match_type). Null quando parcial. */
+  playedByMode: { invite: number; quick: number } | null;
+  /** GMV das jogadas pagas em centavos (soma de price_cents). Null quando
+      parcial. Receita LITS = GMV × take rate, computada na página. */
+  gmv: { totalCents: number; last30Cents: number } | null;
   /** (userId, instante) de cada perna jogada — host e convidado — para a taxa
       de ativação. Null quando a página é parcial. */
   legs: { userId: string; startsAtMs: number }[] | null;
@@ -117,6 +122,8 @@ export type NorthMetrics = {
   woToday: number | null;
   /** Today's DAU (last_seen_at inside the SP day) vs those with no product action. */
   appOpenNoAction: { dau: number; no_action: number } | null;
+  /** Gêmeo de 7 dias móveis — a janela estável que o dashboard lê. */
+  appOpenNoAction7d: { dau: number; no_action: number } | null;
   /** Quick Match audience density: candidate pool per active+onboarded user. */
   validMatchesPerUser: {
     avg_candidates: number;
@@ -241,6 +248,27 @@ export type ProductMetrics = {
     d14: { rate: number; activated: number; cohort: number };
   } | null;
   /**
+   * Estatísticas de jogador derivadas das pernas (host+convidado) das
+   * reservas jogadas. `participacoes30` conta pernas (cada partida consome
+   * dois jogadores — é o que compara com a premissa do BP);
+   * `ativosJogaram30` é o denominador certo de jogos/ativo/mês.
+   * Null quando reservas ou usuários falharam.
+   */
+  playerStats: {
+    participacoes30: number;
+    ativosJogaram30: number;
+    players7: number;
+    /** 2ª partida: coorte = estreou há ≥30d; repetiu = 2ª perna ≤30d da 1ª. */
+    repetition: { repeated: number; cohort: number; everRepeated: number; everPlayers: number };
+  } | null;
+  /**
+   * Coortes semanais de cadastro × ativação em 7/14/30 dias. Célula null =
+   * a janela da coorte ainda não fechou (semana termina + N dias > agora).
+   */
+  cohorts:
+    | { label: string; size: number; d7: number | null; d14: number | null; d30: number | null }[]
+    | null;
+  /**
    * Ativo (mês M) = usuários distintos com ≥1 partida concluída dentro do mês
    * M (calendário de São Paulo). `current` é o mês corrente (parcial);
    * `prevClosed` o último mês fechado. Churn (mês M) = ativos em M-1 que não
@@ -350,7 +378,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, legs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, playedByMode: null, gmv: null, legs: null };
   }
 
   const matches = data.matches;
@@ -392,6 +420,23 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     paidStartsAtMs: complete
       ? paidRows.map((m) => new Date(m.starts_at).getTime())
       : null,
+    playedByMode: complete
+      ? {
+          quick: matches.filter((m) => (m.match_type ?? "").includes("quick")).length,
+          invite: matches.filter((m) => !(m.match_type ?? "").includes("quick")).length,
+        }
+      : null,
+    gmv: complete
+      ? {
+          totalCents: paidRows.reduce((sum, m) => sum + (m.price_cents ?? 0), 0),
+          last30Cents: paidRows
+            .filter((m) => {
+              const t = new Date(m.starts_at).getTime();
+              return t > now - 30 * DAY_MS && t <= now;
+            })
+            .reduce((sum, m) => sum + (m.price_cents ?? 0), 0),
+        }
+      : null,
     legs: complete
       ? matches.flatMap((m) => {
           const t = new Date(m.starts_at).getTime();
@@ -408,7 +453,7 @@ async function fetchNorth(): Promise<NorthMetrics> {
     failed: true,
     invitesSent7d: null, inviteAcceptance: null, newActive7d: null,
     onboarding: null, retentionWeek2: null, referralCodesUsed7d: null,
-    woToday: null, appOpenNoAction: null, validMatchesPerUser: null,
+    woToday: null, appOpenNoAction: null, appOpenNoAction7d: null, validMatchesPerUser: null,
     completion: null, matchFunnel: null,
   };
 
@@ -426,6 +471,9 @@ async function fetchNorth(): Promise<NorthMetrics> {
       referralCodesUsed7d: data.referral_codes_used_7d,
       woToday: data.wo_today,
       appOpenNoAction: data.app_open_no_action ?? null,
+      appOpenNoAction7d:
+        (data as { app_open_no_action_7d?: { dau: number; no_action: number } | null })
+          .app_open_no_action_7d ?? null,
       validMatchesPerUser: data.valid_matches_per_user ?? null,
       // ?? null is the deploy-window guard: the schema says required, but an
       // old running BFF still omits the block.
@@ -555,5 +603,76 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
     monthly = { currentMonthActives: cur.size, prevMonthActives: closed.size, churn };
   }
 
-  return { users, matches, scorePosts, north, completion, partnerRating, activation, monthly };
+  // ── Estatísticas de jogador + coortes (pernas × índice de cadastro) ──────
+  let playerStats: ProductMetrics["playerStats"] = null;
+  let cohorts: ProductMetrics["cohorts"] = null;
+  if (matches.legs) {
+    const now = Date.now();
+    const legs30 = matches.legs.filter((l) => l.startsAtMs > now - 30 * DAY_MS && l.startsAtMs <= now);
+    const byUser = new Map<string, number[]>();
+    for (const l of matches.legs) {
+      const arr = byUser.get(l.userId) ?? [];
+      arr.push(l.startsAtMs);
+      byUser.set(l.userId, arr);
+    }
+    let repeated = 0;
+    let cohort = 0;
+    let everRepeated = 0;
+    for (const times of byUser.values()) {
+      times.sort((a, b) => a - b);
+      if (times.length > 1) everRepeated++;
+      const first = times[0];
+      if (now - first >= 30 * DAY_MS) {
+        cohort++;
+        if (times.length > 1 && times[1] - first <= 30 * DAY_MS) repeated++;
+      }
+    }
+    playerStats = {
+      participacoes30: legs30.length,
+      ativosJogaram30: new Set(legs30.map((l) => l.userId)).size,
+      players7: new Set(
+        matches.legs
+          .filter((l) => l.startsAtMs > now - WEEK_MS && l.startsAtMs <= now)
+          .map((l) => l.userId)
+      ).size,
+      repetition: { repeated, cohort, everRepeated, everPlayers: byUser.size },
+    };
+
+    if (users.index) {
+      const firstPlayed = new Map<string, number>();
+      for (const [id, times] of byUser) firstPlayed.set(id, Math.min(...times));
+      const fmt = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        day: "2-digit",
+        month: "2-digit",
+      });
+      const weeks = 6;
+      const nowWeekStart = now - ((now - 4 * DAY_MS) % WEEK_MS); // âncora simples; coortes são janelas móveis de 7d
+      cohorts = Array.from({ length: weeks }, (_, i) => {
+        const start = nowWeekStart - (weeks - 1 - i) * WEEK_MS;
+        const end = start + WEEK_MS;
+        const members = users.index!.filter((u) => u.createdAtMs >= start && u.createdAtMs < end);
+        const cell = (days: number): number | null => {
+          if (end + days * DAY_MS > now) return null; // janela ainda aberta
+          if (members.length === 0) return 0;
+          return members.filter((u) => {
+            const t = firstPlayed.get(u.id);
+            return t !== undefined && t - u.createdAtMs <= days * DAY_MS;
+          }).length;
+        };
+        return {
+          label: `${fmt.format(new Date(start))}–${fmt.format(new Date(end - 1))}`,
+          size: members.length,
+          d7: cell(7),
+          d14: cell(14),
+          d30: cell(30),
+        };
+      }).filter((c) => c.size > 0 || c.d7 !== null);
+    }
+  }
+
+  return {
+    users, matches, scorePosts, north, completion, partnerRating, activation, monthly,
+    playerStats, cohorts,
+  };
 });
