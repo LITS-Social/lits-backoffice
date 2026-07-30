@@ -42,24 +42,37 @@ type FunnelData = {
 function FunnelBar({
   label,
   value,
-  max,
+  base,
   color,
+  muted,
 }: {
   label: string;
   value: number;
-  max: number;
+  /** Base do funil DESTA mecânica (as próprias tentativas = 100%) — a forma
+      da queda entre etapas é a história; a magnitude vive no número. */
+  base: number;
   color: string;
+  muted?: boolean;
 }) {
-  const width = max > 0 ? Math.max((value / max) * 100, value > 0 ? 3 : 0) : 0;
+  const ratio = base > 0 ? value / base : 0;
+  const width = base > 0 ? Math.max(ratio * 100, value > 0 ? 2.5 : 0) : 0;
   return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between gap-3">
-        <span className="text-[11px] font-500 text-[var(--text-secondary)]">{label}</span>
+    <div className="grid grid-cols-[92px_minmax(0,1fr)_76px] items-center gap-3">
+      <span className="text-[10.5px] font-500 leading-tight text-[var(--text-secondary)]">
+        {label}
+      </span>
+      <div className="h-3 w-full overflow-hidden rounded-[4px] bg-[var(--surface-raised)]">
+        <div
+          className="h-full rounded-[3px] transition-[width]"
+          style={{ width: `${width}%`, background: color, opacity: muted ? 0.45 : 1 }}
+        />
+      </div>
+      <span className="whitespace-nowrap text-right">
         <span className="numeral text-[14px] text-[var(--text-primary)]">{value}</span>
-      </div>
-      <div className="h-3.5 w-full overflow-hidden rounded-[4px] bg-[var(--surface-raised)]">
-        <div className="h-full rounded-[3px]" style={{ width: `${width}%`, background: color }} />
-      </div>
+        <span className="ml-1 text-[10px] tabular-nums text-[var(--text-tertiary)]">
+          {base > 0 ? pct(ratio) : "—"}
+        </span>
+      </span>
     </div>
   );
 }
@@ -103,8 +116,6 @@ function FunnelSection({
   const attach = pagas != null && funnel.played > 0 ? pagas / funnel.played : null;
   const catA = "var(--chart-cat-a)";
   const catB = "var(--chart-cat-b)";
-  const max = Math.max(invites, qms, 1);
-
   const col = (
     title: string,
     color: string,
@@ -113,30 +124,32 @@ function FunnelSection({
     played: number | null,
     extra?: string
   ) => (
-    <div className="space-y-3.5">
-      <p className="flex items-center gap-2">
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)]/40 p-4">
+      <p className="mb-3.5 flex items-center gap-2">
         <span aria-hidden className="h-2.5 w-2.5 rounded-[3px]" style={{ background: color }} />
         <span className="label-colus text-[9px] text-[var(--text-secondary)]">{title}</span>
-        <span className="ml-auto numeral text-[13px] text-[var(--text-primary)]">
-          {played != null && opened > 0 ? pct(played / opened) : "—"}
+        <span className="ml-auto flex items-baseline gap-1.5">
+          <span className="numeral text-[20px] leading-none text-[var(--text-primary)]">
+            {played != null && opened > 0 ? pct(played / opened) : "—"}
+          </span>
+          <span className="label-colus text-[7px] text-[var(--text-tertiary)]">conversão</span>
         </span>
       </p>
-      <FunnelBar label="Tentativas" value={opened} max={max} color={color} />
-      {confirmed != null ? (
-        <FunnelBar label="Viraram jogo marcado" value={confirmed} max={max} color={color} />
-      ) : (
-        <p className="text-[10px] font-300 text-[var(--text-tertiary)]">
-          Etapa &ldquo;virou jogo&rdquo; chega no próximo deploy do bff.
+      <div className="space-y-2.5">
+        <FunnelBar label="Tentativas" value={opened} base={opened} color={color} />
+        {confirmed != null && (
+          <FunnelBar label="Viraram jogo" value={confirmed} base={opened} color={color} />
+        )}
+        {played != null && (
+          <FunnelBar label="Realizadas" value={played} base={opened} color={color} muted={false} />
+        )}
+      </div>
+      {(confirmed == null || extra) && (
+        <p className="mt-3 border-t border-[var(--border)] pt-2.5 text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
+          {confirmed == null && "Etapa “viraram jogo” chega no próximo deploy do bff. "}
+          {extra}
         </p>
       )}
-      {played != null ? (
-        <FunnelBar label="Realizadas" value={played} max={max} color={color} />
-      ) : (
-        <p className="text-[10px] font-300 text-[var(--text-tertiary)]">
-          Realizadas por mecânica indisponível (página de reservas parcial).
-        </p>
-      )}
-      {extra && <p className="text-[10px] font-300 text-[var(--text-tertiary)]">{extra}</p>}
     </div>
   );
 
@@ -405,7 +418,7 @@ function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
 export default async function MetricsPage() {
   const {
     users, matches, scorePosts, north, completion, partnerRating,
-    activation, monthly, playerStats, cohorts,
+    activationMonth, monthly, playerStats, cohorts,
   } = await getProductMetrics();
 
   const broken = [
@@ -753,45 +766,46 @@ export default async function MetricsPage() {
         {/* ── Modelo & dinheiro — janela explícita em cada card ───────────────── */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
           <Kpi
-            label="Partidas / ativo / mês"
+            label="Jogos pagos / ativo / mês"
             value={
               playerStats && playerStats.ativosJogaram30 > 0
-                ? (playerStats.participacoes30 / playerStats.ativosJogaram30).toLocaleString(
-                    "pt-BR",
-                    { maximumFractionDigits: 2 }
-                  )
+                ? (
+                    playerStats.participacoesPagas30 / playerStats.ativosJogaram30
+                  ).toLocaleString("pt-BR", { maximumFractionDigits: 2 })
                 : "—"
             }
             {...(playerStats && playerStats.ativosJogaram30 > 0
               ? {
                   delta:
-                    playerStats.participacoes30 / playerStats.ativosJogaram30 >=
+                    playerStats.participacoesPagas30 / playerStats.ativosJogaram30 >=
                     PREMISSA_JOGOS_ATIVO
                       ? "na premissa"
                       : "abaixo",
                   deltaGood:
-                    playerStats.participacoes30 / playerStats.ativosJogaram30 >=
+                    playerStats.participacoesPagas30 / playerStats.ativosJogaram30 >=
                     PREMISSA_JOGOS_ATIVO,
                 }
               : {})}
             context={
               playerStats && playerStats.ativosJogaram30 > 0
-                ? `30 dias: ${playerStats.participacoes30} participações ÷ ${playerStats.ativosJogaram30} que jogaram · premissa ${PREMISSA_JOGOS_ATIVO.toLocaleString("pt-BR", { minimumFractionDigits: 1 })}`
+                ? `30 dias: ${playerStats.participacoesPagas30} participações pagas ÷ ${playerStats.ativosJogaram30} que jogaram · premissa ${PREMISSA_JOGOS_ATIVO.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} · total (pagas+normais): ${playerStats.participacoes30}`
                 : "ninguém jogou nos últimos 30 dias"
             }
           />
           <Kpi
-            label="Taxa de ativação (30d)"
+            label="Taxa de ativação (mês)"
             value={
-              activation && activation.d30.cohort > 0 ? pct(activation.d30.rate) : "—"
+              activationMonth && activationMonth.novos > 0
+                ? pct(activationMonth.jogaram / activationMonth.novos)
+                : "—"
             }
             context={
-              activation
-                ? activation.d30.cohort > 0
-                  ? `${activation.d30.activated} de ${activation.d30.cohort} na coorte jogaram em 30d${
-                      activation.d14.cohort > 0 ? ` · 14d: ${pct(activation.d14.rate)}` : ""
-                    }${activation.d30.cohort < 10 ? " · amostra pequena" : ""}`
-                  : "ninguém completou 30 dias de conta ainda — veja as coortes abaixo"
+              activationMonth
+                ? activationMonth.novos > 0
+                  ? `${activationMonth.jogaram} de ${activationMonth.novos} cadastrados no mês jogaram ≥1 partida${
+                      activationMonth.novos < 10 ? " · amostra pequena" : ""
+                    } · por janela de dias nas coortes abaixo`
+                  : "ninguém se cadastrou neste mês ainda"
                 : "sem dado de usuários ou de reservas jogadas"
             }
           />

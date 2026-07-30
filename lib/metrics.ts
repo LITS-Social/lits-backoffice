@@ -58,7 +58,7 @@ export type UsersMetrics = {
    * da taxa de ativação. Null quando a varredura foi truncada — uma coorte
    * parcial daria uma taxa com a forma errada.
    */
-  index: { id: string; createdAtMs: number }[] | null;
+  index: { id: string; createdAtMs: number; lastSeenMs: number | null }[] | null;
   /**
    * Week-2 retention, approximated: of the accounts old enough to have had a
    * second week (created ≥ 14 days ago), how many were seen again 7+ days
@@ -96,6 +96,8 @@ export type MatchesMetrics = {
   /** (userId, instante) de cada perna jogada — host e convidado — para a taxa
       de ativação. Null quando a página é parcial. */
   legs: { userId: string; startsAtMs: number }[] | null;
+  /** Pernas só das partidas PAGAS — numerador da premissa do BP. */
+  paidLegs: { userId: string; startsAtMs: number }[] | null;
 };
 
 /**
@@ -237,16 +239,11 @@ export type ProductMetrics = {
   /** Weighted mean of all partner ratings received. Null on failure or no ratings. */
   partnerRating: { avg: number; count: number } | null;
   /**
-   * Ativação do modelo: coorte que jogou ≥1 partida (reserva jogada, host ou
-   * convidado) em até N dias do cadastro ÷ coorte (contas cuja janela de N
-   * dias já fechou). 30d é a premissa do modelo; 14d acompanha. Jogos
-   * registrados apenas no feed sem reserva não contam (limite da fonte).
+   * Taxa de ativação (mês): dos cadastrados no mês-calendário corrente (SP),
+   * % que JOGOU ≥1 partida (perna de reserva jogada, host ou convidado).
    * Null quando usuários ou reservas falharam.
    */
-  activation: {
-    d30: { rate: number; activated: number; cohort: number };
-    d14: { rate: number; activated: number; cohort: number };
-  } | null;
+  activationMonth: { jogaram: number; novos: number } | null;
   /**
    * Estatísticas de jogador derivadas das pernas (host+convidado) das
    * reservas jogadas. `participacoes30` conta pernas (cada partida consome
@@ -256,6 +253,8 @@ export type ProductMetrics = {
    */
   playerStats: {
     participacoes30: number;
+    /** Pernas de partidas PAGAS em 30d — o numerador da premissa (1,0). */
+    participacoesPagas30: number;
     ativosJogaram30: number;
     players7: number;
     /** 2ª partida: coorte = estreou há ≥30d; repetiu = 2ª perna ≤30d da 1ª. */
@@ -360,7 +359,11 @@ async function crawlUsers(): Promise<UsersMetrics> {
       ? null
       : rows
           .filter((r) => r.created_at)
-          .map((r) => ({ id: r.id, createdAtMs: new Date(r.created_at!).getTime() })),
+          .map((r) => ({
+            id: r.id,
+            createdAtMs: new Date(r.created_at!).getTime(),
+            lastSeenMs: r.last_seen_at ? new Date(r.last_seen_at).getTime() : null,
+          })),
     activity,
     // Below ~10 accounts a percentage is theatre; the UI treats null as "ainda cedo".
     retention:
@@ -378,7 +381,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, playedByMode: null, gmv: null, legs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, playedByMode: null, gmv: null, legs: null, paidLegs: null };
   }
 
   const matches = data.matches;
@@ -439,6 +442,14 @@ async function fetchMatches(): Promise<MatchesMetrics> {
       : null,
     legs: complete
       ? matches.flatMap((m) => {
+          const t = new Date(m.starts_at).getTime();
+          const out = [{ userId: m.host.user_id, startsAtMs: t }];
+          if (m.guest?.user_id) out.push({ userId: m.guest.user_id, startsAtMs: t });
+          return out;
+        })
+      : null,
+    paidLegs: complete
+      ? paidRows.flatMap((m) => {
           const t = new Date(m.starts_at).getTime();
           const out = [{ userId: m.host.user_id, startsAtMs: t }];
           if (m.guest?.user_id) out.push({ userId: m.guest.user_id, startsAtMs: t });
@@ -535,29 +546,16 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
     }
   }
 
-  // Ativação: primeiro jogo de cada usuário (menor starts_at das suas pernas)
-  // contra o instante do cadastro; coorte = contas cuja janela já fechou.
-  let activation: ProductMetrics["activation"] = null;
+  // Ativação do mês: novos cadastros do mês-calendário (SP) que jogaram de
+  // verdade — ≥1 perna de reserva jogada.
+  let activationMonth: ProductMetrics["activationMonth"] = null;
   if (users.index && matches.legs) {
-    const firstPlayed = new Map<string, number>();
-    for (const leg of matches.legs) {
-      const cur = firstPlayed.get(leg.userId);
-      if (cur === undefined || leg.startsAtMs < cur) firstPlayed.set(leg.userId, leg.startsAtMs);
-    }
-    const now = Date.now();
-    const windowRate = (days: number) => {
-      const cohort = users.index!.filter((u) => now - u.createdAtMs >= days * DAY_MS);
-      const activated = cohort.filter((u) => {
-        const t = firstPlayed.get(u.id);
-        return t !== undefined && t - u.createdAtMs <= days * DAY_MS;
-      });
-      return {
-        rate: cohort.length > 0 ? activated.length / cohort.length : 0,
-        activated: activated.length,
-        cohort: cohort.length,
-      };
-    };
-    activation = { d30: windowRate(30), d14: windowRate(14) };
+    const spNow = new Date();
+    const monthStart = new Date(spNow.getFullYear(), spNow.getMonth(), 1).getTime();
+    const played = new Set(matches.legs.map((l) => l.userId));
+    const novos = users.index.filter((u) => u.createdAtMs >= monthStart);
+    const jogaram = novos.filter((u) => played.has(u.id));
+    activationMonth = { jogaram: jogaram.length, novos: novos.length };
   }
 
   // Ativo (mês) e churn — meses-calendário de São Paulo sobre as pernas.
@@ -627,8 +625,12 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
         if (times.length > 1 && times[1] - first <= 30 * DAY_MS) repeated++;
       }
     }
+    const paidLegs30 = (matches.paidLegs ?? []).filter(
+      (l) => l.startsAtMs > now - 30 * DAY_MS && l.startsAtMs <= now
+    );
     playerStats = {
       participacoes30: legs30.length,
+      participacoesPagas30: paidLegs30.length,
       ativosJogaram30: new Set(legs30.map((l) => l.userId)).size,
       players7: new Set(
         matches.legs
@@ -672,7 +674,7 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
   }
 
   return {
-    users, matches, scorePosts, north, completion, partnerRating, activation, monthly,
+    users, matches, scorePosts, north, completion, partnerRating, activationMonth, monthly,
     playerStats, cohorts,
   };
 });
