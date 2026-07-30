@@ -709,21 +709,18 @@ export default async function MetricsPage() {
           }
           completionSlot={
             <ChartCard
-              eyebrow="Taxa de conclusão"
-              hint={
-                completion?.expiredNeverConfirmed != null
-                  ? "Concluídas sobre concluídas + canceladas de jogos confirmados. Convites que expiram sem confirmação não contam."
-                  : "Concluídas sobre concluídas + canceladas."
-              }
+              eyebrow="Taxa de conversão"
+              hint="Partidas realizadas sobre todas as tentativas abertas no produto — convites diretos + quick matches."
             >
-              {completion && completionNote ? (
+              {north.matchFunnel ? (
                 <CompletionGauge
-                  rate={completion.rate}
-                  target={META_CONCLUSAO}
-                  caption={completionNote}
+                  rate={north.matchFunnel.rate}
+                  caption={`${north.matchFunnel.played} realizadas ÷ ${(north.matchFunnel.invites_sent ?? 0) + (north.matchFunnel.quick_matches_opened ?? 0)} tentativas (${north.matchFunnel.invites_sent} convites + ${north.matchFunnel.quick_matches_opened} quick matches)`}
                 />
               ) : (
-                <ChartUnavailable>Sem dado de cancelamentos para compor a taxa.</ChartUnavailable>
+                <ChartUnavailable>
+                  Chega com o deploy do bff-backoffice (bloco match_funnel).
+                </ChartUnavailable>
               )}
             </ChartCard>
           }

@@ -573,14 +573,20 @@ export function CompletionGauge({
   caption,
 }: {
   rate: number;
-  target: number;
+  /** Sem meta definida (undefined): o arco fica neutro e a linha "meta ≥"
+      some — melhor sem meta do que uma inventada. */
+  target?: number;
   caption: string;
 }) {
   const mounted = useMounted();
   if (!mounted) return <div className="h-[220px]" aria-hidden />;
 
-  const ok = rate >= target;
-  const color = ok ? "var(--color-success)" : "var(--color-clay)";
+  const color =
+    target === undefined
+      ? "var(--primary)"
+      : rate >= target
+        ? "var(--color-success)"
+        : "var(--color-clay)";
 
   return (
     <div className="relative h-[220px] w-full">
@@ -606,9 +612,11 @@ export function CompletionGauge({
         <span className="numeral text-[34px]" style={{ color }}>
           {Math.round(rate * 100)}%
         </span>
-        <span className="label-colus mt-1.5 text-[7.5px] text-[var(--text-tertiary)]">
-          meta ≥ {Math.round(target * 100)}%
-        </span>
+        {target !== undefined && (
+          <span className="label-colus mt-1.5 text-[7.5px] text-[var(--text-tertiary)]">
+            meta ≥ {Math.round(target * 100)}%
+          </span>
+        )}
         <span className="mt-2 max-w-[180px] text-center text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
           {caption}
         </span>
