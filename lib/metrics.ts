@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { getApi } from "@/lib/api";
+import { receitaPorPartidaCents } from "@/lib/bp";
 import type { components } from "@/lib/api/openapi";
 
 /**
@@ -80,7 +81,7 @@ export type MatchesMetrics = {
    * Split das reservas jogadas por cobrança (price_cents > 0). Null quando a
    * página carregada não cobre o total — um split parcial mentiria.
    */
-  paid: { total: number; last7: number; prev7: number; last30: number } | null;
+  paid: { total: number; last7: number; prev7: number; last30: number; month: number } | null;
   /** Raw starts_at instants (ms epoch) for the client-side pace re-bucket.
       Null when the page we hold is smaller than the server's total — a partial
       histogram would show weeks that do not exist. */
@@ -90,9 +91,17 @@ export type MatchesMetrics = {
   paidStartsAtMs: number[] | null;
   /** Reservas jogadas por mecânica (match_type). Null quando parcial. */
   playedByMode: { invite: number; quick: number } | null;
-  /** GMV das jogadas pagas em centavos (soma de price_cents). Null quando
-      parcial. Receita LITS = GMV × take rate, computada na página. */
-  gmv: { totalCents: number; last30Cents: number } | null;
+  /** GMV das jogadas pagas (soma de price_cents) e a receita LITS pela
+      fórmula do BP (comissão 7,5% + markup 10% + R$6/partida). Null quando
+      parcial. `month*` = mês-calendário corrente (SP). */
+  gmv: {
+    totalCents: number;
+    last30Cents: number;
+    monthCents: number;
+    receitaTotalCents: number;
+    receita30Cents: number;
+    receitaMonthCents: number;
+  } | null;
   /** (userId, instante) de cada perna jogada — host e convidado — para a taxa
       de ativação. Null quando a página é parcial. */
   legs: { userId: string; startsAtMs: number }[] | null;
@@ -404,6 +413,23 @@ async function fetchMatches(): Promise<MatchesMetrics> {
       const t = new Date(m.starts_at).getTime();
       return t > from && t <= to;
     }).length;
+  // Início do mês corrente no calendário de São Paulo — o BP é mensal.
+  const spYm = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).format(new Date(now));
+  const monthStartMs = new Date(`${spYm}-01T00:00:00-03:00`).getTime();
+  const paidSum = (rows: typeof paidRows, fn: (cents: number) => number) =>
+    rows.reduce((sum, m) => sum + fn(m.price_cents ?? 0), 0);
+  const paidMonthRows = paidRows.filter((m) => {
+    const t = new Date(m.starts_at).getTime();
+    return t >= monthStartMs && t <= now;
+  });
+  const paid30Rows = paidRows.filter((m) => {
+    const t = new Date(m.starts_at).getTime();
+    return t > now - 30 * DAY_MS && t <= now;
+  });
 
   return {
     failed: false,
@@ -417,6 +443,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
           last7: paidWithin(now - WEEK_MS, now),
           prev7: paidWithin(now - 2 * WEEK_MS, now - WEEK_MS),
           last30: paidWithin(now - 30 * DAY_MS, now),
+          month: paidMonthRows.length,
         }
       : null,
     startsAtMs,
@@ -431,13 +458,12 @@ async function fetchMatches(): Promise<MatchesMetrics> {
       : null,
     gmv: complete
       ? {
-          totalCents: paidRows.reduce((sum, m) => sum + (m.price_cents ?? 0), 0),
-          last30Cents: paidRows
-            .filter((m) => {
-              const t = new Date(m.starts_at).getTime();
-              return t > now - 30 * DAY_MS && t <= now;
-            })
-            .reduce((sum, m) => sum + (m.price_cents ?? 0), 0),
+          totalCents: paidSum(paidRows, (c) => c),
+          last30Cents: paidSum(paid30Rows, (c) => c),
+          monthCents: paidSum(paidMonthRows, (c) => c),
+          receitaTotalCents: paidSum(paidRows, receitaPorPartidaCents),
+          receita30Cents: paidSum(paid30Rows, receitaPorPartidaCents),
+          receitaMonthCents: paidSum(paidMonthRows, receitaPorPartidaCents),
         }
       : null,
     legs: complete

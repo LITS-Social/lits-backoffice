@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { getProductMetrics } from "@/lib/metrics";
+import { BP_PREMISSAS, bpTarget } from "@/lib/bp";
 import { cn } from "@/lib/utils";
 import {
   ChartCard,
@@ -208,12 +209,17 @@ function FunnelSection({
   );
 }
 
+/** Chip "vs BP": alvo do plano + acima/abaixo/na linha, colorido. `ok:null`
+    = na linha (empate dentro do arredondamento). */
+type BpChip = { target: string; monthLabel: string; ok: boolean | null };
+
 function Kpi({
   label,
   value,
   delta,
   deltaGood,
   context,
+  bp,
 }: {
   label: string;
   value: string;
@@ -221,6 +227,7 @@ function Kpi({
   delta?: string;
   deltaGood?: boolean;
   context: string;
+  bp?: BpChip | null;
 }) {
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -239,6 +246,24 @@ function Kpi({
           </span>
         )}
       </div>
+      {bp && (
+        <p
+          className={cn(
+            "mt-1.5 flex flex-wrap items-center gap-x-1.5 text-[10.5px] font-600 tabular-nums",
+            bp.ok === null
+              ? "text-[var(--text-secondary)]"
+              : bp.ok
+                ? "text-[var(--color-success)]"
+                : "text-[var(--color-clay)]"
+          )}
+        >
+          <span className="label-colus text-[7.5px] opacity-80">BP {bp.monthLabel}</span>
+          {bp.target}
+          <span className="font-500">
+            {bp.ok === null ? "· na linha" : bp.ok ? "· acima" : "· abaixo"}
+          </span>
+        </p>
+      )}
       <p className="mt-1.5 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
         {context}
       </p>
@@ -427,12 +452,26 @@ export default async function MetricsPage() {
   const wow = !matches.failed
     ? { ok: matches.last7 >= matches.prev7, delta: matches.last7 - matches.prev7 }
     : null;
-  // Premissa do BP: participações por ativo-que-jogou por mês. Cada partida
-  // consome DOIS jogadores — o numerador certo são pernas, não jogos.
-  const PREMISSA_JOGOS_ATIVO = 1.0;
-  const TAKE_RATE = 0.227;
   const fmtBRL = (cents: number) =>
     (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  // Chip "vs BP": compara o real com o alvo do plano no mês corrente (ou no
+  // primeiro mês que o BP define a linha). `higherIsBetter=false` para churn.
+  const bpChip = (
+    metric: Parameters<typeof bpTarget>[0],
+    actual: number | null,
+    fmt: (v: number) => string,
+    higherIsBetter = true
+  ) => {
+    const t = bpTarget(metric);
+    if (!t || actual == null) return null;
+    const ok =
+      Math.abs(actual - t.value) / Math.max(Math.abs(t.value), 1e-9) < 0.005
+        ? null
+        : higherIsBetter
+          ? actual > t.value
+          : actual < t.value;
+    return { target: fmt(t.value), monthLabel: t.monthLabel, ok };
+  };
 
   // One breakdown string for every completion surface. expiredNeverConfirmed
   // null = legacy fallback (old BFF): its "canceladas" still counts every
@@ -774,17 +813,30 @@ export default async function MetricsPage() {
               ? {
                   delta:
                     playerStats.participacoesPagas30 / playerStats.ativosJogaram30 >=
-                    PREMISSA_JOGOS_ATIVO
+                    BP_PREMISSAS.jogosPagosPorAtivoMes
                       ? "na premissa"
                       : "abaixo",
                   deltaGood:
                     playerStats.participacoesPagas30 / playerStats.ativosJogaram30 >=
-                    PREMISSA_JOGOS_ATIVO,
+                    BP_PREMISSAS.jogosPagosPorAtivoMes,
                 }
               : {})}
+            bp={
+              playerStats && playerStats.ativosJogaram30 > 0
+                ? {
+                    target: BP_PREMISSAS.jogosPagosPorAtivoMes.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 1,
+                    }),
+                    monthLabel: "premissa",
+                    ok:
+                      playerStats.participacoesPagas30 / playerStats.ativosJogaram30 >=
+                      BP_PREMISSAS.jogosPagosPorAtivoMes,
+                  }
+                : null
+            }
             context={
               playerStats && playerStats.ativosJogaram30 > 0
-                ? `30 dias: ${playerStats.participacoesPagas30} participações pagas ÷ ${playerStats.ativosJogaram30} que jogaram · premissa ${PREMISSA_JOGOS_ATIVO.toLocaleString("pt-BR", { minimumFractionDigits: 1 })} · total (pagas+normais): ${playerStats.participacoes30}`
+                ? `30 dias: ${playerStats.participacoesPagas30} participações pagas ÷ ${playerStats.ativosJogaram30} que jogaram · total (pagas+normais): ${playerStats.participacoes30}`
                 : "ninguém jogou nos últimos 30 dias"
             }
           />
@@ -795,6 +847,13 @@ export default async function MetricsPage() {
                 ? pct(activationMonth.jogaram / activationMonth.novos)
                 : "—"
             }
+            bp={bpChip(
+              "ativacao",
+              activationMonth && activationMonth.novos > 0
+                ? activationMonth.jogaram / activationMonth.novos
+                : null,
+              (v) => pct(v)
+            )}
             context={
               activationMonth
                 ? activationMonth.novos > 0
@@ -802,6 +861,18 @@ export default async function MetricsPage() {
                       activationMonth.novos < 10 ? " · amostra pequena" : ""
                     } · por janela de dias nas coortes abaixo`
                   : "ninguém se cadastrou neste mês ainda"
+                : "sem dado de usuários ou de reservas jogadas"
+            }
+          />
+          <Kpi
+            label="Novos ativados no mês"
+            value={activationMonth ? String(activationMonth.jogaram) : "—"}
+            bp={bpChip("novosAtivados", activationMonth?.jogaram ?? null, (v) =>
+              v.toLocaleString("pt-BR")
+            )}
+            context={
+              activationMonth
+                ? `cadastrados no mês que jogaram a 1ª partida · base nova do mês: ${activationMonth.novos}`
                 : "sem dado de usuários ou de reservas jogadas"
             }
           />
@@ -827,10 +898,33 @@ export default async function MetricsPage() {
           <Kpi
             label="Ativos no mês"
             value={monthly ? String(monthly.currentMonthActives) : "—"}
+            bp={bpChip("totalAtivos", monthly?.currentMonthActives ?? null, (v) =>
+              v.toLocaleString("pt-BR")
+            )}
             context={
               monthly
                 ? `jogaram ≥1 partida no mês corrente · mês fechado: ${monthly.prevMonthActives}`
                 : "sem dado de reservas jogadas"
+            }
+          />
+          <Kpi
+            label="Ativos / base cadastrada"
+            value={
+              monthly && !users.failed && users.total > 0
+                ? pct(monthly.currentMonthActives / users.total)
+                : "—"
+            }
+            bp={bpChip(
+              "ativosSobreBase",
+              monthly && !users.failed && users.total > 0
+                ? monthly.currentMonthActives / users.total
+                : null,
+              (v) => pct(v)
+            )}
+            context={
+              monthly && !users.failed && users.total > 0
+                ? `${monthly.currentMonthActives} que jogaram no mês ÷ ${users.total} cadastrados`
+                : "sem dado de usuários ou de reservas jogadas"
             }
           />
           <Kpi
@@ -839,6 +933,7 @@ export default async function MetricsPage() {
             {...(monthly?.churn
               ? { delta: monthly.churn.month, deltaGood: monthly.churn.rate <= 0.3 }
               : {})}
+            bp={bpChip("churnBlended", monthly?.churn?.rate ?? null, (v) => pct(v), false)}
             context={
               monthly?.churn
                 ? `${monthly.churn.left} de ${monthly.churn.base} ativos de ${monthly.churn.baseMonth} não jogaram em ${monthly.churn.month}${
@@ -850,19 +945,44 @@ export default async function MetricsPage() {
           <Kpi
             label="GMV"
             value={matches.gmv ? fmtBRL(matches.gmv.totalCents) : "—"}
+            bp={bpChip("gmvCents", matches.gmv?.monthCents ?? null, (v) => fmtBRL(v))}
             context={
               matches.gmv
-                ? `partidas pagas desde o início · ${fmtBRL(matches.gmv.last30Cents)} em 30 dias`
+                ? `desde o início · mês corrente: ${fmtBRL(matches.gmv.monthCents)} · 30 dias: ${fmtBRL(matches.gmv.last30Cents)}`
                 : "página de reservas parcial"
             }
           />
           <Kpi
             label="Receita LITS (est.)"
-            value={matches.gmv ? fmtBRL(Math.round(matches.gmv.totalCents * TAKE_RATE)) : "—"}
+            value={matches.gmv ? fmtBRL(matches.gmv.receitaTotalCents) : "—"}
             context={
               matches.gmv
-                ? `take rate de ${pct(TAKE_RATE)} sobre o GMV · ${fmtBRL(Math.round(matches.gmv.last30Cents * TAKE_RATE))} em 30 dias`
+                ? `fórmula do BP (comissão 7,5% + markup 10% + R$6/partida) · mês: ${fmtBRL(matches.gmv.receitaMonthCents)} · 30d: ${fmtBRL(matches.gmv.receita30Cents)}`
                 : "página de reservas parcial"
+            }
+          />
+          <Kpi
+            label="Ticket médio (pago)"
+            value={
+              matches.gmv && matches.paid && matches.paid.total > 0
+                ? fmtBRL(Math.round(matches.gmv.totalCents / matches.paid.total))
+                : "—"
+            }
+            bp={
+              matches.gmv && matches.paid && matches.paid.total > 0
+                ? {
+                    target: fmtBRL(BP_PREMISSAS.ticketMedioCents),
+                    monthLabel: "premissa",
+                    ok:
+                      Math.round(matches.gmv.totalCents / matches.paid.total) >=
+                      BP_PREMISSAS.ticketMedioCents,
+                  }
+                : null
+            }
+            context={
+              matches.gmv && matches.paid && matches.paid.total > 0
+                ? `GMV ÷ ${matches.paid.total} partidas pagas, desde o início`
+                : "sem partidas pagas ainda"
             }
           />
           <Kpi
