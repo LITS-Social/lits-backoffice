@@ -54,6 +54,12 @@ export type UsersMetrics = {
    */
   activity: { hoje: number; semana: number; mes: number; inativos: number };
   /**
+   * Índice mínimo por usuário (id + instante do cadastro) para o cruzamento
+   * da taxa de ativação. Null quando a varredura foi truncada — uma coorte
+   * parcial daria uma taxa com a forma errada.
+   */
+  index: { id: string; createdAtMs: number }[] | null;
+  /**
    * Week-2 retention, approximated: of the accounts old enough to have had a
    * second week (created ≥ 14 days ago), how many were seen again 7+ days
    * after signup. `last_seen_at` is a single timestamp, so this is "came back
@@ -79,6 +85,9 @@ export type MatchesMetrics = {
       Null when the page we hold is smaller than the server's total — a partial
       histogram would show weeks that do not exist. */
   startsAtMs: number[] | null;
+  /** (userId, instante) de cada perna jogada — host e convidado — para a taxa
+      de ativação. Null quando a página é parcial. */
+  legs: { userId: string; startsAtMs: number }[] | null;
 };
 
 /**
@@ -217,13 +226,20 @@ export type ProductMetrics = {
   } | null;
   /** Weighted mean of all partner ratings received. Null on failure or no ratings. */
   partnerRating: { avg: number; count: number } | null;
+  /**
+   * Taxa de ativação: % das contas com 30+ dias que jogaram (reserva jogada,
+   * como host ou convidado) nos primeiros 30 dias após o cadastro. Coorte só
+   * de janelas completas; jogos registrados apenas no feed sem reserva não
+   * contam (limite da fonte). Null quando usuários ou reservas falharam.
+   */
+  activation: { rate: number; activated: number; cohort: number } | null;
 };
 
 async function crawlUsers(): Promise<UsersMetrics> {
   const api = await getApi();
   const now = Date.now();
 
-  type Row = { created_at?: string; last_seen_at?: string };
+  type Row = { id: string; created_at?: string; last_seen_at?: string };
   const rows: Row[] = [];
   let cursor: string | undefined;
   let truncated = false;
@@ -246,7 +262,7 @@ async function crawlUsers(): Promise<UsersMetrics> {
     return {
       failed: true, total: 0, truncated: false,
       newLast7: 0, newPrev7: 0, newLast2: 0, active7: 0,
-      createdAtMs: null, dateless: 0,
+      createdAtMs: null, dateless: 0, index: null,
       activity: { hoje: 0, semana: 0, mes: 0, inativos: 0 },
       retention: null,
     };
@@ -293,6 +309,11 @@ async function crawlUsers(): Promise<UsersMetrics> {
     ).length,
     createdAtMs,
     dateless,
+    index: truncated
+      ? null
+      : rows
+          .filter((r) => r.created_at)
+          .map((r) => ({ id: r.id, createdAtMs: new Date(r.created_at!).getTime() })),
     activity,
     // Below ~10 accounts a percentage is theatre; the UI treats null as "ainda cedo".
     retention:
@@ -310,7 +331,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, legs: null };
   }
 
   const matches = data.matches;
@@ -349,6 +370,14 @@ async function fetchMatches(): Promise<MatchesMetrics> {
         }
       : null,
     startsAtMs,
+    legs: complete
+      ? matches.flatMap((m) => {
+          const t = new Date(m.starts_at).getTime();
+          const out = [{ userId: m.host.user_id, startsAtMs: t }];
+          if (m.guest?.user_id) out.push({ userId: m.guest.user_id, startsAtMs: t });
+          return out;
+        })
+      : null,
   };
 }
 
@@ -436,5 +465,30 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
     }
   }
 
-  return { users, matches, scorePosts, north, completion, partnerRating };
+  // Ativação: primeiro jogo de cada usuário (menor starts_at das suas pernas)
+  // contra o instante do cadastro; coorte = contas cuja janela de 30 dias já
+  // fechou.
+  let activation: ProductMetrics["activation"] = null;
+  if (users.index && matches.legs) {
+    const firstPlayed = new Map<string, number>();
+    for (const leg of matches.legs) {
+      const cur = firstPlayed.get(leg.userId);
+      if (cur === undefined || leg.startsAtMs < cur) firstPlayed.set(leg.userId, leg.startsAtMs);
+    }
+    const now = Date.now();
+    const cohort = users.index.filter((u) => now - u.createdAtMs >= 30 * DAY_MS);
+    const activated = cohort.filter((u) => {
+      const t = firstPlayed.get(u.id);
+      return t !== undefined && t - u.createdAtMs <= 30 * DAY_MS;
+    });
+    if (cohort.length > 0) {
+      activation = {
+        rate: activated.length / cohort.length,
+        activated: activated.length,
+        cohort: cohort.length,
+      };
+    }
+  }
+
+  return { users, matches, scorePosts, north, completion, partnerRating, activation };
 });

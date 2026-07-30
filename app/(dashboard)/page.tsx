@@ -231,7 +231,7 @@ function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
 }
 
 export default async function MetricsPage() {
-  const { users, matches, scorePosts, north, completion, partnerRating } =
+  const { users, matches, scorePosts, north, completion, partnerRating, activation } =
     await getProductMetrics();
 
   const broken = [
@@ -541,28 +541,14 @@ export default async function MetricsPage() {
             }
           />
           <Kpi
-            label="Taxa de conclusão"
-            value={
-              north.matchFunnel
-                ? pct(north.matchFunnel.rate)
-                : completion
-                  ? pct(completion.rate)
-                  : "—"
-            }
-            {...(!north.matchFunnel && completion
-              ? {
-                  delta: completion.rate >= META_CONCLUSAO ? "na meta" : "abaixo",
-                  deltaGood: completion.rate >= META_CONCLUSAO,
-                }
-              : {})}
+            label="Taxa de ativação"
+            value={activation ? pct(activation.rate) : "—"}
             context={
-              north.matchFunnel
-                ? `${north.matchFunnel.played} jogadas ÷ ${north.matchFunnel.invites_sent} convites + ${north.matchFunnel.quick_matches_opened} quick matches`
-                : completion
-                  ? `meta ≥ ${pct(META_CONCLUSAO)} · ${completion.finished} concluídas vs ${completion.cancelled} canceladas${
-                      completion.expiredNeverConfirmed != null ? " (confirmadas)" : ""
-                    }${completion.finished + completion.cancelled < 10 ? " · amostra pequena" : ""}`
-                  : "sem dado de cancelamentos"
+              activation
+                ? `${activation.activated} de ${activation.cohort} contas com 30d+ jogaram no 1º mês${
+                    activation.cohort < 10 ? " · amostra pequena" : ""
+                  }`
+                : "sem dado de usuários ou de reservas jogadas"
             }
           />
         </div>
