@@ -165,6 +165,12 @@
 
   --grain-opacity: 0.2;
   --grain-blend: multiply;
+
+  /* Categorical pair for stacked/segmented charts — same hue, lightness-stepped
+     (survives every CVD type; validated by the dataviz six-checks script).
+     cat-a = série de destaque (pagas, convites); cat-b = secundária. */
+  --chart-cat-a: #8A381F;
+  --chart-cat-b: #D0761F;
 }
 
 /* ─── Semantic surface — DARK (brand brown over black; an 8pm console) ────── */
@@ -195,6 +201,8 @@
     --color-error: #E8776B;
     --color-error-bg: #2E120E;
     --color-info: #C4B08A;
+    --chart-cat-a: #D0761F;
+    --chart-cat-b: #96401F;
     --color-info-bg: #241E14;
     --color-clay: #D9834F;
 
@@ -267,6 +275,12 @@
 
   --grain-opacity: 0.2;
   --grain-blend: multiply;
+
+  /* Categorical pair for stacked/segmented charts — same hue, lightness-stepped
+     (survives every CVD type; validated by the dataviz six-checks script).
+     cat-a = série de destaque (pagas, convites); cat-b = secundária. */
+  --chart-cat-a: #8A381F;
+  --chart-cat-b: #D0761F;
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */

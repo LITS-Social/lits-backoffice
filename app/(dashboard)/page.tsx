@@ -7,7 +7,7 @@ import {
   ChartCard,
   ChartUnavailable,
   ChartsGrid,
-  CompletionGauge,
+  PaidSplitChart,
   EngagementDonut,
 } from "./_components/metric-charts";
 
@@ -26,6 +26,181 @@ const META_CONCLUSAO = 0.7;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 /* ── KPI tile: one number, its weekly delta, nothing else ──────────────────── */
+
+/* ── Funil de partidas — barras segmentadas, tentativa → jogo ────────────── */
+
+type FunnelData = {
+  played: number;
+  invites_sent?: number;
+  invites_accepted?: number;
+  quick_matches_opened?: number;
+  quick_matches_filled?: number;
+  rate: number;
+} | null;
+
+function FunnelBar({
+  label,
+  total,
+  max,
+  segments,
+}: {
+  label: string;
+  total: number;
+  max: number;
+  /** Segmentos em ordem fixa; cores do par categórico validado (cat-a/cat-b). */
+  segments: { name: string; value: number; color: string }[];
+}) {
+  const width = max > 0 ? Math.max((total / max) * 100, total > 0 ? 3 : 0) : 0;
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-3">
+        <span className="text-[11.5px] font-500 text-[var(--text-secondary)]">{label}</span>
+        <span className="numeral text-[15px] text-[var(--text-primary)]">{total}</span>
+      </div>
+      <div className="h-4 w-full overflow-hidden rounded-[4px] bg-[var(--surface-raised)]">
+        <div className="flex h-full gap-[2px]" style={{ width: `${width}%` }}>
+          {segments
+            .filter((seg) => seg.value > 0)
+            .map((seg) => (
+              <div
+                key={seg.name}
+                title={`${seg.name}: ${seg.value}`}
+                className="h-full min-w-[3px] rounded-[3px]"
+                style={{ flex: seg.value, background: seg.color }}
+              />
+            ))}
+        </div>
+      </div>
+      {segments.length > 1 && (
+        <p className="mt-1 flex flex-wrap gap-x-3 text-[10.5px] font-300 text-[var(--text-tertiary)]">
+          {segments.map((seg) => (
+            <span key={seg.name} className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="h-2 w-2 rounded-[2px]"
+                style={{ background: seg.color }}
+              />
+              {seg.value} {seg.name}
+            </span>
+          ))}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * As métricas interligadas do funil numa visualização só: tentativas abertas
+ * (convites × quick matches) → quantas viraram jogo marcado → realizadas
+ * (pagas × normais), com a conversão como número-herói ao lado. Barras
+ * segmentadas com o par categórico do mesmo matiz (validado p/ CVD); rótulos
+ * diretos por segmento cobrem o relief de contraste exigido pela paleta.
+ */
+function FunnelSection({
+  funnel,
+  paid,
+  inviteAcceptance7d,
+}: {
+  funnel: FunnelData;
+  paid: { total: number; last7: number; prev7: number; last30: number } | null;
+  inviteAcceptance7d: { sent: number; accepted: number } | null;
+}) {
+  if (!funnel) {
+    return (
+      <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+        <h2 className="eyebrow">Funil de partidas</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          Tentativas → jogos marcados → realizadas. Chega com o deploy do bff-backoffice
+          (bloco match_funnel).
+        </p>
+      </div>
+    );
+  }
+
+  const invites = funnel.invites_sent ?? 0;
+  const qms = funnel.quick_matches_opened ?? 0;
+  const tentativas = invites + qms;
+  const accepted = funnel.invites_accepted ?? null;
+  const filled = funnel.quick_matches_filled ?? null;
+  const confirmed = accepted != null && filled != null ? accepted + filled : null;
+  const pagas = paid?.total ?? null;
+  const catA = "var(--chart-cat-a)";
+  const catB = "var(--chart-cat-b)";
+
+  return (
+    <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+      <div className="mb-5">
+        <h2 className="eyebrow">Funil de partidas</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          Cada tentativa aberta no produto até virar jogo — convites e quick matches lado a
+          lado, do primeiro clique à partida realizada.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_200px]">
+        <div className="space-y-5">
+          <FunnelBar
+            label="Tentativas criadas"
+            total={tentativas}
+            max={tentativas}
+            segments={[
+              { name: "convites", value: invites, color: catA },
+              { name: "quick matches", value: qms, color: catB },
+            ]}
+          />
+          {confirmed != null ? (
+            <FunnelBar
+              label="Viraram jogo marcado"
+              total={confirmed}
+              max={tentativas}
+              segments={[
+                { name: "convites aceitos", value: accepted!, color: catA },
+                { name: "quick matches preenchidas", value: filled!, color: catB },
+              ]}
+            />
+          ) : (
+            <p className="text-[10.5px] font-300 text-[var(--text-tertiary)]">
+              Aceitação e preenchimento por etapa chegam no próximo deploy do bff
+              {inviteAcceptance7d && inviteAcceptance7d.sent > 0
+                ? ` — na janela de 7 dias, ${inviteAcceptance7d.accepted} de ${inviteAcceptance7d.sent} convites aceitos (${pct(
+                    inviteAcceptance7d.accepted / inviteAcceptance7d.sent
+                  )}).`
+                : "."}
+            </p>
+          )}
+          <FunnelBar
+            label="Partidas realizadas"
+            total={funnel.played}
+            max={tentativas}
+            segments={
+              pagas != null
+                ? [
+                    { name: "pagas", value: Math.min(pagas, funnel.played), color: catA },
+                    { name: "normais", value: Math.max(0, funnel.played - pagas), color: catB },
+                  ]
+                : [{ name: "realizadas", value: funnel.played, color: catA }]
+            }
+          />
+        </div>
+        <div className="flex flex-col items-start justify-center gap-1 border-t border-[var(--border)] pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <span className="label-colus text-[8.5px] text-[var(--text-tertiary)]">
+            Taxa de conversão
+          </span>
+          <span className="numeral text-[40px] leading-none text-[var(--primary)]">
+            {pct(funnel.rate)}
+          </span>
+          <span className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {funnel.played} realizadas ÷ {tentativas} tentativas
+          </span>
+          {confirmed != null && tentativas > 0 && (
+            <span className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+              {pct(confirmed / tentativas)} viraram jogo marcado
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Kpi({
   label,
@@ -244,21 +419,8 @@ export default async function MetricsPage() {
   const wow = !matches.failed
     ? { ok: matches.last7 >= matches.prev7, delta: matches.last7 - matches.prev7 }
     : null;
-  const wau = users.activity.hoje + users.activity.semana;
-  // Base viva do mês (last_seen ≤ 30d) — denominador de jogos pagos/usuário/mês.
+  // Base viva do mês (last_seen ≤ 30d) — denominador de jogos/usuário/mês.
   const mau = users.activity.hoje + users.activity.semana + users.activity.mes;
-  const paid = matches.paid;
-  // Partidas "normais": a verdade do feed menos as reservas pagas — jogo que
-  // aconteceu sem cobrança pelo app. Fallback para reservas grátis quando o
-  // feed falhou.
-  const normaisTotal = !scorePosts.failed
-    ? Math.max(0, scorePosts.total - (paid?.total ?? 0))
-    : paid
-      ? matches.total - paid.total
-      : null;
-  const normaisLast7 = !scorePosts.failed
-    ? Math.max(0, scorePosts.last7 - (paid?.last7 ?? 0))
-    : null;
   // Jogos (todos, não só pagos) nos últimos 30 dias — feed primeiro; fallback
   // para reservas jogadas quando o feed falhou e a página cobre o total.
   const jogos30 = !scorePosts.failed ? scorePosts.last30 : matches.last30;
@@ -498,7 +660,90 @@ export default async function MetricsPage() {
           </div>
         )}
 
-        {/* ── A linha de cima: os quatro números da semana ─────────────────────── */}
+        {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão — com filtro
+            de período compartilhado entre crescimento e ritmo ─────────────────── */}
+        <ChartsGrid
+          userCreatedAtMs={users.createdAtMs}
+          userDateless={users.dateless}
+          usersTarget={META_FASE.usuarios}
+          growthFallback={
+            users.failed
+              ? "Não foi possível carregar os usuários."
+              : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."
+          }
+          matchStartsAtMs={matches.startsAtMs}
+          paceFallback={
+            matches.failed
+              ? "Não foi possível carregar as partidas."
+              : "Série omitida: a página carregada não cobre o total, e um histograma parcial mostraria semanas que não existem."
+          }
+          engagementSlot={
+            <ChartCard eyebrow="Engajamento da base" hint="Toda a base, por último acesso.">
+              {!users.failed ? (
+                <EngagementDonut slices={users.activity} />
+              ) : (
+                <ChartUnavailable>Não foi possível carregar os usuários.</ChartUnavailable>
+              )}
+            </ChartCard>
+          }
+          completionSlot={
+            <ChartCard
+              eyebrow="Partidas por semana — pagas × normais"
+              hint="Reservas jogadas por semana, empilhadas por cobrança. Jogos registrados só no feed não têm preço rastreável e ficam fora desta série."
+            >
+              {matches.startsAtMs && matches.paidStartsAtMs ? (
+                <PaidSplitChart allMs={matches.startsAtMs} paidMs={matches.paidStartsAtMs} />
+              ) : (
+                <ChartUnavailable>
+                  Série omitida: a página de reservas não cobre o total.
+                </ChartUnavailable>
+              )}
+            </ChartCard>
+          }
+        />
+
+        {/* ── Onde estamos contra a meta da fase ───────────────────────────────── */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <ProgressCard
+            eyebrow="Usuários · meta da fase"
+            value={users.total}
+            target={META_FASE.usuarios}
+            failed={users.failed}
+            truncated={users.truncated}
+            footer={
+              <>
+                <span className="font-600 text-[var(--text-secondary)]">+{users.newLast7}</span>{" "}
+                nos últimos 7 dias ·{" "}
+                <span className="font-600 text-[var(--text-secondary)]">{users.active7}</span>{" "}
+                ativos na semana
+              </>
+            }
+          />
+
+          <ProgressCard
+            eyebrow="Partidas · meta da fase"
+            value={matches.total}
+            target={META_FASE.partidas}
+            failed={matches.failed}
+            footer={
+              <>
+                <span className="font-600 text-[var(--text-secondary)]">+{matches.last7}</span>{" "}
+                nos últimos 7 dias ·{" "}
+                <span className="font-600 text-[var(--text-secondary)]">{matches.prev7}</span>{" "}
+                na semana anterior
+              </>
+            }
+          />
+        </div>
+
+        {/* ── Funil de partidas — as métricas interligadas numa visualização só ── */}
+        <FunnelSection
+          funnel={north.matchFunnel}
+          paid={matches.paid}
+          inviteAcceptance7d={north.inviteAcceptance}
+        />
+
+        {/* ── Engajamento & retenção — os cinco números do modelo ─────────────── */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
           <Kpi
             label="Jogos / usuário / mês"
@@ -510,103 +755,18 @@ export default async function MetricsPage() {
             }
           />
           <Kpi
-            label="Partidas normais"
-            value={normaisTotal != null ? String(normaisTotal) : "—"}
-            {...(normaisLast7 != null ? { delta: `+${normaisLast7}`, deltaGood: true } : {})}
-            context={
-              normaisTotal != null
-                ? !scorePosts.failed
-                  ? "no feed sem cobrança pelo app, desde o início"
-                  : "reservas jogadas grátis, desde o início"
-                : "falha ao carregar"
-            }
-          />
-          <Kpi
-            label="Partidas pagas"
-            value={paid ? String(paid.total) : "—"}
-            {...(paid ? { delta: `+${paid.last7}`, deltaGood: paid.last7 >= paid.prev7 } : {})}
-            context={
-              paid
-                ? `reservas jogadas com cobrança · ${paid.prev7} na semana anterior`
-                : "falha ao carregar pagamentos"
-            }
-          />
-          <Kpi
-            label="Ativos na semana"
-            value={users.failed ? "—" : String(wau)}
-            context={
-              users.failed || users.total === 0
-                ? "falha ao carregar"
-                : `${pct(wau / users.total)} da base abriu o app nos últimos 7 dias`
-            }
-          />
-          <Kpi
             label="Taxa de ativação (30d)"
-            value={activation ? pct(activation.d30.rate) : "—"}
+            value={
+              activation && activation.d30.cohort > 0 ? pct(activation.d30.rate) : "—"
+            }
             context={
               activation
-                ? `${activation.d30.activated} de ${activation.d30.cohort} na coorte jogaram em 30d · 14d: ${pct(activation.d14.rate)}${
-                    activation.d30.cohort < 10 ? " · amostra pequena" : ""
-                  }`
+                ? activation.d30.cohort > 0
+                  ? `${activation.d30.activated} de ${activation.d30.cohort} na coorte jogaram em 30d${
+                      activation.d14.cohort > 0 ? ` · 14d: ${pct(activation.d14.rate)}` : ""
+                    }${activation.d30.cohort < 10 ? " · amostra pequena" : ""}`
+                  : "ninguém completou 30 dias de conta ainda"
                 : "sem dado de usuários ou de reservas jogadas"
-            }
-          />
-          <Kpi
-            label="Tentativas criadas"
-            value={
-              north.matchFunnel
-                ? String(
-                    (north.matchFunnel.invites_sent ?? 0) +
-                      (north.matchFunnel.quick_matches_opened ?? 0)
-                  )
-                : "—"
-            }
-            context={
-              north.matchFunnel
-                ? `${north.matchFunnel.invites_sent} convite${north.matchFunnel.invites_sent === 1 ? "" : "s"} + ${north.matchFunnel.quick_matches_opened} quick match${north.matchFunnel.quick_matches_opened === 1 ? "" : "es"}, desde o início`
-                : "chega com o deploy do bff-backoffice (match_funnel)"
-            }
-          />
-          <Kpi
-            label="Taxa de conversão"
-            value={north.matchFunnel ? pct(north.matchFunnel.rate) : "—"}
-            context={
-              north.matchFunnel
-                ? `${north.matchFunnel.played} realizadas ÷ ${(north.matchFunnel.invites_sent ?? 0) + (north.matchFunnel.quick_matches_opened ?? 0)} tentativas`
-                : "chega com o deploy do bff-backoffice (match_funnel)"
-            }
-          />
-          <Kpi
-            label="Preenchimento do quick match"
-            value={
-              north.matchFunnel && (north.matchFunnel.quick_matches_opened ?? 0) > 0
-                ? pct(
-                    (north.matchFunnel.quick_matches_filled ?? 0) /
-                      north.matchFunnel.quick_matches_opened
-                  )
-                : "—"
-            }
-            context={
-              north.matchFunnel && (north.matchFunnel.quick_matches_opened ?? 0) > 0
-                ? `${north.matchFunnel.quick_matches_filled} confirmadas de ${north.matchFunnel.quick_matches_opened} abertas`
-                : "chega com o deploy do bff-backoffice (match_funnel)"
-            }
-          />
-          <Kpi
-            label="Aceitação do convite direto"
-            value={
-              north.matchFunnel && (north.matchFunnel.invites_sent ?? 0) > 0
-                ? pct((north.matchFunnel.invites_accepted ?? 0) / north.matchFunnel.invites_sent)
-                : north.inviteAcceptance && north.inviteAcceptance.sent > 0
-                  ? pct(north.inviteAcceptance.accepted / north.inviteAcceptance.sent)
-                  : "—"
-            }
-            context={
-              north.matchFunnel && (north.matchFunnel.invites_sent ?? 0) > 0
-                ? `${north.matchFunnel.invites_accepted} aceitos de ${north.matchFunnel.invites_sent} enviados, desde o início`
-                : north.inviteAcceptance && north.inviteAcceptance.sent > 0
-                  ? `${north.inviteAcceptance.accepted} aceitos de ${north.inviteAcceptance.sent} enviados nos últimos 7 dias`
-                  : "sem convites para medir"
             }
           />
           <Kpi
@@ -646,85 +806,6 @@ export default async function MetricsPage() {
             }
           />
         </div>
-
-        {/* ── Onde estamos contra a meta da fase ───────────────────────────────── */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <ProgressCard
-            eyebrow="Usuários · meta da fase"
-            value={users.total}
-            target={META_FASE.usuarios}
-            failed={users.failed}
-            truncated={users.truncated}
-            footer={
-              <>
-                <span className="font-600 text-[var(--text-secondary)]">+{users.newLast7}</span>{" "}
-                nos últimos 7 dias ·{" "}
-                <span className="font-600 text-[var(--text-secondary)]">{users.active7}</span>{" "}
-                ativos na semana
-              </>
-            }
-          />
-
-          <ProgressCard
-            eyebrow="Partidas · meta da fase"
-            value={matches.total}
-            target={META_FASE.partidas}
-            failed={matches.failed}
-            footer={
-              <>
-                <span className="font-600 text-[var(--text-secondary)]">+{matches.last7}</span>{" "}
-                nos últimos 7 dias ·{" "}
-                <span className="font-600 text-[var(--text-secondary)]">{matches.prev7}</span>{" "}
-                na semana anterior
-              </>
-            }
-          />
-        </div>
-
-        {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão — com filtro
-            de período compartilhado entre crescimento e ritmo ─────────────────── */}
-        <ChartsGrid
-          userCreatedAtMs={users.createdAtMs}
-          userDateless={users.dateless}
-          usersTarget={META_FASE.usuarios}
-          growthFallback={
-            users.failed
-              ? "Não foi possível carregar os usuários."
-              : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."
-          }
-          matchStartsAtMs={matches.startsAtMs}
-          paceFallback={
-            matches.failed
-              ? "Não foi possível carregar as partidas."
-              : "Série omitida: a página carregada não cobre o total, e um histograma parcial mostraria semanas que não existem."
-          }
-          engagementSlot={
-            <ChartCard eyebrow="Engajamento da base" hint="Toda a base, por último acesso.">
-              {!users.failed ? (
-                <EngagementDonut slices={users.activity} />
-              ) : (
-                <ChartUnavailable>Não foi possível carregar os usuários.</ChartUnavailable>
-              )}
-            </ChartCard>
-          }
-          completionSlot={
-            <ChartCard
-              eyebrow="Taxa de conversão"
-              hint="Partidas realizadas sobre todas as tentativas abertas no produto — convites diretos + quick matches."
-            >
-              {north.matchFunnel ? (
-                <CompletionGauge
-                  rate={north.matchFunnel.rate}
-                  caption={`${north.matchFunnel.played} realizadas ÷ ${(north.matchFunnel.invites_sent ?? 0) + (north.matchFunnel.quick_matches_opened ?? 0)} tentativas (${north.matchFunnel.invites_sent} convites + ${north.matchFunnel.quick_matches_opened} quick matches)`}
-                />
-              ) : (
-                <ChartUnavailable>
-                  Chega com o deploy do bff-backoffice (bloco match_funnel).
-                </ChartUnavailable>
-              )}
-            </ChartCard>
-          }
-        />
 
         {/* ── A planilha, viva ─────────────────────────────────────────────────── */}
         <MetricsTable title="Ação imediata — verificar todo dia" rows={daily} />

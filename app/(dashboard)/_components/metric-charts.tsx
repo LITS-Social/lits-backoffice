@@ -8,6 +8,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Pie,
   PieChart,
   PolarAngleAxis,
@@ -398,7 +399,7 @@ export function ChartsGrid({
   return (
     <div className="space-y-3">
       {hasAnySeries && (
-        <div className="flex flex-wrap items-end justify-end gap-3">
+        <div className="flex flex-wrap items-end justify-start gap-3">
           {invalidRange && (
             <p className="self-center text-[11px] font-300 text-[var(--color-clay)]">
               Data final antes da inicial — intervalo ignorado.
@@ -561,6 +562,78 @@ export function EngagementDonut({ slices }: { slices: EngagementSlices }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/* ── Pagas × normais por semana — stacked bars, same-hue lightness pair ────── */
+
+export function PaidSplitChart({
+  allMs,
+  paidMs,
+}: {
+  allMs: number[];
+  paidMs: number[];
+}) {
+  const mounted = useMounted();
+  if (!mounted) return <div className="h-[220px]" aria-hidden />;
+
+  const wins = rollingWindows(WEEK_MS);
+  const data = wins.map(({ start, end }) => {
+    const inWin = (t: number) => t >= start && t <= end;
+    const pagas = paidMs.filter(inWin).length;
+    const total = allMs.filter(inWin).length;
+    return { label: fmtDay(start), pagas, normais: Math.max(0, total - pagas) };
+  });
+
+  return (
+    <div className="h-[220px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: -22 }} barCategoryGap="28%">
+          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 9, fill: "var(--text-tertiary)" }}
+            axisLine={{ stroke: "var(--border)" }}
+            tickLine={false}
+          />
+          <YAxis
+            allowDecimals={false}
+            tick={{ fontSize: 9, fill: "var(--text-tertiary)" }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip
+            cursor={{ fill: "var(--surface-raised)", opacity: 0.5 }}
+            contentStyle={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              fontSize: 11,
+            }}
+            labelStyle={{ color: "var(--text-secondary)" }}
+            formatter={(v, name) => [String(v ?? 0), name === "pagas" ? "Pagas" : "Normais"]}
+          />
+          <Legend
+            formatter={(v: string) => (
+              <span style={{ color: "var(--text-secondary)", fontSize: 10.5 }}>
+                {v === "pagas" ? "Pagas" : "Normais"}
+              </span>
+            )}
+            iconSize={9}
+          />
+          {/* 2px surface stroke = the spacer between stacked segments. */}
+          <Bar dataKey="pagas" stackId="s" fill="var(--chart-cat-a)" stroke="var(--surface)" strokeWidth={2} />
+          <Bar
+            dataKey="normais"
+            stackId="s"
+            fill="var(--chart-cat-b)"
+            stroke="var(--surface)"
+            strokeWidth={2}
+            radius={[4, 4, 0, 0]}
+          />
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }

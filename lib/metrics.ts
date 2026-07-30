@@ -85,6 +85,9 @@ export type MatchesMetrics = {
       Null when the page we hold is smaller than the server's total — a partial
       histogram would show weeks that do not exist. */
   startsAtMs: number[] | null;
+  /** Instantes das reservas jogadas COM cobrança — série pagas × normais.
+      Null quando a página é parcial. */
+  paidStartsAtMs: number[] | null;
   /** (userId, instante) de cada perna jogada — host e convidado — para a taxa
       de ativação. Null quando a página é parcial. */
   legs: { userId: string; startsAtMs: number }[] | null;
@@ -347,7 +350,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, legs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, legs: null };
   }
 
   const matches = data.matches;
@@ -386,6 +389,9 @@ async function fetchMatches(): Promise<MatchesMetrics> {
         }
       : null,
     startsAtMs,
+    paidStartsAtMs: complete
+      ? paidRows.map((m) => new Date(m.starts_at).getTime())
+      : null,
     legs: complete
       ? matches.flatMap((m) => {
           const t = new Date(m.starts_at).getTime();
