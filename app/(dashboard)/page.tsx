@@ -2,16 +2,16 @@ import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { getProductMetrics } from "@/lib/metrics";
-import { BP_PREMISSAS, bpTarget, getBp } from "@/lib/bp";
+import { BP_MENSAL, BP_PREMISSAS, bpTarget, getBp } from "@/lib/bp";
 import { pushRiSnapshot } from "@/lib/ri-sync";
 import { cn } from "@/lib/utils";
 import {
   ChartCard,
   ChartUnavailable,
   ChartsGrid,
+  PaidShareMeter,
   PaidSplitChart,
-  EngagementDonut,
-} from "./_components/metric-charts";
+  } from "./_components/metric-charts";
 
 export const dynamic = "force-dynamic";
 
@@ -215,9 +215,10 @@ function FunnelSection({
 type BpChip = { target: string; monthLabel: string; ok: boolean | null };
 
 /* ── Placar do modelo — bullet chart real × alvo do BP ────────────────────
-   A visualização certa para real-contra-meta: barra do valor real com um
-   marcador vertical no alvo; verde quando bate o plano, terracota quando
-   não (churn compara invertido). Uma linha por métrica, escala própria. */
+   Todas as linhas na MESMA régua: 100% = alvo do BP, marcador fixo na mesma
+   posição em todas — barra que alcança o marcador está no plano. Verde
+   quando bate, terracota quando não (churn compara invertido: barra curta
+   é bom). O "% do alvo" ao lado do valor diz o tamanho do gap. */
 
 type BpRow = {
   label: string;
@@ -229,33 +230,54 @@ type BpRow = {
   context: string;
 };
 
+/** Posição fixa do alvo na régua: 100% do alvo fica a 70% da trilha, então a
+    trilha inteira representa ~143% do alvo e sobra espaço para "passou". */
+const BP_TICK_PCT = 70;
+const BP_TRACK_MAX = 100 / (BP_TICK_PCT / 100);
+
 function BpScoreboard({ rows }: { rows: BpRow[] }) {
+  const gridCols = "grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-[190px_minmax(0,1fr)_190px]";
   return (
     <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
       <div className="mb-5">
         <h2 className="eyebrow">Modelo vs BP</h2>
         <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Cada linha compara o real com o alvo do Business Plan (marcador vertical). Verde =
-          batendo o plano; quando o BP não define o mês corrente, o alvo é do primeiro mês
-          planejado.
+          Todas as barras na mesma régua: o marcador é o alvo do BP (100%). Barra que alcança o
+          marcador está no plano — verde bate, terracota não. No churn vale o inverso: barra
+          aquém do marcador é bom. Sem alvo no mês corrente, vale o do primeiro mês planejado.
         </p>
+      </div>
+      {/* Cabeçalho da régua: ancora o marcador uma vez, para todas as linhas. */}
+      <div className={cn(gridCols, "mb-2 hidden sm:grid")} aria-hidden>
+        <span />
+        <div className="relative h-[14px]">
+          <span
+            className="absolute bottom-0 h-[6px] w-[2px] rounded-full bg-[var(--text-secondary)]"
+            style={{ left: `${BP_TICK_PCT}%` }}
+          />
+          <span
+            className="label-colus absolute bottom-0 pr-2 text-[8px] leading-[8px] text-[var(--text-tertiary)]"
+            style={{ left: `${BP_TICK_PCT}%`, transform: "translateX(-100%)" }}
+          >
+            alvo do BP
+          </span>
+        </div>
+        <span />
       </div>
       <div className="space-y-4">
         {rows.map((r) => {
           const hib = r.higherIsBetter ?? true;
           const ok =
             r.real != null && r.target != null ? (hib ? r.real >= r.target : r.real <= r.target) : null;
-          const scale =
-            r.real != null || r.target != null
-              ? Math.max(r.real ?? 0, r.target ?? 0) * 1.18 || 1
-              : 1;
-          const realW = r.real != null ? Math.max((r.real / scale) * 100, r.real > 0 ? 1.5 : 0) : 0;
-          const targetX = r.target != null ? (r.target / scale) * 100 : null;
+          const pctOfTarget =
+            r.real != null && r.target != null && r.target !== 0 ? (r.real / r.target) * 100 : null;
+          const barW =
+            pctOfTarget != null
+              ? Math.max(Math.min(pctOfTarget, BP_TRACK_MAX) * (BP_TICK_PCT / 100), r.real! > 0 ? 1.5 : 0)
+              : 0;
+          const statusColor = ok == null ? undefined : ok ? "var(--color-success)" : "var(--color-clay)";
           return (
-            <div
-              key={r.label}
-              className="grid grid-cols-1 items-center gap-x-4 gap-y-1 sm:grid-cols-[190px_minmax(0,1fr)_180px]"
-            >
+            <div key={r.label} className={cn(gridCols, "items-center")}>
               <div>
                 <p className="text-[11.5px] font-600 text-[var(--text-primary)]">{r.label}</p>
                 <p className="text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
@@ -263,42 +285,41 @@ function BpScoreboard({ rows }: { rows: BpRow[] }) {
                 </p>
               </div>
               <div className="relative h-4 w-full overflow-visible rounded-[4px] bg-[var(--surface-raised)]">
-                {r.real != null && (
+                {pctOfTarget != null && (
                   <div
                     className="h-full rounded-[3px]"
-                    style={{
-                      width: `${realW}%`,
-                      background: ok == null ? "var(--border-strong)" : ok ? "var(--color-success)" : "var(--color-clay)",
-                    }}
+                    style={{ width: `${barW}%`, background: statusColor ?? "var(--border-strong)" }}
                   />
                 )}
-                {targetX != null && (
+                {r.target != null && (
                   <span
                     aria-hidden
-                    title={`BP ${r.targetMonth}: ${r.fmt(r.target!)}`}
+                    title={`alvo BP ${r.targetMonth}: ${r.fmt(r.target)}`}
                     className="absolute -top-1 bottom-[-4px] w-[2px] rounded-full bg-[var(--text-secondary)]"
-                    style={{ left: `${targetX}%` }}
+                    style={{ left: `${BP_TICK_PCT}%` }}
                   />
                 )}
               </div>
-              <p className="flex items-baseline gap-2 sm:justify-end">
-                <span className="numeral text-[17px] text-[var(--text-primary)]">
-                  {r.real != null ? r.fmt(r.real) : "—"}
-                </span>
-                <span className="text-[10px] font-300 tabular-nums text-[var(--text-tertiary)]">
-                  BP {r.targetMonth}: {r.target != null ? r.fmt(r.target) : "—"}
-                </span>
-                {ok != null && (
-                  <span
-                    className={cn(
-                      "text-[10px] font-600",
-                      ok ? "text-[var(--color-success)]" : "text-[var(--color-clay)]"
-                    )}
-                  >
-                    {ok ? "acima" : "abaixo"}
+              <div className="sm:text-right">
+                <p className="flex items-baseline gap-2 sm:justify-end">
+                  <span className="numeral text-[17px] text-[var(--text-primary)]">
+                    {r.real != null ? r.fmt(r.real) : "—"}
                   </span>
-                )}
-              </p>
+                  {pctOfTarget != null && (
+                    <span
+                      className="text-[10px] font-600 tabular-nums"
+                      style={{ color: statusColor }}
+                    >
+                      {Math.round(pctOfTarget)}% do alvo
+                    </span>
+                  )}
+                </p>
+                <p className="text-[10px] font-300 tabular-nums leading-snug text-[var(--text-tertiary)]">
+                  {r.target != null
+                    ? `${hib ? "alvo" : "teto"} ${r.targetMonth}: ${r.fmt(r.target)}`
+                    : "sem alvo no BP"}
+                </p>
+              </div>
             </div>
           );
         })}
@@ -371,6 +392,7 @@ function ProgressCard({
   eyebrow,
   value,
   target,
+  targetLabel = "meta da fase",
   footer,
   failed,
   truncated,
@@ -378,6 +400,7 @@ function ProgressCard({
   eyebrow: string;
   value: number;
   target: number;
+  targetLabel?: string;
   footer: React.ReactNode;
   failed: boolean;
   truncated?: boolean;
@@ -399,7 +422,7 @@ function ProgressCard({
               {truncated ? `${value}+` : value}
             </span>
             <span className="text-[12px] font-300 text-[var(--text-tertiary)]">
-              de {target} · meta da fase
+              de {target.toLocaleString("pt-BR")} · {targetLabel}
             </span>
             <span className="ml-auto numeral text-[15px] text-[var(--primary)]">{pct(ratio)}</span>
           </p>
@@ -539,6 +562,14 @@ export default async function MetricsPage() {
   // — fire-and-forget: o investidor vê "Real vs Plano" com o mesmo agregado
   // deste render, sem PII.
   const bpMensal = await getBp();
+  // Réguas do topo: agosto/26 do BP (julho é pré-lançamento no plano). O /api/bp
+  // do RI não carrega partidas totais, então essas caem na cópia local.
+  const bpAgo = bpMensal["2026-08"] ?? {};
+  const bpAgoLocal = BP_MENSAL["2026-08"] ?? {};
+  const metaUsuarios = bpAgo.baseAcumulada ?? bpAgoLocal.baseAcumulada ?? META_FASE.usuarios;
+  const metaPartidasTotais =
+    bpAgo.partidasTotaisMes ?? bpAgoLocal.partidasTotaisMes ?? META_FASE.partidas;
+  const metaPartidasPagas = bpAgo.partidasPagasMes ?? bpAgoLocal.partidasPagasMes ?? null;
   pushRiSnapshot({
     users, matches, scorePosts, north, completion, partnerRating,
     activationMonth, monthly, playerStats, cohorts,
@@ -788,54 +819,13 @@ export default async function MetricsPage() {
           </div>
         )}
 
-        {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão — com filtro
-            de período compartilhado entre crescimento e ritmo ─────────────────── */}
-        <ChartsGrid
-          userCreatedAtMs={users.createdAtMs}
-          userDateless={users.dateless}
-          usersTarget={META_FASE.usuarios}
-          growthFallback={
-            users.failed
-              ? "Não foi possível carregar os usuários."
-              : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."
-          }
-          matchStartsAtMs={matches.startsAtMs}
-          paceFallback={
-            matches.failed
-              ? "Não foi possível carregar as partidas."
-              : "Série omitida: a página carregada não cobre o total, e um histograma parcial mostraria semanas que não existem."
-          }
-          engagementSlot={
-            <ChartCard eyebrow="Engajamento da base" hint="Toda a base, por último acesso.">
-              {!users.failed ? (
-                <EngagementDonut slices={users.activity} />
-              ) : (
-                <ChartUnavailable>Não foi possível carregar os usuários.</ChartUnavailable>
-              )}
-            </ChartCard>
-          }
-          completionSlot={
-            <ChartCard
-              eyebrow="Partidas por dia — pagas × normais"
-              hint="Reservas jogadas por dia — últimos 12 dias — empilhadas por cobrança. Jogos registrados só no feed não têm preço rastreável e ficam fora desta série."
-            >
-              {matches.startsAtMs && matches.paidStartsAtMs ? (
-                <PaidSplitChart allMs={matches.startsAtMs} paidMs={matches.paidStartsAtMs} />
-              ) : (
-                <ChartUnavailable>
-                  Série omitida: a página de reservas não cobre o total.
-                </ChartUnavailable>
-              )}
-            </ChartCard>
-          }
-        />
-
-        {/* ── Onde estamos contra a meta da fase ───────────────────────────────── */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* ── Onde estamos contra o BP de agosto ───────────────────────────────── */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <ProgressCard
-            eyebrow="Usuários · meta da fase"
+            eyebrow="Usuários"
             value={users.total}
-            target={META_FASE.usuarios}
+            target={metaUsuarios}
+            targetLabel="BP ago/26"
             failed={users.failed}
             truncated={users.truncated}
             footer={
@@ -856,9 +846,10 @@ export default async function MetricsPage() {
           />
 
           <ProgressCard
-            eyebrow="Partidas · meta da fase"
+            eyebrow="Partidas totais"
             value={matches.total}
-            target={META_FASE.partidas}
+            target={metaPartidasTotais}
+            targetLabel="BP ago/26"
             failed={matches.failed}
             footer={
               <>
@@ -872,7 +863,75 @@ export default async function MetricsPage() {
               </>
             }
           />
+
+          <ProgressCard
+            eyebrow="Partidas pagas"
+            value={matches.paid?.total ?? 0}
+            target={metaPartidasPagas ?? 1}
+            targetLabel="BP ago/26"
+            failed={matches.failed || !matches.paid || metaPartidasPagas == null}
+            footer={
+              matches.paid ? (
+                <>
+                  no mês:{" "}
+                  <span className="font-600 text-[var(--text-secondary)]">{matches.paid.month}</span>{" "}
+                  · 30 dias:{" "}
+                  <span className="font-600 text-[var(--text-secondary)]">{matches.paid.last30}</span>
+                  {matches.gmv && <> · GMV mês: {fmtBRL(matches.gmv.monthCents)}</>}
+                </>
+              ) : null
+            }
+          />
         </div>
+
+        {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão — com filtro
+            de período compartilhado entre crescimento e ritmo ─────────────────── */}
+        <ChartsGrid
+          userCreatedAtMs={users.createdAtMs}
+          userDateless={users.dateless}
+          usersTarget={metaUsuarios}
+          growthFallback={
+            users.failed
+              ? "Não foi possível carregar os usuários."
+              : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."
+          }
+          matchStartsAtMs={matches.startsAtMs}
+          paceFallback={
+            matches.failed
+              ? "Não foi possível carregar as partidas."
+              : "Série omitida: a página carregada não cobre o total, e um histograma parcial mostraria semanas que não existem."
+          }
+          engagementSlot={
+            <ChartCard
+              eyebrow="Pagas × grátis"
+              hint="Share de todas as reservas jogadas desde o início. A evolução diária está no gráfico ao lado."
+            >
+              {!matches.failed && matches.paid ? (
+                <PaidShareMeter
+                  pagas={matches.paid.total}
+                  gratis={Math.max(matches.total - matches.paid.total, 0)}
+                  monthPagas={matches.paid.month}
+                />
+              ) : (
+                <ChartUnavailable>Não foi possível carregar as partidas.</ChartUnavailable>
+              )}
+            </ChartCard>
+          }
+          completionSlot={
+            <ChartCard
+              eyebrow="Partidas por dia — pagas × normais"
+              hint="Reservas jogadas por dia — últimos 12 dias — empilhadas por cobrança. Jogos registrados só no feed não têm preço rastreável e ficam fora desta série."
+            >
+              {matches.startsAtMs && matches.paidStartsAtMs ? (
+                <PaidSplitChart allMs={matches.startsAtMs} paidMs={matches.paidStartsAtMs} />
+              ) : (
+                <ChartUnavailable>
+                  Série omitida: a página de reservas não cobre o total.
+                </ChartUnavailable>
+              )}
+            </ChartCard>
+          }
+        />
 
         {/* ── Funil de partidas — as métricas interligadas numa visualização só ── */}
         <FunnelSection

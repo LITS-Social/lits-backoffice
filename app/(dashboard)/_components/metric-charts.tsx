@@ -11,8 +11,6 @@ import {
   ComposedChart,
   Legend,
   Line,
-  Pie,
-  PieChart,
   PolarAngleAxis,
   RadialBar,
   RadialBarChart,
@@ -508,85 +506,77 @@ export function ChartsGrid({
   );
 }
 
-/* ── Engagement: the whole base in four last-seen buckets ──────────────────── */
+/* ── Pagas × grátis — share de todas as partidas num meter único ───────────────
+   Uma razão única contra o todo pede um meter, não um donut de duas fatias:
+   barra empilhada com o mesmo par de cores da série diária, % pagas como
+   número-herói e contagens diretas na legenda. */
 
-export type EngagementSlices = { hoje: number; semana: number; mes: number; inativos: number };
-
-const ENGAGEMENT_SEGMENTS = [
-  { key: "hoje", name: "Ativos hoje", color: "var(--primary)" },
-  { key: "semana", name: "Na semana", color: "var(--color-info)" },
-  { key: "mes", name: "No mês", color: "var(--border-strong)" },
-  { key: "inativos", name: "Inativos 30d+", color: "var(--surface-raised)" },
-] as const;
-
-export function EngagementDonut({ slices }: { slices: EngagementSlices }) {
-  const mounted = useMounted();
-  const total = slices.hoje + slices.semana + slices.mes + slices.inativos;
-  const wau = slices.hoje + slices.semana;
-
-  if (!mounted) return <div className="h-[220px]" aria-hidden />;
-
-  const data = ENGAGEMENT_SEGMENTS.map((s) => ({ ...s, value: slices[s.key] }));
-
-  return (
-    <div className="flex h-[220px] w-full items-center justify-center gap-5">
-      {/* Fixed square: ResponsiveContainer measures a flex item as 0-wide on
-          first paint and never recovers — the donut came out a sliver. */}
-      <div className="relative h-[184px] w-[184px] shrink-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              isAnimationActive={false}
-              data={data}
-              dataKey="value"
-              nameKey="name"
-              innerRadius="68%"
-              outerRadius="92%"
-              paddingAngle={2}
-              strokeWidth={0}
-              startAngle={90}
-              endAngle={-270}
-            >
-              {data.map((d) => (
-                <Cell key={d.key} fill={d.color} />
-              ))}
-            </Pie>
-            <Tooltip
-              content={({ active, payload }) =>
-                active && payload?.length ? (
-                  <CardTooltip
-                    label={String(payload[0].name)}
-                    lines={[`${payload[0].value} de ${total}`]}
-                  />
-                ) : null
-              }
-            />
-          </PieChart>
-        </ResponsiveContainer>
-        {/* WAU in the hole — the one engagement number a CEO reads first. */}
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="numeral text-[26px] text-[var(--text-primary)]">
-            {total > 0 ? Math.round((wau / total) * 100) : 0}%
-          </span>
-          <span className="label-colus mt-1 text-[7.5px] text-[var(--text-tertiary)]">WAU</span>
-        </div>
+export function PaidShareMeter({
+  pagas,
+  gratis,
+  monthPagas,
+}: {
+  pagas: number;
+  gratis: number;
+  monthPagas: number | null;
+}) {
+  const total = pagas + gratis;
+  if (total === 0) {
+    return (
+      <div className="flex h-[220px] items-center justify-center text-[11.5px] font-300 text-[var(--text-tertiary)]">
+        Nenhuma partida jogada ainda.
       </div>
-
-      <ul className="w-[128px] shrink-0 space-y-2">
-        {data.map((d) => (
-          <li key={d.key} className="flex items-center gap-2">
+    );
+  }
+  const share = pagas / total;
+  const rows = [
+    { name: "Pagas", value: pagas, color: "var(--chart-cat-a)" },
+    { name: "Grátis", value: gratis, color: "var(--chart-cat-b)" },
+  ];
+  return (
+    <div className="flex h-[220px] w-full flex-col justify-center gap-5">
+      <p className="flex items-baseline gap-2.5">
+        <span className="numeral text-[40px] leading-none text-[var(--text-primary)]">
+          {Math.round(share * 100)}%
+        </span>
+        <span className="text-[12px] font-300 text-[var(--text-tertiary)]">
+          das partidas são pagas
+        </span>
+      </p>
+      <div className="flex h-4 w-full gap-[2px] overflow-hidden rounded-[4px]">
+        {rows.map(
+          (r) =>
+            r.value > 0 && (
+              <div
+                key={r.name}
+                title={`${r.name}: ${r.value} de ${total}`}
+                className="h-full rounded-[3px]"
+                style={{ width: `${(r.value / total) * 100}%`, background: r.color }}
+              />
+            )
+        )}
+      </div>
+      <ul className="space-y-2">
+        {rows.map((r) => (
+          <li key={r.name} className="flex items-center gap-2">
             <span
               aria-hidden
               className="h-2 w-2 shrink-0 rounded-[2px] border border-[var(--border)]"
-              style={{ background: d.color }}
+              style={{ background: r.color }}
             />
-            <span className="min-w-0 flex-1 truncate text-[10.5px] font-300 text-[var(--text-secondary)]">
-              {d.name}
+            <span className="text-[10.5px] font-300 text-[var(--text-secondary)]">{r.name}</span>
+            <span className="numeral ml-auto text-[12px] text-[var(--text-primary)]">
+              {r.value}
             </span>
-            <span className="numeral text-[12px] text-[var(--text-primary)]">{d.value}</span>
           </li>
         ))}
       </ul>
+      {monthPagas != null && (
+        <p className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+          no mês corrente: <span className="font-600 text-[var(--text-secondary)]">{monthPagas}</span>{" "}
+          pagas
+        </p>
+      )}
     </div>
   );
 }
