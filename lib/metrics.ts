@@ -550,9 +550,17 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
   // verdade — ≥1 perna de reserva jogada.
   let activationMonth: ProductMetrics["activationMonth"] = null;
   if (users.index && matches.legs) {
-    const spNow = new Date();
-    const monthStart = new Date(spNow.getFullYear(), spNow.getMonth(), 1).getTime();
+    // Início do mês no CALENDÁRIO de São Paulo (o servidor roda em UTC; sem
+    // isso, cadastros entre 21h e meia-noite na virada caem no mês errado).
+    const spParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+    }).format(new Date());
+    const monthStart = new Date(`${spParts}-01T00:00:00-03:00`).getTime();
     const played = new Set(matches.legs.map((l) => l.userId));
+    // Base = SÓ os cadastrados no mês corrente; o numerador é um subconjunto
+    // dela (novos do mês que jogaram ≥1 partida, paga ou não).
     const novos = users.index.filter((u) => u.createdAtMs >= monthStart);
     const jogaram = novos.filter((u) => played.has(u.id));
     activationMonth = { jogaram: jogaram.length, novos: novos.length };
