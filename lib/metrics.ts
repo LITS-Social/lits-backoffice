@@ -175,6 +175,9 @@ export type ScorePostsMetrics = {
   prev7: number;
   /** Partidas registradas nos últimos 30 dias — numerador de jogos/usuário/mês. */
   last30: number;
+  /** Instantes de publicação (ms) — série do ritmo de placares no cliente.
+      Null quando o crawl falhou ou não cobriu o feed inteiro. */
+  createdAtMs: number[] | null;
 };
 
 async function crawlScorePosts(): Promise<ScorePostsMetrics> {
@@ -201,7 +204,7 @@ async function crawlScorePosts(): Promise<ScorePostsMetrics> {
       cursor = data.next_cursor;
     }
   } catch {
-    return { failed: true, total: 0, scoreOnly: 0, matchOnly: 0, truncated: false, last7: 0, prev7: 0, last30: 0 };
+    return { failed: true, total: 0, scoreOnly: 0, matchOnly: 0, truncated: false, last7: 0, prev7: 0, last30: 0, createdAtMs: null };
   }
   const games = rows.filter(
     (r) => (r.post_type === "score" || r.post_type === "match") && !r.deleted_at
@@ -221,6 +224,11 @@ async function crawlScorePosts(): Promise<ScorePostsMetrics> {
     last7: within(now - WEEK_MS, now),
     prev7: within(now - 2 * WEEK_MS, now - WEEK_MS),
     last30: within(now - 30 * DAY_MS, now),
+    createdAtMs: truncated
+      ? null
+      : games
+          .filter((r) => r.created_at)
+          .map((r) => new Date(r.created_at!).getTime()),
   };
 }
 

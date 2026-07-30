@@ -10,7 +10,6 @@ import {
   ChartUnavailable,
   ChartsGrid,
   PaidShareMeter,
-  PaidSplitChart,
   } from "./_components/metric-charts";
 
 export const dynamic = "force-dynamic";
@@ -300,25 +299,35 @@ function BpScoreboard({ rows }: { rows: BpRow[] }) {
                   />
                 )}
               </div>
-              <div className="sm:text-right">
-                <p className="flex items-baseline gap-2 sm:justify-end">
-                  <span className="numeral text-[17px] text-[var(--text-primary)]">
+              <div className="flex items-center gap-3 sm:justify-end">
+                <div className="sm:text-right">
+                  <p className="numeral text-[17px] leading-tight text-[var(--text-primary)]">
                     {r.real != null ? r.fmt(r.real) : "—"}
-                  </span>
-                  {pctOfTarget != null && (
-                    <span
-                      className="text-[10px] font-600 tabular-nums"
-                      style={{ color: statusColor }}
-                    >
-                      {Math.round(pctOfTarget)}% do alvo
+                  </p>
+                  <p className="text-[10px] font-300 tabular-nums leading-snug text-[var(--text-tertiary)]">
+                    {r.target != null
+                      ? `${hib ? "alvo" : "teto"} ${r.targetMonth}: ${r.fmt(r.target)}`
+                      : "sem alvo no BP"}
+                  </p>
+                </div>
+                {/* Pizza de progresso: fatia = % do alvo (cheia quando passa). */}
+                {pctOfTarget != null && (
+                  <span
+                    role="img"
+                    aria-label={`${Math.round(pctOfTarget)}% do alvo`}
+                    title={`${Math.round(pctOfTarget)}% do alvo`}
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full"
+                    style={{
+                      background: `conic-gradient(${statusColor ?? "var(--border-strong)"} ${
+                        Math.min(pctOfTarget, 100) * 3.6
+                      }deg, var(--surface-raised) 0)`,
+                    }}
+                  >
+                    <span className="numeral grid h-[30px] w-[30px] place-items-center rounded-full bg-[var(--surface)] text-[8.5px] leading-none text-[var(--text-primary)]">
+                      {Math.round(pctOfTarget)}%
                     </span>
-                  )}
-                </p>
-                <p className="text-[10px] font-300 tabular-nums leading-snug text-[var(--text-tertiary)]">
-                  {r.target != null
-                    ? `${hib ? "alvo" : "teto"} ${r.targetMonth}: ${r.fmt(r.target)}`
-                    : "sem alvo no BP"}
-                </p>
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -884,18 +893,68 @@ export default async function MetricsPage() {
           />
         </div>
 
+        {/* ── Dinheiro ─────────────────────────────────────────────────────────── */}
+        <div>
+          <p className="eyebrow mb-3">Dinheiro</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Kpi
+              label="GMV"
+              value={matches.gmv ? fmtBRL(matches.gmv.totalCents) : "—"}
+              context={
+                matches.gmv
+                  ? `desde o início · mês corrente: ${fmtBRL(matches.gmv.monthCents)} · 30 dias: ${fmtBRL(matches.gmv.last30Cents)}`
+                  : "página de reservas parcial"
+              }
+            />
+            <Kpi
+              label="Receita LITS (est.)"
+              value={matches.gmv ? fmtBRL(matches.gmv.receitaTotalCents) : "—"}
+              context={
+                matches.gmv
+                  ? `fórmula do BP (comissão 7,5% + markup 10% + R$6/partida) · mês: ${fmtBRL(matches.gmv.receitaMonthCents)}`
+                  : "página de reservas parcial"
+              }
+            />
+            <Kpi
+              label="Ticket médio (pago)"
+              value={
+                matches.gmv && matches.paid && matches.paid.total > 0
+                  ? fmtBRL(Math.round(matches.gmv.totalCents / matches.paid.total))
+                  : "—"
+              }
+              bp={
+                matches.gmv && matches.paid && matches.paid.total > 0
+                  ? {
+                      target: fmtBRL(BP_PREMISSAS.ticketMedioCents),
+                      monthLabel: "premissa",
+                      ok:
+                        Math.round(matches.gmv.totalCents / matches.paid.total) >=
+                        BP_PREMISSAS.ticketMedioCents,
+                    }
+                  : null
+              }
+              context={
+                matches.gmv && matches.paid && matches.paid.total > 0
+                  ? `GMV ÷ ${matches.paid.total} partidas pagas, desde o início`
+                  : "sem partidas pagas ainda"
+              }
+            />
+          </div>
+        </div>
+
         {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão — com filtro
             de período compartilhado entre crescimento e ritmo ─────────────────── */}
         <ChartsGrid
           userCreatedAtMs={users.createdAtMs}
           userDateless={users.dateless}
-          usersTarget={metaUsuarios}
           growthFallback={
             users.failed
               ? "Não foi possível carregar os usuários."
               : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."
           }
           matchStartsAtMs={matches.startsAtMs}
+          matchPaidStartsAtMs={matches.paidStartsAtMs}
+          placarMs={scorePosts.createdAtMs}
           paceFallback={
             matches.failed
               ? "Não foi possível carregar as partidas."
@@ -914,20 +973,6 @@ export default async function MetricsPage() {
                 />
               ) : (
                 <ChartUnavailable>Não foi possível carregar as partidas.</ChartUnavailable>
-              )}
-            </ChartCard>
-          }
-          completionSlot={
-            <ChartCard
-              eyebrow="Partidas por dia — pagas × normais"
-              hint="Reservas jogadas por dia — últimos 12 dias — empilhadas por cobrança. Jogos registrados só no feed não têm preço rastreável e ficam fora desta série."
-            >
-              {matches.startsAtMs && matches.paidStartsAtMs ? (
-                <PaidSplitChart allMs={matches.startsAtMs} paidMs={matches.paidStartsAtMs} />
-              ) : (
-                <ChartUnavailable>
-                  Série omitida: a página de reservas não cobre o total.
-                </ChartUnavailable>
               )}
             </ChartCard>
           }
@@ -1016,55 +1061,6 @@ export default async function MetricsPage() {
             },
           ]}
         />
-
-        {/* ── Dinheiro ─────────────────────────────────────────────────────────── */}
-        <div>
-          <p className="eyebrow mb-3">Dinheiro</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Kpi
-              label="GMV"
-              value={matches.gmv ? fmtBRL(matches.gmv.totalCents) : "—"}
-              context={
-                matches.gmv
-                  ? `desde o início · mês corrente: ${fmtBRL(matches.gmv.monthCents)} · 30 dias: ${fmtBRL(matches.gmv.last30Cents)}`
-                  : "página de reservas parcial"
-              }
-            />
-            <Kpi
-              label="Receita LITS (est.)"
-              value={matches.gmv ? fmtBRL(matches.gmv.receitaTotalCents) : "—"}
-              context={
-                matches.gmv
-                  ? `fórmula do BP (comissão 7,5% + markup 10% + R$6/partida) · mês: ${fmtBRL(matches.gmv.receitaMonthCents)}`
-                  : "página de reservas parcial"
-              }
-            />
-            <Kpi
-              label="Ticket médio (pago)"
-              value={
-                matches.gmv && matches.paid && matches.paid.total > 0
-                  ? fmtBRL(Math.round(matches.gmv.totalCents / matches.paid.total))
-                  : "—"
-              }
-              bp={
-                matches.gmv && matches.paid && matches.paid.total > 0
-                  ? {
-                      target: fmtBRL(BP_PREMISSAS.ticketMedioCents),
-                      monthLabel: "premissa",
-                      ok:
-                        Math.round(matches.gmv.totalCents / matches.paid.total) >=
-                        BP_PREMISSAS.ticketMedioCents,
-                    }
-                  : null
-              }
-              context={
-                matches.gmv && matches.paid && matches.paid.total > 0
-                  ? `GMV ÷ ${matches.paid.total} partidas pagas, desde o início`
-                  : "sem partidas pagas ainda"
-              }
-            />
-          </div>
-        </div>
 
         {/* ── Engajamento da base ──────────────────────────────────────────────── */}
         <div>

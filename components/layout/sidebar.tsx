@@ -31,7 +31,7 @@ import { ThemeToggle } from "./theme-toggle";
 // The two home screens: the product's north-star metrics, and the operational
 // overview it displaced from "/". No folio numbers — these are not panels.
 const home = [
-  { label: "Métricas",    href: "/",            icon: Gauge },
+  { label: "Dashboard",   href: "/",            icon: Gauge },
   { label: "Visão Geral", href: "/visao-geral", icon: LayoutDashboard },
 ];
 
@@ -289,7 +289,6 @@ export function Sidebar({
         </p>
 
         {[
-          { href: "/dashboard",  label: "Dashboard",  Icon: LayoutDashboard, exact: false },
           { href: "/moderacao",  label: "Moderação",   Icon: ShieldAlert,     exact: false },
           { href: "/auditoria",  label: "Auditoria",   Icon: ScrollText,      exact: false },
         ].map((item) => (

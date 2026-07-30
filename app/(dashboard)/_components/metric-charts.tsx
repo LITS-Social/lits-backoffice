@@ -2,12 +2,8 @@
 
 import { useState, useSyncExternalStore } from "react";
 import {
-  Area,
-  AreaChart,
   Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
   ComposedChart,
   Legend,
   Line,
@@ -107,13 +103,6 @@ function rangeWindows(fromMs: number, toEndMs: number): { wins: Win[]; granulari
   return { wins, granularity: step === DAY_MS ? "daily" : "weekly" };
 }
 
-function paceSeries(times: number[], wins: Win[]): PacePoint[] {
-  return wins.map((w) => ({
-    label: fmtDay(w.end),
-    count: times.filter((t) => t >= w.start && t <= w.end).length,
-  }));
-}
-
 /** Cumulative base at each window end; `dateless` accounts are folded into
     every total — they exist now and did not appear this quarter. */
 function growthSeries(times: number[], dateless: number, wins: Win[]): GrowthPoint[] {
@@ -200,15 +189,13 @@ function ModeToggle({
   );
 }
 
-/* ── Growth: cumulative user base, terracotta line over a soft wash ────────── */
+/* ── Novos cadastros por bucket — a base acumulada fica no tooltip ─────────── */
 
 function GrowthChart({
   points,
-  target,
   granularity,
 }: {
   points: GrowthPoint[];
-  target: number;
   granularity: Granularity;
 }) {
   const labelFor = (label: string) =>
@@ -218,74 +205,7 @@ function GrowthChart({
   return (
     <div className="h-[196px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -4 }}>
-          <defs>
-            <linearGradient id="growth-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.28} />
-              <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.02} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" opacity={0.7} />
-          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} dy={6} interval="preserveStartEnd" />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            width={44}
-            allowDecimals={false}
-            domain={[0, (dataMax: number) => Math.max(dataMax, target)]}
-            tick={{ ...AXIS_TICK, fontFamily: "var(--font-display)", fontSize: 10, fontWeight: 400 }}
-          />
-          <Tooltip
-            cursor={{ stroke: "var(--border-strong)", strokeDasharray: "2 4" }}
-            content={({ active, payload }) =>
-              active && payload?.length ? (
-                <CardTooltip
-                  label={labelFor((payload[0].payload as GrowthPoint).label)}
-                  lines={[
-                    `${(payload[0].payload as GrowthPoint).total} usuários`,
-                    `+${(payload[0].payload as GrowthPoint).novos} ${novosSuffix}`,
-                  ]}
-                />
-              ) : null
-            }
-          />
-          <Area
-            isAnimationActive={false}
-            type="monotone"
-            dataKey="total"
-            stroke="var(--primary)"
-            strokeWidth={1.75}
-            fill="url(#growth-fill)"
-            dot={false}
-            activeDot={{ r: 3, fill: "var(--primary)", stroke: "var(--surface)" }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-/* ── Pace: matches per bucket, newest bucket in terracotta ─────────────────── */
-
-function PaceChart({ points, granularity }: { points: PacePoint[]; granularity: Granularity }) {
-  const labelFor = (label: string) =>
-    granularity === "daily" ? `dia ${label}` : `semana até ${label}`;
-
-  // Média móvel de 7 dias sobre a série diária — barras de 1, 2 e 4 partidas
-  // não têm tendência legível; a linha tracejada tem. Nas primeiras posições
-  // usa o prefixo disponível (média dos dias mostrados até ali).
-  const data =
-    granularity === "daily"
-      ? points.map((pt, i) => {
-          const win = points.slice(Math.max(0, i - 6), i + 1);
-          return { ...pt, ma7: win.reduce((sum, w) => sum + w.count, 0) / win.length };
-        })
-      : points;
-
-  return (
-    <div className="h-[196px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: -4 }} barCategoryGap="32%">
+        <ComposedChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -4 }} barCategoryGap="32%">
           <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" opacity={0.7} />
           <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} dy={6} interval="preserveStartEnd" />
           <YAxis
@@ -300,33 +220,113 @@ function PaceChart({ points, granularity }: { points: PacePoint[]; granularity: 
             content={({ active, payload }) =>
               active && payload?.length ? (
                 <CardTooltip
-                  label={labelFor((payload[0].payload as PacePoint).label)}
+                  label={labelFor((payload[0].payload as GrowthPoint).label)}
                   lines={[
-                    `${(payload[0].payload as PacePoint).count} ${
-                      (payload[0].payload as PacePoint).count === 1 ? "partida" : "partidas"
-                    }`,
+                    `+${(payload[0].payload as GrowthPoint).novos} ${novosSuffix}`,
+                    `base acumulada: ${(payload[0].payload as GrowthPoint).total}`,
                   ]}
                 />
               ) : null
             }
           />
-          <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false}>
-            {points.map((p, i) => (
-              <Cell
-                key={`${p.label}-${i}`}
-                fill={i === points.length - 1 ? "var(--primary)" : "var(--border-strong)"}
-              />
-            ))}
-          </Bar>
-          {granularity === "daily" && (
+          <Bar dataKey="novos" fill="var(--primary)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/* ── Partidas por bucket: pagas × grátis empilhadas + linha de placares ─────
+   O ritmo e o mix numa visualização só: quanto se jogou, quanto foi pago e
+   quantos jogos tiveram placar publicado no feed. A linha usa a DATA DO POST
+   (quando o placar foi publicado), então pode divergir do dia do jogo — e
+   inclui jogos registrados sem reserva, podendo passar das barras. */
+
+export type MatchMixPoint = {
+  label: string;
+  pagas: number;
+  gratis: number;
+  placares: number | null;
+};
+
+const MIX_NAMES: Record<string, string> = {
+  pagas: "Pagas",
+  gratis: "Grátis",
+  placares: "Com placar publicado",
+};
+
+function MatchMixChart({
+  points,
+  granularity,
+}: {
+  points: MatchMixPoint[];
+  granularity: Granularity;
+}) {
+  const labelFor = (label: string) =>
+    granularity === "daily" ? `dia ${label}` : `semana até ${label}`;
+  const hasPlacar = points.some((p) => p.placares != null);
+
+  return (
+    <div className="h-[196px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: -4 }} barCategoryGap="32%">
+          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" opacity={0.7} />
+          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} dy={6} interval="preserveStartEnd" />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            width={44}
+            allowDecimals={false}
+            tick={{ ...AXIS_TICK, fontFamily: "var(--font-display)", fontSize: 10, fontWeight: 400 }}
+          />
+          <Tooltip
+            cursor={{ fill: "var(--surface-raised)", opacity: 0.6 }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const p = payload[0].payload as MatchMixPoint;
+              const total = p.pagas + p.gratis;
+              return (
+                <CardTooltip
+                  label={labelFor(p.label)}
+                  lines={[
+                    `${total} ${total === 1 ? "partida" : "partidas"} — ${p.pagas} pagas · ${p.gratis} grátis`,
+                    ...(p.placares != null
+                      ? [`${p.placares} ${p.placares === 1 ? "placar publicado" : "placares publicados"}`]
+                      : []),
+                  ]}
+                />
+              );
+            }}
+          />
+          <Legend
+            iconSize={9}
+            formatter={(v: string) => (
+              <span style={{ color: "var(--text-secondary)", fontSize: 10.5 }}>
+                {MIX_NAMES[v] ?? v}
+              </span>
+            )}
+          />
+          {/* 2px surface stroke = the spacer between stacked segments. */}
+          <Bar dataKey="pagas" stackId="m" fill="var(--chart-cat-a)" stroke="var(--surface)" strokeWidth={2} isAnimationActive={false} />
+          <Bar
+            dataKey="gratis"
+            stackId="m"
+            fill="var(--chart-cat-b)"
+            stroke="var(--surface)"
+            strokeWidth={2}
+            radius={[4, 4, 0, 0]}
+            isAnimationActive={false}
+          />
+          {hasPlacar && (
             <Line
               type="monotone"
-              dataKey="ma7"
+              dataKey="placares"
               stroke="var(--text-secondary)"
               strokeWidth={2}
               strokeDasharray="5 3"
               dot={false}
-              activeDot={false}
+              activeDot={{ r: 3, fill: "var(--text-secondary)", stroke: "var(--surface)" }}
+              legendType="plainline"
               isAnimationActive={false}
             />
           )}
@@ -351,24 +351,27 @@ const labelClass = "label-colus mb-1 block text-[8.5px] text-[var(--text-tertiar
 export function ChartsGrid({
   userCreatedAtMs,
   userDateless,
-  usersTarget,
   growthFallback,
   matchStartsAtMs,
+  matchPaidStartsAtMs,
+  placarMs,
   paceFallback,
   engagementSlot,
-  completionSlot,
 }: {
   /** Raw signup instants (ms) — null when the crawl failed or was truncated. */
   userCreatedAtMs: number[] | null;
   userDateless: number;
-  usersTarget: number;
   /** Why the growth series is missing, shown when `userCreatedAtMs` is null. */
   growthFallback: string;
   /** Raw match starts_at instants (ms) — null when the fetch failed or is partial. */
   matchStartsAtMs: number[] | null;
+  /** starts_at das partidas pagas — mesmo gate de completude do total. */
+  matchPaidStartsAtMs: number[] | null;
+  /** Instantes de publicação dos placares no feed — null quando o crawl do
+      feed falhou/foi truncado; o gráfico então omite a linha. */
+  placarMs: number[] | null;
   paceFallback: string;
   engagementSlot: React.ReactNode;
-  completionSlot: React.ReactNode;
 }) {
   const mounted = useMounted();
   const [growthMode, setGrowthMode] = useState<Granularity>("daily");
@@ -394,12 +397,20 @@ export function ChartsGrid({
         range ? range.wins : rollingWindows(growthMode === "daily" ? DAY_MS : WEEK_MS),
       )
     : null;
-  const pacePoints = matchStartsAtMs
-    ? paceSeries(
-        matchStartsAtMs,
-        range ? range.wins : rollingWindows(paceMode === "daily" ? DAY_MS : WEEK_MS),
-      )
-    : null;
+  const mixPoints: MatchMixPoint[] | null =
+    matchStartsAtMs && matchPaidStartsAtMs
+      ? (range ? range.wins : rollingWindows(paceMode === "daily" ? DAY_MS : WEEK_MS)).map((w) => {
+          const inWin = (t: number) => t >= w.start && t <= w.end;
+          const pagas = matchPaidStartsAtMs.filter(inWin).length;
+          const total = matchStartsAtMs.filter(inWin).length;
+          return {
+            label: fmtDay(w.end),
+            pagas,
+            gratis: Math.max(0, total - pagas),
+            placares: placarMs ? placarMs.filter(inWin).length : null,
+          };
+        })
+      : null;
 
   const rangeSuffix = range
     ? `de ${fmtDay(fromMs!)} a ${fmtDay(toEndMs!)}, por ${
@@ -407,17 +418,21 @@ export function ChartsGrid({
       } (diário até ${MAX_DAILY_RANGE_DAYS} dias)`
     : null;
   const growthHint = rangeSuffix
-    ? `Usuários acumulados ${rangeSuffix}.`
+    ? `Novos cadastros ${rangeSuffix}; base acumulada no tooltip.`
     : growthMode === "daily"
-      ? "Usuários acumulados por dia — últimos 12 dias; visão semanal no toggle."
-      : "Usuários acumulados por semana — últimas 12 semanas.";
+      ? "Novos cadastros por dia — últimos 12 dias; base acumulada no tooltip; visão semanal no toggle."
+      : "Novos cadastros por semana — últimas 12 semanas; base acumulada no tooltip.";
+  const placarNote =
+    placarMs != null
+      ? " Linha tracejada = placares publicados no feed (pela data do post; inclui jogos sem reserva)."
+      : "";
   const paceHint = rangeSuffix
-    ? `Partidas com placar publicado ${rangeSuffix}.`
+    ? `Reservas jogadas ${rangeSuffix}, empilhadas por cobrança.${placarNote}`
     : paceMode === "daily"
-      ? "Partidas com placar publicado, por dia — últimos 12 dias; linha tracejada = média móvel de 7 dias; visão semanal no toggle."
-      : "Partidas com placar publicado, por semana — últimas 12 semanas.";
+      ? `Reservas jogadas por dia — últimos 12 dias — empilhadas por cobrança; visão semanal no toggle.${placarNote}`
+      : `Reservas jogadas por semana — últimas 12 semanas — empilhadas por cobrança.${placarNote}`;
 
-  const hasAnySeries = growthPoints != null || pacePoints != null;
+  const hasAnySeries = growthPoints != null || mixPoints != null;
 
   return (
     <div className="space-y-3">
@@ -473,7 +488,7 @@ export function ChartsGrid({
             mounted ? (
               <>
                 {!range && <ModeToggle mode={growthMode} onChange={setGrowthMode} />}
-                <GrowthChart points={growthPoints} target={usersTarget} granularity={growthGran} />
+                <GrowthChart points={growthPoints} granularity={growthGran} />
               </>
             ) : (
               <div className="h-[220px]" aria-hidden />
@@ -485,12 +500,12 @@ export function ChartsGrid({
 
         {engagementSlot}
 
-        <ChartCard eyebrow="Ritmo de partidas" hint={paceHint} className="lg:col-span-2">
-          {pacePoints ? (
+        <ChartCard eyebrow="Partidas — pagas × grátis × placares" hint={paceHint} className="lg:col-span-3">
+          {mixPoints ? (
             mounted ? (
               <>
                 {!range && <ModeToggle mode={paceMode} onChange={setPaceMode} />}
-                <PaceChart points={pacePoints} granularity={paceGran} />
+                <MatchMixChart points={mixPoints} granularity={paceGran} />
               </>
             ) : (
               <div className="h-[220px]" aria-hidden />
@@ -499,8 +514,6 @@ export function ChartsGrid({
             <ChartUnavailable>{paceFallback}</ChartUnavailable>
           )}
         </ChartCard>
-
-        {completionSlot}
       </div>
     </div>
   );
@@ -577,78 +590,6 @@ export function PaidShareMeter({
           pagas
         </p>
       )}
-    </div>
-  );
-}
-
-/* ── Pagas × normais por semana — stacked bars, same-hue lightness pair ────── */
-
-export function PaidSplitChart({
-  allMs,
-  paidMs,
-}: {
-  allMs: number[];
-  paidMs: number[];
-}) {
-  const mounted = useMounted();
-  if (!mounted) return <div className="h-[220px]" aria-hidden />;
-
-  const wins = rollingWindows(DAY_MS);
-  const data = wins.map(({ start, end }) => {
-    const inWin = (t: number) => t >= start && t <= end;
-    const pagas = paidMs.filter(inWin).length;
-    const total = allMs.filter(inWin).length;
-    return { label: fmtDay(start), pagas, normais: Math.max(0, total - pagas) };
-  });
-
-  return (
-    <div className="h-[220px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: -22 }} barCategoryGap="28%">
-          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 9, fill: "var(--text-tertiary)" }}
-            axisLine={{ stroke: "var(--border)" }}
-            tickLine={false}
-          />
-          <YAxis
-            allowDecimals={false}
-            tick={{ fontSize: 9, fill: "var(--text-tertiary)" }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <Tooltip
-            cursor={{ fill: "var(--surface-raised)", opacity: 0.5 }}
-            contentStyle={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              fontSize: 11,
-            }}
-            labelStyle={{ color: "var(--text-secondary)" }}
-            formatter={(v, name) => [String(v ?? 0), name === "pagas" ? "Pagas" : "Normais"]}
-          />
-          <Legend
-            formatter={(v: string) => (
-              <span style={{ color: "var(--text-secondary)", fontSize: 10.5 }}>
-                {v === "pagas" ? "Pagas" : "Normais"}
-              </span>
-            )}
-            iconSize={9}
-          />
-          {/* 2px surface stroke = the spacer between stacked segments. */}
-          <Bar dataKey="pagas" stackId="s" fill="var(--chart-cat-a)" stroke="var(--surface)" strokeWidth={2} />
-          <Bar
-            dataKey="normais"
-            stackId="s"
-            fill="var(--chart-cat-b)"
-            stroke="var(--surface)"
-            strokeWidth={2}
-            radius={[4, 4, 0, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
     </div>
   );
 }
