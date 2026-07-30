@@ -107,7 +107,7 @@ export function Sidebar({
                 style={{ animation: "pulse-dot 2s ease-in-out infinite" }}
               />
             </span>
-            <span className="label-colus text-[9px] leading-none text-[var(--text-tertiary)]">
+            <span className="highlight text-[9px] leading-none text-[var(--text-tertiary)]">
               Beta Closed
             </span>
           </span>

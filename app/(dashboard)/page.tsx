@@ -383,8 +383,8 @@ function Kpi({
         >
           <span className="label-colus text-[7.5px] opacity-80">BP {bp.monthLabel}</span>
           {bp.target}
-          <span className="font-500">
-            {bp.ok === null ? "· na linha" : bp.ok ? "· acima" : "· abaixo"}
+          <span className="highlight text-[8px]">
+            {bp.ok === null ? "na linha" : bp.ok ? "acima" : "abaixo"}
           </span>
         </p>
       )}
@@ -1128,61 +1128,6 @@ export default async function MetricsPage() {
             />
           </div>
         </div>
-
-        {/* ── Coortes semanais de ativação — sinal semanas antes do card de 30d ── */}
-        {cohorts && cohorts.length > 0 && (
-          <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
-            <div className="mb-4">
-              <h2 className="eyebrow">Ativação por coorte de cadastro</h2>
-              <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-                Cada linha é uma semana de cadastro; as colunas mostram quantos jogaram a 1ª
-                partida em até 7, 14 e 30 dias. Célula “aguarda” = a janela ainda não fechou.
-              </p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[420px] text-[12px]">
-                <thead>
-                  <tr className="border-b border-[var(--border)]">
-                    {["Semana de cadastro", "Contas", "≤7d", "≤14d", "≤30d"].map((h) => (
-                      <th
-                        key={h}
-                        className="label-colus px-2 py-2 text-left text-[8.5px] text-[var(--text-tertiary)] first:pl-0"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {cohorts.map((c) => {
-                    const cell = (v: number | null) =>
-                      v === null ? (
-                        <span className="text-[var(--text-tertiary)]">aguarda</span>
-                      ) : c.size === 0 ? (
-                        <span className="text-[var(--text-tertiary)]">—</span>
-                      ) : (
-                        <>
-                          <span className="font-600">{pct(v / c.size)}</span>{" "}
-                          <span className="text-[var(--text-tertiary)]">({v})</span>
-                        </>
-                      );
-                    return (
-                      <tr key={c.label} className="border-b border-[var(--border)] last:border-b-0">
-                        <td className="py-2 pr-2 tabular-nums text-[var(--text-secondary)]">
-                          {c.label}
-                        </td>
-                        <td className="numeral px-2 py-2 text-[13px]">{c.size}</td>
-                        <td className="px-2 py-2">{cell(c.d7)}</td>
-                        <td className="px-2 py-2">{cell(c.d14)}</td>
-                        <td className="px-2 py-2">{cell(c.d30)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
 
         {/* ── A planilha, viva ─────────────────────────────────────────────────── */}
         <MetricsTable title="Ação imediata — verificar todo dia" rows={daily} />

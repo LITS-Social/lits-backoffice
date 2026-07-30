@@ -164,8 +164,8 @@
 
   --bg: #F6F5EC;             /* page — brandbook Off-white */
   --surface: #FFFFFF;        /* the data plane — white card on paper */
-  --surface-raised: #E8E7E1; /* hover, muted chips — secondary paper fill */
-  --surface-sunken: #E4E1D0; /* expanded detail — recessed toward cream */
+  --surface-raised: #E2DECC; /* Bege claro — cream do brandbook em hovers/chips */
+  --surface-sunken: #E8E7E1; /* recessed — secondary paper fill */
 
   --border: #C9BFA8;         /* khaki-300 — the brand's 1px hairline */
   --border-strong: #A39175;  /* Bege / khaki */
@@ -181,6 +181,10 @@
      on all four surfaces (worst = 4.84 on --surface-sunken), warm brand hue. Do
      not lighten it without re-checking contrast against --surface-sunken. */
   --text-tertiary: #655E4F;
+
+  /* Voz display (Colus): títulos e numerais em Verde LITS sobre papel —
+     é assim que o brandbook assenta títulos em peças claras. */
+  --text-display: #2E433A;
 
   --color-success: #2C6B45;
   --color-success-bg: #DDE7DB;
@@ -224,6 +228,7 @@
     --text-primary: #E2DECC;   /* Bege claro — a tinta creme do club */
     --text-secondary: #B9B49C; /* text-secondary escuro do DS */
     --text-tertiary: #A39175;  /* Bege / caqui — text-muted do DS */
+    --text-display: #E2DECC;   /* títulos Colus em creme sobre o verde */
 
     --color-success: #8CC1A1;                     /* degrau claro do Verde LITS */
     --color-success-bg: rgba(47, 122, 74, 0.16);
@@ -261,6 +266,7 @@
   --text-primary: #E2DECC;
   --text-secondary: #B9B49C;
   --text-tertiary: #A39175;
+  --text-display: #E2DECC;
 
   --color-success: #8CC1A1;
   --color-success-bg: rgba(47, 122, 74, 0.16);
@@ -284,8 +290,8 @@
 
   --bg: #F6F5EC;
   --surface: #FFFFFF;
-  --surface-raised: #E8E7E1;
-  --surface-sunken: #E4E1D0;
+  --surface-raised: #E2DECC;
+  --surface-sunken: #E8E7E1;
 
   --border: #C9BFA8;
   --border-strong: #A39175;
@@ -296,6 +302,7 @@
   --text-primary: #0C0C0C;
   --text-secondary: #4E5A54;
   --text-tertiary: #655E4F;
+  --text-display: #2E433A;
 
   --color-success: #2C6B45;
   --color-success-bg: #DDE7DB;
@@ -320,7 +327,10 @@ html {
   background: var(--bg);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-weight: 400;
+  /* Brandbook: corpo de texto e subtítulos em Nikkei LIGHT; a ênfase inline
+     (font-500+) resolve para o Regular — o contraste Light↔Regular é a
+     hierarquia da marca, não um bold. */
+  font-weight: 300;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   scroll-behavior: smooth;
@@ -336,12 +346,13 @@ body {
 }
 
 h1, h2, h3, h4 {
-  /* Colus does the talking. 400 is the face's only weight; never italic. */
+  /* Colus does the talking. 400 is the face's only weight; never italic.
+     Verde LITS no papel, creme no club — a cor institucional dos títulos. */
   font-family: var(--font-display);
   font-weight: 400;
   font-style: normal;
   letter-spacing: -0.01em;
-  color: var(--text-primary);
+  color: var(--text-display);
 }
 
 ::selection {
@@ -438,6 +449,17 @@ body::after {
   text-transform: uppercase;
 }
 
+/* Destaque curto — Gravesend Sans Bold (brandbook: "Destaques"). Caixa alta,
+   nunca títulos, nunca texto corrido. Para selos, status e chamadas de 1–3
+   palavras que precisam de peso. */
+.highlight {
+  font-family: var(--font-highlight);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
 /* Editorial numeral — Colus, tabular, tight. Numbers are content: counts that
    matter are set large in the display face as a point of pride. */
 .numeral {
@@ -446,6 +468,7 @@ body::after {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   line-height: 1;
+  color: var(--text-display);
 }
 
 /* ─── Animations ─────────────────────────────────────────────────────────── */
