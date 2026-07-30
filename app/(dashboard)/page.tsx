@@ -259,8 +259,13 @@ export default async function MetricsPage() {
   const normaisLast7 = !scorePosts.failed
     ? Math.max(0, scorePosts.last7 - (paid?.last7 ?? 0))
     : null;
-  const pagasPorUsuarioMes =
-    paid && mau > 0 ? (paid.last30 / mau).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : null;
+  // Jogos (todos, não só pagos) nos últimos 30 dias — feed primeiro; fallback
+  // para reservas jogadas quando o feed falhou e a página cobre o total.
+  const jogos30 = !scorePosts.failed ? scorePosts.last30 : matches.last30;
+  const jogosPorUsuarioMes =
+    jogos30 != null && mau > 0
+      ? (jogos30 / mau).toLocaleString("pt-BR", { maximumFractionDigits: 2 })
+      : null;
 
   // One breakdown string for every completion surface. expiredNeverConfirmed
   // null = legacy fallback (old BFF): its "canceladas" still counts every
@@ -496,12 +501,12 @@ export default async function MetricsPage() {
         {/* ── A linha de cima: os quatro números da semana ─────────────────────── */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
           <Kpi
-            label="Jogos pagos / usuário / mês"
-            value={pagasPorUsuarioMes ?? "—"}
+            label="Jogos / usuário / mês"
+            value={jogosPorUsuarioMes ?? "—"}
             context={
-              paid && mau > 0
-                ? `${paid.last30} pago${paid.last30 === 1 ? "" : "s"} em 30 dias ÷ ${mau} ativos no mês`
-                : "sem dado de pagamentos ou de usuários"
+              jogos30 != null && mau > 0
+                ? `${jogos30} jogo${jogos30 === 1 ? "" : "s"} em 30 dias ÷ ${mau} que abriram o app no mês`
+                : "sem dado de partidas ou de usuários"
             }
           />
           <Kpi

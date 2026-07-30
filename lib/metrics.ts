@@ -67,6 +67,9 @@ export type MatchesMetrics = {
   total: number;
   last7: number;
   prev7: number;
+  /** Reservas jogadas nos últimos 30 dias — fallback do numerador de
+      jogos/usuário/mês quando o feed falha. Null quando a página é parcial. */
+  last30: number | null;
   /**
    * Split das reservas jogadas por cobrança (price_cents > 0). Null quando a
    * página carregada não cobre o total — um split parcial mentiria.
@@ -140,6 +143,8 @@ export type ScorePostsMetrics = {
   truncated: boolean;
   last7: number;
   prev7: number;
+  /** Partidas registradas nos últimos 30 dias — numerador de jogos/usuário/mês. */
+  last30: number;
 };
 
 async function crawlScorePosts(): Promise<ScorePostsMetrics> {
@@ -166,7 +171,7 @@ async function crawlScorePosts(): Promise<ScorePostsMetrics> {
       cursor = data.next_cursor;
     }
   } catch {
-    return { failed: true, total: 0, scoreOnly: 0, matchOnly: 0, truncated: false, last7: 0, prev7: 0 };
+    return { failed: true, total: 0, scoreOnly: 0, matchOnly: 0, truncated: false, last7: 0, prev7: 0, last30: 0 };
   }
   const games = rows.filter(
     (r) => (r.post_type === "score" || r.post_type === "match") && !r.deleted_at
@@ -185,6 +190,7 @@ async function crawlScorePosts(): Promise<ScorePostsMetrics> {
     truncated,
     last7: within(now - WEEK_MS, now),
     prev7: within(now - 2 * WEEK_MS, now - WEEK_MS),
+    last30: within(now - 30 * DAY_MS, now),
   };
 }
 
@@ -304,7 +310,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, paid: null, startsAtMs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null };
   }
 
   const matches = data.matches;
@@ -333,6 +339,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     total,
     last7: inWindow(now - WEEK_MS, now),
     prev7: inWindow(now - 2 * WEEK_MS, now - WEEK_MS),
+    last30: complete ? inWindow(now - 30 * DAY_MS, now) : null,
     paid: complete
       ? {
           total: paidRows.length,
