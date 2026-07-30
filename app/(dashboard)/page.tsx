@@ -54,10 +54,9 @@ function FunnelBar({
   color: string;
   muted?: boolean;
 }) {
-  const ratio = base > 0 ? value / base : 0;
-  const width = base > 0 ? Math.max(ratio * 100, value > 0 ? 2.5 : 0) : 0;
+  const width = base > 0 ? Math.max((value / base) * 100, value > 0 ? 2.5 : 0) : 0;
   return (
-    <div className="grid grid-cols-[92px_minmax(0,1fr)_76px] items-center gap-3">
+    <div className="grid grid-cols-[92px_minmax(0,1fr)_40px] items-center gap-3">
       <span className="text-[10.5px] font-500 leading-tight text-[var(--text-secondary)]">
         {label}
       </span>
@@ -67,11 +66,8 @@ function FunnelBar({
           style={{ width: `${width}%`, background: color, opacity: muted ? 0.45 : 1 }}
         />
       </div>
-      <span className="whitespace-nowrap text-right">
-        <span className="numeral text-[14px] text-[var(--text-primary)]">{value}</span>
-        <span className="ml-1 text-[10px] tabular-nums text-[var(--text-tertiary)]">
-          {base > 0 ? pct(ratio) : "—"}
-        </span>
+      <span className="numeral whitespace-nowrap text-right text-[14px] text-[var(--text-primary)]">
+        {value}
       </span>
     </div>
   );
