@@ -552,6 +552,77 @@ export default async function MetricsPage() {
             }
           />
           <Kpi
+            label="Tentativas criadas"
+            value={
+              north.matchFunnel
+                ? String(
+                    (north.matchFunnel.invites_sent ?? 0) +
+                      (north.matchFunnel.quick_matches_opened ?? 0)
+                  )
+                : "—"
+            }
+            context={
+              north.matchFunnel
+                ? `${north.matchFunnel.invites_sent} convite${north.matchFunnel.invites_sent === 1 ? "" : "s"} + ${north.matchFunnel.quick_matches_opened} quick match${north.matchFunnel.quick_matches_opened === 1 ? "" : "es"}, desde o início`
+                : "chega com o deploy do bff-backoffice (match_funnel)"
+            }
+          />
+          <Kpi
+            label="Taxa de conversão"
+            value={north.matchFunnel ? pct(north.matchFunnel.rate) : "—"}
+            context={
+              north.matchFunnel
+                ? `${north.matchFunnel.played} realizadas ÷ ${(north.matchFunnel.invites_sent ?? 0) + (north.matchFunnel.quick_matches_opened ?? 0)} tentativas`
+                : "chega com o deploy do bff-backoffice (match_funnel)"
+            }
+          />
+          <Kpi
+            label="Preenchimento do quick match"
+            value={
+              north.matchFunnel && (north.matchFunnel.quick_matches_opened ?? 0) > 0
+                ? pct(
+                    (north.matchFunnel.quick_matches_filled ?? 0) /
+                      north.matchFunnel.quick_matches_opened
+                  )
+                : "—"
+            }
+            context={
+              north.matchFunnel && (north.matchFunnel.quick_matches_opened ?? 0) > 0
+                ? `${north.matchFunnel.quick_matches_filled} confirmadas de ${north.matchFunnel.quick_matches_opened} abertas`
+                : "chega com o deploy do bff-backoffice (match_funnel)"
+            }
+          />
+          <Kpi
+            label="Aceitação do convite direto"
+            value={
+              north.matchFunnel && (north.matchFunnel.invites_sent ?? 0) > 0
+                ? pct((north.matchFunnel.invites_accepted ?? 0) / north.matchFunnel.invites_sent)
+                : north.inviteAcceptance && north.inviteAcceptance.sent > 0
+                  ? pct(north.inviteAcceptance.accepted / north.inviteAcceptance.sent)
+                  : "—"
+            }
+            context={
+              north.matchFunnel && (north.matchFunnel.invites_sent ?? 0) > 0
+                ? `${north.matchFunnel.invites_accepted} aceitos de ${north.matchFunnel.invites_sent} enviados, desde o início`
+                : north.inviteAcceptance && north.inviteAcceptance.sent > 0
+                  ? `${north.inviteAcceptance.accepted} aceitos de ${north.inviteAcceptance.sent} enviados nos últimos 7 dias`
+                  : "sem convites para medir"
+            }
+          />
+          <Kpi
+            label="Só olharam o feed"
+            value={
+              north.appOpenNoAction && north.appOpenNoAction.dau > 0
+                ? pct(north.appOpenNoAction.no_action / north.appOpenNoAction.dau)
+                : "—"
+            }
+            context={
+              north.appOpenNoAction && north.appOpenNoAction.dau > 0
+                ? `${north.appOpenNoAction.no_action} de ${north.appOpenNoAction.dau} que abriram hoje não fizeram nenhuma ação`
+                : "sem dado de sessões de hoje"
+            }
+          />
+          <Kpi
             label="Ativos no mês"
             value={monthly ? String(monthly.currentMonthActives) : "—"}
             context={

@@ -2239,6 +2239,11 @@ export interface components {
         MatchFunnel: {
             /**
              * Format: int64
+             * @description Direct invites that got accepted (booking reached awaiting_guest_payment/confirmed/live/played), all time
+             */
+            invites_accepted: number;
+            /**
+             * Format: int64
              * @description Direct guest invites created, all time. LOWER BOUND: a declined/expired free invite clears guest_id and leaves no trace
              */
             invites_sent: number;
@@ -2247,6 +2252,11 @@ export interface components {
              * @description Bookings with status='played', all time
              */
             played: number;
+            /**
+             * Format: int64
+             * @description Quick-match bookings that got confirmed (confirmed_at set — an opponent filled it), all time
+             */
+            quick_matches_filled: number;
             /**
              * Format: int64
              * @description Quick-match bookings created, all time
