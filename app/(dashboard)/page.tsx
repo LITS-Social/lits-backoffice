@@ -245,6 +245,22 @@ export default async function MetricsPage() {
     ? { ok: matches.last7 >= matches.prev7, delta: matches.last7 - matches.prev7 }
     : null;
   const wau = users.activity.hoje + users.activity.semana;
+  // Base viva do mês (last_seen ≤ 30d) — denominador de jogos pagos/usuário/mês.
+  const mau = users.activity.hoje + users.activity.semana + users.activity.mes;
+  const paid = matches.paid;
+  // Partidas "normais": a verdade do feed menos as reservas pagas — jogo que
+  // aconteceu sem cobrança pelo app. Fallback para reservas grátis quando o
+  // feed falhou.
+  const normaisTotal = !scorePosts.failed
+    ? Math.max(0, scorePosts.total - (paid?.total ?? 0))
+    : paid
+      ? matches.total - paid.total
+      : null;
+  const normaisLast7 = !scorePosts.failed
+    ? Math.max(0, scorePosts.last7 - (paid?.last7 ?? 0))
+    : null;
+  const pagasPorUsuarioMes =
+    paid && mau > 0 ? (paid.last30 / mau).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : null;
 
   // One breakdown string for every completion surface. expiredNeverConfirmed
   // null = legacy fallback (old BFF): its "canceladas" still counts every
@@ -478,44 +494,36 @@ export default async function MetricsPage() {
         )}
 
         {/* ── A linha de cima: os quatro números da semana ─────────────────────── */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
           <Kpi
-            label="Usuários"
-            value={users.failed ? "—" : users.truncated ? `${users.total}+` : String(users.total)}
-            {...(!users.failed
-              ? { delta: `+${users.newLast7}`, deltaGood: users.newLast7 >= users.newPrev7 }
-              : {})}
+            label="Jogos pagos / usuário / mês"
+            value={pagasPorUsuarioMes ?? "—"}
             context={
-              users.failed
-                ? "falha ao carregar"
-                : `novos na semana · ${users.newPrev7} na anterior`
+              paid && mau > 0
+                ? `${paid.last30} pago${paid.last30 === 1 ? "" : "s"} em 30 dias ÷ ${mau} ativos no mês`
+                : "sem dado de pagamentos ou de usuários"
             }
           />
           <Kpi
-            label="Partidas registradas"
-            value={
-              !scorePosts.failed
-                ? `${scorePosts.total}${scorePosts.truncated ? "+" : ""}`
-                : matches.failed
-                  ? "—"
-                  : String(matches.total)
-            }
-            {...(!scorePosts.failed
-              ? {
-                  delta: `+${scorePosts.last7}`,
-                  deltaGood: scorePosts.last7 >= scorePosts.prev7,
-                }
-              : wow
-                ? { delta: `+${matches.last7}`, deltaGood: wow.ok }
-                : {})}
+            label="Partidas normais"
+            value={normaisTotal != null ? String(normaisTotal) : "—"}
+            {...(normaisLast7 != null ? { delta: `+${normaisLast7}`, deltaGood: true } : {})}
             context={
-              !scorePosts.failed
-                ? `partidas no feed desde o início (${scorePosts.scoreOnly} com placar + ${scorePosts.matchOnly} registradas) · ${scorePosts.prev7} na semana anterior${
-                    matches.failed ? "" : ` · ${matches.total} reservas jogadas`
-                  }`
-                : matches.failed
-                  ? "falha ao carregar"
-                  : `reservas jogadas · ${matches.last7} na semana · ${matches.prev7} na anterior`
+              normaisTotal != null
+                ? !scorePosts.failed
+                  ? "no feed sem cobrança pelo app, desde o início"
+                  : "reservas jogadas grátis, desde o início"
+                : "falha ao carregar"
+            }
+          />
+          <Kpi
+            label="Partidas pagas"
+            value={paid ? String(paid.total) : "—"}
+            {...(paid ? { delta: `+${paid.last7}`, deltaGood: paid.last7 >= paid.prev7 } : {})}
+            context={
+              paid
+                ? `reservas jogadas com cobrança · ${paid.prev7} na semana anterior`
+                : "falha ao carregar pagamentos"
             }
           />
           <Kpi

@@ -67,6 +67,11 @@ export type MatchesMetrics = {
   total: number;
   last7: number;
   prev7: number;
+  /**
+   * Split das reservas jogadas por cobrança (price_cents > 0). Null quando a
+   * página carregada não cobre o total — um split parcial mentiria.
+   */
+  paid: { total: number; last7: number; prev7: number; last30: number } | null;
   /** Raw starts_at instants (ms epoch) for the client-side pace re-bucket.
       Null when the page we hold is smaller than the server's total — a partial
       histogram would show weeks that do not exist. */
@@ -299,7 +304,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, startsAtMs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, paid: null, startsAtMs: null };
   }
 
   const matches = data.matches;
@@ -316,11 +321,26 @@ async function fetchMatches(): Promise<MatchesMetrics> {
   // the old server series had: partial page → null.
   const startsAtMs = complete ? matches.map((m) => new Date(m.starts_at).getTime()) : null;
 
+  const paidRows = matches.filter((m) => (m.price_cents ?? 0) > 0);
+  const paidWithin = (from: number, to: number) =>
+    paidRows.filter((m) => {
+      const t = new Date(m.starts_at).getTime();
+      return t > from && t <= to;
+    }).length;
+
   return {
     failed: false,
     total,
     last7: inWindow(now - WEEK_MS, now),
     prev7: inWindow(now - 2 * WEEK_MS, now - WEEK_MS),
+    paid: complete
+      ? {
+          total: paidRows.length,
+          last7: paidWithin(now - WEEK_MS, now),
+          prev7: paidWithin(now - 2 * WEEK_MS, now - WEEK_MS),
+          last30: paidWithin(now - 30 * DAY_MS, now),
+        }
+      : null,
     startsAtMs,
   };
 }
