@@ -2,7 +2,8 @@ import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { getProductMetrics } from "@/lib/metrics";
-import { BP_PREMISSAS, bpTarget } from "@/lib/bp";
+import { BP_PREMISSAS, bpTarget, getBp } from "@/lib/bp";
+import { pushRiSnapshot } from "@/lib/ri-sync";
 import { cn } from "@/lib/utils";
 import {
   ChartCard,
@@ -534,6 +535,14 @@ export default async function MetricsPage() {
     users, matches, scorePosts, north, completion, partnerRating,
     activationMonth, monthly, playerStats, cohorts,
   } = await getProductMetrics();
+  // BP vivo (portal de RI, fallback local) + push do snapshot real para o RI
+  // — fire-and-forget: o investidor vê "Real vs Plano" com o mesmo agregado
+  // deste render, sem PII.
+  const bpMensal = await getBp();
+  pushRiSnapshot({
+    users, matches, scorePosts, north, completion, partnerRating,
+    activationMonth, monthly, playerStats, cohorts,
+  });
 
   const broken = [
     users.failed && "Usuários",
@@ -896,8 +905,8 @@ export default async function MetricsPage() {
                   ? activationMonth.jogaram / activationMonth.novos
                   : null,
               fmt: (v) => pct(v),
-              target: bpTarget("ativacao")?.value ?? null,
-              targetMonth: bpTarget("ativacao")?.monthLabel ?? "—",
+              target: bpTarget(bpMensal, "ativacao")?.value ?? null,
+              targetMonth: bpTarget(bpMensal, "ativacao")?.monthLabel ?? "—",
               context: activationMonth
                 ? `${activationMonth.jogaram} de ${activationMonth.novos} cadastrados no mês jogaram`
                 : "sem dado",
@@ -906,8 +915,8 @@ export default async function MetricsPage() {
               label: "Novos ativados no mês",
               real: activationMonth?.jogaram ?? null,
               fmt: (v) => v.toLocaleString("pt-BR"),
-              target: bpTarget("novosAtivados")?.value ?? null,
-              targetMonth: bpTarget("novosAtivados")?.monthLabel ?? "—",
+              target: bpTarget(bpMensal, "novosAtivados")?.value ?? null,
+              targetMonth: bpTarget(bpMensal, "novosAtivados")?.monthLabel ?? "—",
               context: activationMonth
                 ? `base nova do mês: ${activationMonth.novos}`
                 : "sem dado",
@@ -919,8 +928,8 @@ export default async function MetricsPage() {
                   ? monthly.currentMonthActives / users.total
                   : null,
               fmt: (v) => pct(v),
-              target: bpTarget("ativosSobreBase")?.value ?? null,
-              targetMonth: bpTarget("ativosSobreBase")?.monthLabel ?? "—",
+              target: bpTarget(bpMensal, "ativosSobreBase")?.value ?? null,
+              targetMonth: bpTarget(bpMensal, "ativosSobreBase")?.monthLabel ?? "—",
               context:
                 monthly && !users.failed
                   ? `${monthly.currentMonthActives} jogaram no mês ÷ ${users.total} cadastrados`
@@ -931,16 +940,16 @@ export default async function MetricsPage() {
               real: matches.gmv ? matches.gmv.monthCents / 100 : null,
               fmt: (v) =>
                 v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }),
-              target: (bpTarget("gmvCents")?.value ?? null) != null ? bpTarget("gmvCents")!.value / 100 : null,
-              targetMonth: bpTarget("gmvCents")?.monthLabel ?? "—",
+              target: (bpTarget(bpMensal, "gmvCents")?.value ?? null) != null ? bpTarget(bpMensal, "gmvCents")!.value / 100 : null,
+              targetMonth: bpTarget(bpMensal, "gmvCents")?.monthLabel ?? "—",
               context: matches.gmv ? "partidas pagas no mês-calendário corrente" : "sem dado",
             },
             {
               label: "Churn mensal",
               real: monthly?.churn?.rate ?? null,
               fmt: (v) => pct(v),
-              target: bpTarget("churnBlended")?.value ?? null,
-              targetMonth: bpTarget("churnBlended")?.monthLabel ?? "—",
+              target: bpTarget(bpMensal, "churnBlended")?.value ?? null,
+              targetMonth: bpTarget(bpMensal, "churnBlended")?.monthLabel ?? "—",
               higherIsBetter: false,
               context: monthly?.churn
                 ? `${monthly.churn.left} de ${monthly.churn.base} ativos de ${monthly.churn.baseMonth} não voltaram`

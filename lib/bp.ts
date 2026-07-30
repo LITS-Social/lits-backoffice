@@ -105,18 +105,84 @@ function spYm(): string {
  * linha neste mês (pré-lançamento, "–"), cai para o PRIMEIRO mês futuro que
  * define — o rótulo diz de qual mês o alvo é (ex.: "BP ago/26").
  */
-export function bpTarget(metric: keyof BpMonth): { value: number; monthLabel: string } | null {
-  const keys = Object.keys(BP_MENSAL).sort();
+export function bpTarget(
+  mensal: Record<string, BpMonth>,
+  metric: keyof BpMonth
+): { value: number; monthLabel: string } | null {
+  const keys = Object.keys(mensal).sort();
   const cur = spYm();
   for (const k of keys) {
     if (k < cur) continue;
-    const v = BP_MENSAL[k][metric];
+    const v = mensal[k][metric];
     if (v !== undefined) {
       const [y, m] = k.split("-");
       return { value: v, monthLabel: `${MONTH_LABEL[m]}/${y.slice(2)}` };
     }
   }
   return null;
+}
+
+/** "Jul/26" (formato do RI) → "2026-07". */
+const RI_MONTH: Record<string, string> = {
+  Jan: "01", Fev: "02", Mar: "03", Abr: "04", Mai: "05", Jun: "06",
+  Jul: "07", Ago: "08", Set: "09", Out: "10", Nov: "11", Dez: "12",
+};
+
+type RiBpPayload = {
+  v: number;
+  months: string[];
+  q: { usuariosAtivos?: (number | null)[]; partidas?: (number | null)[]; gmv?: (number | null)[]; baseCadastrada?: (number | null)[] };
+  operacional?: {
+    ativacao?: (number | null)[];
+    novosAtivados?: (number | null)[];
+    ativosSobreBase?: (number | null)[];
+    churnBlended?: (number | null)[];
+  };
+};
+
+/**
+ * O BP vivo: busca do portal de RI (fonte única, lib/bp-data.ts de lá) e cai
+ * para a cópia versionada acima quando o RI está fora do ar ou o sync não
+ * está configurado. Cache de 1h por instância.
+ */
+export async function getBp(): Promise<Record<string, BpMonth>> {
+  const token = process.env.RI_SYNC_TOKEN;
+  const base = process.env.RI_SYNC_URL || "https://ri.lits.social";
+  if (!token) return BP_MENSAL;
+  try {
+    const res = await fetch(`${base}/api/bp`, {
+      headers: { authorization: `Bearer ${token}` },
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return BP_MENSAL;
+    const bp = (await res.json()) as RiBpPayload;
+    if (bp.v !== 1 || !Array.isArray(bp.months)) return BP_MENSAL;
+    const out: Record<string, BpMonth> = {};
+    bp.months.forEach((label, i) => {
+      const [mon, yy] = label.split("/");
+      const mm = RI_MONTH[mon];
+      if (!mm || !yy) return;
+      const key = `20${yy}-${mm}`;
+      const pick = (arr?: (number | null)[]) => {
+        const v = arr?.[i];
+        return v == null || v === 0 ? undefined : v;
+      };
+      const gmvReais = pick(bp.q.gmv);
+      out[key] = {
+        ativacao: pick(bp.operacional?.ativacao),
+        novosAtivados: pick(bp.operacional?.novosAtivados),
+        ativosSobreBase: pick(bp.operacional?.ativosSobreBase),
+        churnBlended: pick(bp.operacional?.churnBlended),
+        totalAtivos: pick(bp.q.usuariosAtivos),
+        partidasPagasMes: pick(bp.q.partidas),
+        gmvCents: gmvReais !== undefined ? Math.round(gmvReais * 100) : undefined,
+        baseAcumulada: pick(bp.q.baseCadastrada),
+      };
+    });
+    return Object.keys(out).length > 0 ? out : BP_MENSAL;
+  } catch {
+    return BP_MENSAL;
+  }
 }
 
 /** Receita LITS de uma partida paga pela fórmula do BP:
