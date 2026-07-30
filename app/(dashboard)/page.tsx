@@ -213,6 +213,99 @@ function FunnelSection({
     = na linha (empate dentro do arredondamento). */
 type BpChip = { target: string; monthLabel: string; ok: boolean | null };
 
+/* ── Placar do modelo — bullet chart real × alvo do BP ────────────────────
+   A visualização certa para real-contra-meta: barra do valor real com um
+   marcador vertical no alvo; verde quando bate o plano, terracota quando
+   não (churn compara invertido). Uma linha por métrica, escala própria. */
+
+type BpRow = {
+  label: string;
+  real: number | null;
+  fmt: (v: number) => string;
+  target: number | null;
+  targetMonth: string;
+  higherIsBetter?: boolean;
+  context: string;
+};
+
+function BpScoreboard({ rows }: { rows: BpRow[] }) {
+  return (
+    <div className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+      <div className="mb-5">
+        <h2 className="eyebrow">Modelo vs BP</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          Cada linha compara o real com o alvo do Business Plan (marcador vertical). Verde =
+          batendo o plano; quando o BP não define o mês corrente, o alvo é do primeiro mês
+          planejado.
+        </p>
+      </div>
+      <div className="space-y-4">
+        {rows.map((r) => {
+          const hib = r.higherIsBetter ?? true;
+          const ok =
+            r.real != null && r.target != null ? (hib ? r.real >= r.target : r.real <= r.target) : null;
+          const scale =
+            r.real != null || r.target != null
+              ? Math.max(r.real ?? 0, r.target ?? 0) * 1.18 || 1
+              : 1;
+          const realW = r.real != null ? Math.max((r.real / scale) * 100, r.real > 0 ? 1.5 : 0) : 0;
+          const targetX = r.target != null ? (r.target / scale) * 100 : null;
+          return (
+            <div
+              key={r.label}
+              className="grid grid-cols-1 items-center gap-x-4 gap-y-1 sm:grid-cols-[190px_minmax(0,1fr)_180px]"
+            >
+              <div>
+                <p className="text-[11.5px] font-600 text-[var(--text-primary)]">{r.label}</p>
+                <p className="text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
+                  {r.context}
+                </p>
+              </div>
+              <div className="relative h-4 w-full overflow-visible rounded-[4px] bg-[var(--surface-raised)]">
+                {r.real != null && (
+                  <div
+                    className="h-full rounded-[3px]"
+                    style={{
+                      width: `${realW}%`,
+                      background: ok == null ? "var(--border-strong)" : ok ? "var(--color-success)" : "var(--color-clay)",
+                    }}
+                  />
+                )}
+                {targetX != null && (
+                  <span
+                    aria-hidden
+                    title={`BP ${r.targetMonth}: ${r.fmt(r.target!)}`}
+                    className="absolute -top-1 bottom-[-4px] w-[2px] rounded-full bg-[var(--text-secondary)]"
+                    style={{ left: `${targetX}%` }}
+                  />
+                )}
+              </div>
+              <p className="flex items-baseline gap-2 sm:justify-end">
+                <span className="numeral text-[17px] text-[var(--text-primary)]">
+                  {r.real != null ? r.fmt(r.real) : "—"}
+                </span>
+                <span className="text-[10px] font-300 tabular-nums text-[var(--text-tertiary)]">
+                  BP {r.targetMonth}: {r.target != null ? r.fmt(r.target) : "—"}
+                </span>
+                {ok != null && (
+                  <span
+                    className={cn(
+                      "text-[10px] font-600",
+                      ok ? "text-[var(--color-success)]" : "text-[var(--color-clay)]"
+                    )}
+                  >
+                    {ok ? "acima" : "abaixo"}
+                  </span>
+                )}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Kpi({
   label,
   value,
@@ -454,24 +547,6 @@ export default async function MetricsPage() {
     : null;
   const fmtBRL = (cents: number) =>
     (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  // Chip "vs BP": compara o real com o alvo do plano no mês corrente (ou no
-  // primeiro mês que o BP define a linha). `higherIsBetter=false` para churn.
-  const bpChip = (
-    metric: Parameters<typeof bpTarget>[0],
-    actual: number | null,
-    fmt: (v: number) => string,
-    higherIsBetter = true
-  ) => {
-    const t = bpTarget(metric);
-    if (!t || actual == null) return null;
-    const ok =
-      Math.abs(actual - t.value) / Math.max(Math.abs(t.value), 1e-9) < 0.005
-        ? null
-        : higherIsBetter
-          ? actual > t.value
-          : actual < t.value;
-    return { target: fmt(t.value), monthLabel: t.monthLabel, ok };
-  };
 
   // One breakdown string for every completion surface. expiredNeverConfirmed
   // null = legacy fallback (old BFF): its "canceladas" still counts every
@@ -798,222 +873,196 @@ export default async function MetricsPage() {
           inviteAcceptance7d={north.inviteAcceptance}
         />
 
-        {/* ── Modelo & dinheiro — janela explícita em cada card ───────────────── */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
-          <Kpi
-            label="Jogos pagos / ativo / mês"
-            value={
-              playerStats && playerStats.ativosJogaram30 > 0
-                ? (
-                    playerStats.participacoesPagas30 / playerStats.ativosJogaram30
-                  ).toLocaleString("pt-BR", { maximumFractionDigits: 2 })
-                : "—"
-            }
-            {...(playerStats && playerStats.ativosJogaram30 > 0
-              ? {
-                  delta:
-                    playerStats.participacoesPagas30 / playerStats.ativosJogaram30 >=
-                    BP_PREMISSAS.jogosPagosPorAtivoMes
-                      ? "na premissa"
-                      : "abaixo",
-                  deltaGood:
-                    playerStats.participacoesPagas30 / playerStats.ativosJogaram30 >=
-                    BP_PREMISSAS.jogosPagosPorAtivoMes,
-                }
-              : {})}
-            bp={
-              playerStats && playerStats.ativosJogaram30 > 0
-                ? {
-                    target: BP_PREMISSAS.jogosPagosPorAtivoMes.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 1,
-                    }),
-                    monthLabel: "premissa",
-                    ok:
-                      playerStats.participacoesPagas30 / playerStats.ativosJogaram30 >=
-                      BP_PREMISSAS.jogosPagosPorAtivoMes,
-                  }
-                : null
-            }
-            context={
-              playerStats && playerStats.ativosJogaram30 > 0
-                ? `30 dias: ${playerStats.participacoesPagas30} participações pagas ÷ ${playerStats.ativosJogaram30} que jogaram · total (pagas+normais): ${playerStats.participacoes30}`
-                : "ninguém jogou nos últimos 30 dias"
-            }
-          />
-          <Kpi
-            label="Taxa de ativação (mês)"
-            value={
-              activationMonth && activationMonth.novos > 0
-                ? pct(activationMonth.jogaram / activationMonth.novos)
-                : "—"
-            }
-            bp={bpChip(
-              "ativacao",
-              activationMonth && activationMonth.novos > 0
-                ? activationMonth.jogaram / activationMonth.novos
-                : null,
-              (v) => pct(v)
-            )}
-            context={
-              activationMonth
-                ? activationMonth.novos > 0
-                  ? `${activationMonth.jogaram} de ${activationMonth.novos} cadastrados no mês jogaram ≥1 partida${
-                      activationMonth.novos < 10 ? " · amostra pequena" : ""
-                    } · por janela de dias nas coortes abaixo`
-                  : "ninguém se cadastrou neste mês ainda"
-                : "sem dado de usuários ou de reservas jogadas"
-            }
-          />
-          <Kpi
-            label="Novos ativados no mês"
-            value={activationMonth ? String(activationMonth.jogaram) : "—"}
-            bp={bpChip("novosAtivados", activationMonth?.jogaram ?? null, (v) =>
-              v.toLocaleString("pt-BR")
-            )}
-            context={
-              activationMonth
-                ? `cadastrados no mês que jogaram a 1ª partida · base nova do mês: ${activationMonth.novos}`
-                : "sem dado de usuários ou de reservas jogadas"
-            }
-          />
-          <Kpi
-            label="Repetição (2ª partida)"
-            value={
-              playerStats && playerStats.repetition.everPlayers > 0
-                ? pct(playerStats.repetition.everRepeated / playerStats.repetition.everPlayers)
-                : "—"
-            }
-            context={
-              playerStats
-                ? playerStats.repetition.everPlayers > 0
-                  ? `${playerStats.repetition.everRepeated} de ${playerStats.repetition.everPlayers} que estrearam jogaram de novo (consolidado)${
-                      playerStats.repetition.cohort > 0
-                        ? ` · em ≤30d da estreia: ${pct(playerStats.repetition.repeated / playerStats.repetition.cohort)} (${playerStats.repetition.repeated} de ${playerStats.repetition.cohort} com janela fechada)`
-                        : " · janela de 30d ainda sem coorte fechada"
-                    }`
-                  : "ninguém estreou ainda"
-                : "sem dado de reservas jogadas"
-            }
-          />
-          <Kpi
-            label="Ativos / base cadastrada"
-            value={
-              monthly && !users.failed && users.total > 0
-                ? pct(monthly.currentMonthActives / users.total)
-                : "—"
-            }
-            bp={bpChip(
-              "ativosSobreBase",
-              monthly && !users.failed && users.total > 0
-                ? monthly.currentMonthActives / users.total
-                : null,
-              (v) => pct(v)
-            )}
-            context={
-              monthly && !users.failed && users.total > 0
-                ? `${monthly.currentMonthActives} que jogaram no mês ÷ ${users.total} cadastrados`
-                : "sem dado de usuários ou de reservas jogadas"
-            }
-          />
-          <Kpi
-            label="Churn mensal"
-            value={monthly?.churn ? pct(monthly.churn.rate) : "—"}
-            {...(monthly?.churn
-              ? { delta: monthly.churn.month, deltaGood: monthly.churn.rate <= 0.3 }
-              : {})}
-            bp={bpChip("churnBlended", monthly?.churn?.rate ?? null, (v) => pct(v), false)}
-            context={
-              monthly?.churn
-                ? `${monthly.churn.left} de ${monthly.churn.base} ativos de ${monthly.churn.baseMonth} não jogaram em ${monthly.churn.month}${
-                    monthly.churn.base < 10 ? " · amostra pequena" : ""
-                  }`
-                : "sem meses fechados suficientes para medir"
-            }
-          />
-          <Kpi
-            label="GMV"
-            value={matches.gmv ? fmtBRL(matches.gmv.totalCents) : "—"}
-            bp={bpChip("gmvCents", matches.gmv?.monthCents ?? null, (v) => fmtBRL(v))}
-            context={
-              matches.gmv
-                ? `desde o início · mês corrente: ${fmtBRL(matches.gmv.monthCents)} · 30 dias: ${fmtBRL(matches.gmv.last30Cents)}`
-                : "página de reservas parcial"
-            }
-          />
-          <Kpi
-            label="Receita LITS (est.)"
-            value={matches.gmv ? fmtBRL(matches.gmv.receitaTotalCents) : "—"}
-            context={
-              matches.gmv
-                ? `fórmula do BP (comissão 7,5% + markup 10% + R$6/partida) · mês: ${fmtBRL(matches.gmv.receitaMonthCents)} · 30d: ${fmtBRL(matches.gmv.receita30Cents)}`
-                : "página de reservas parcial"
-            }
-          />
-          <Kpi
-            label="Ticket médio (pago)"
-            value={
-              matches.gmv && matches.paid && matches.paid.total > 0
-                ? fmtBRL(Math.round(matches.gmv.totalCents / matches.paid.total))
-                : "—"
-            }
-            bp={
-              matches.gmv && matches.paid && matches.paid.total > 0
-                ? {
-                    target: fmtBRL(BP_PREMISSAS.ticketMedioCents),
-                    monthLabel: "premissa",
-                    ok:
-                      Math.round(matches.gmv.totalCents / matches.paid.total) >=
-                      BP_PREMISSAS.ticketMedioCents,
-                  }
-                : null
-            }
-            context={
-              matches.gmv && matches.paid && matches.paid.total > 0
-                ? `GMV ÷ ${matches.paid.total} partidas pagas, desde o início`
-                : "sem partidas pagas ainda"
-            }
-          />
-          <Kpi
-            label="Densidade (aprox.)"
-            value={
-              north.validMatchesPerUser
-                ? north.validMatchesPerUser.avg_candidates.toLocaleString("pt-BR", {
-                    maximumFractionDigits: 1,
-                  })
-                : "—"
-            }
-            context={
-              north.validMatchesPerUser
-                ? `parceiros da MESMA categoria por usuário ativo (mín. ${north.validMatchesPerUser.min_candidates}) — clube e horário ainda não entram na conta`
-                : "sem usuários ativos nivelados"
-            }
-          />
-          <Kpi
-            label="Só olharam o feed"
-            value={
-              north.appOpenNoAction7d && north.appOpenNoAction7d.dau > 0
-                ? pct(north.appOpenNoAction7d.no_action / north.appOpenNoAction7d.dau)
-                : north.appOpenNoAction && north.appOpenNoAction.dau > 0
-                  ? pct(north.appOpenNoAction.no_action / north.appOpenNoAction.dau)
+        {/* ── Placar do modelo — real × BP em bullet chart ─────────────────────── */}
+        <BpScoreboard
+          rows={[
+            {
+              label: "Jogos pagos / ativo / mês",
+              real:
+                playerStats && playerStats.ativosJogaram30 > 0
+                  ? playerStats.participacoesPagas30 / playerStats.ativosJogaram30
+                  : null,
+              fmt: (v) => v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
+              target: BP_PREMISSAS.jogosPagosPorAtivoMes,
+              targetMonth: "premissa",
+              context: playerStats
+                ? `${playerStats.participacoesPagas30} participações pagas ÷ ${playerStats.ativosJogaram30} que jogaram (30d)`
+                : "sem dado",
+            },
+            {
+              label: "Taxa de ativação (mês)",
+              real:
+                activationMonth && activationMonth.novos > 0
+                  ? activationMonth.jogaram / activationMonth.novos
+                  : null,
+              fmt: (v) => pct(v),
+              target: bpTarget("ativacao")?.value ?? null,
+              targetMonth: bpTarget("ativacao")?.monthLabel ?? "—",
+              context: activationMonth
+                ? `${activationMonth.jogaram} de ${activationMonth.novos} cadastrados no mês jogaram`
+                : "sem dado",
+            },
+            {
+              label: "Novos ativados no mês",
+              real: activationMonth?.jogaram ?? null,
+              fmt: (v) => v.toLocaleString("pt-BR"),
+              target: bpTarget("novosAtivados")?.value ?? null,
+              targetMonth: bpTarget("novosAtivados")?.monthLabel ?? "—",
+              context: activationMonth
+                ? `base nova do mês: ${activationMonth.novos}`
+                : "sem dado",
+            },
+            {
+              label: "Ativos / base cadastrada",
+              real:
+                monthly && !users.failed && users.total > 0
+                  ? monthly.currentMonthActives / users.total
+                  : null,
+              fmt: (v) => pct(v),
+              target: bpTarget("ativosSobreBase")?.value ?? null,
+              targetMonth: bpTarget("ativosSobreBase")?.monthLabel ?? "—",
+              context:
+                monthly && !users.failed
+                  ? `${monthly.currentMonthActives} jogaram no mês ÷ ${users.total} cadastrados`
+                  : "sem dado",
+            },
+            {
+              label: "GMV do mês",
+              real: matches.gmv ? matches.gmv.monthCents / 100 : null,
+              fmt: (v) =>
+                v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }),
+              target: (bpTarget("gmvCents")?.value ?? null) != null ? bpTarget("gmvCents")!.value / 100 : null,
+              targetMonth: bpTarget("gmvCents")?.monthLabel ?? "—",
+              context: matches.gmv ? "partidas pagas no mês-calendário corrente" : "sem dado",
+            },
+            {
+              label: "Churn mensal",
+              real: monthly?.churn?.rate ?? null,
+              fmt: (v) => pct(v),
+              target: bpTarget("churnBlended")?.value ?? null,
+              targetMonth: bpTarget("churnBlended")?.monthLabel ?? "—",
+              higherIsBetter: false,
+              context: monthly?.churn
+                ? `${monthly.churn.left} de ${monthly.churn.base} ativos de ${monthly.churn.baseMonth} não voltaram`
+                : "sem meses fechados suficientes",
+            },
+          ]}
+        />
+
+        {/* ── Dinheiro ─────────────────────────────────────────────────────────── */}
+        <div>
+          <p className="eyebrow mb-3">Dinheiro</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Kpi
+              label="GMV"
+              value={matches.gmv ? fmtBRL(matches.gmv.totalCents) : "—"}
+              context={
+                matches.gmv
+                  ? `desde o início · mês corrente: ${fmtBRL(matches.gmv.monthCents)} · 30 dias: ${fmtBRL(matches.gmv.last30Cents)}`
+                  : "página de reservas parcial"
+              }
+            />
+            <Kpi
+              label="Receita LITS (est.)"
+              value={matches.gmv ? fmtBRL(matches.gmv.receitaTotalCents) : "—"}
+              context={
+                matches.gmv
+                  ? `fórmula do BP (comissão 7,5% + markup 10% + R$6/partida) · mês: ${fmtBRL(matches.gmv.receitaMonthCents)}`
+                  : "página de reservas parcial"
+              }
+            />
+            <Kpi
+              label="Ticket médio (pago)"
+              value={
+                matches.gmv && matches.paid && matches.paid.total > 0
+                  ? fmtBRL(Math.round(matches.gmv.totalCents / matches.paid.total))
                   : "—"
-            }
-            context={
-              north.appOpenNoAction7d && north.appOpenNoAction7d.dau > 0
-                ? `7 dias: ${north.appOpenNoAction7d.no_action} de ${north.appOpenNoAction7d.dau} sem nenhuma ação`
-                : north.appOpenNoAction && north.appOpenNoAction.dau > 0
-                  ? `hoje: ${north.appOpenNoAction.no_action} de ${north.appOpenNoAction.dau} · amostra de 1 dia — janela de 7d chega no deploy do bff`
-                  : "sem dado de sessões"
-            }
-          />
-          <Kpi
-            label="Abriram o app na semana"
-            value={users.failed ? "—" : String(users.activity.hoje + users.activity.semana)}
-            context={
-              users.failed
-                ? "falha ao carregar"
-                : `abrir ≠ jogar: ${playerStats ? playerStats.players7 : "—"} jogaram nos últimos 7 dias`
-            }
-          />
+              }
+              bp={
+                matches.gmv && matches.paid && matches.paid.total > 0
+                  ? {
+                      target: fmtBRL(BP_PREMISSAS.ticketMedioCents),
+                      monthLabel: "premissa",
+                      ok:
+                        Math.round(matches.gmv.totalCents / matches.paid.total) >=
+                        BP_PREMISSAS.ticketMedioCents,
+                    }
+                  : null
+              }
+              context={
+                matches.gmv && matches.paid && matches.paid.total > 0
+                  ? `GMV ÷ ${matches.paid.total} partidas pagas, desde o início`
+                  : "sem partidas pagas ainda"
+              }
+            />
+          </div>
+        </div>
+
+        {/* ── Engajamento da base ──────────────────────────────────────────────── */}
+        <div>
+          <p className="eyebrow mb-3">Engajamento</p>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <Kpi
+              label="Repetição (2ª partida)"
+              value={
+                playerStats && playerStats.repetition.everPlayers > 0
+                  ? pct(playerStats.repetition.everRepeated / playerStats.repetition.everPlayers)
+                  : "—"
+              }
+              context={
+                playerStats
+                  ? playerStats.repetition.everPlayers > 0
+                    ? `${playerStats.repetition.everRepeated} de ${playerStats.repetition.everPlayers} que estrearam jogaram de novo (consolidado)${
+                        playerStats.repetition.cohort > 0
+                          ? ` · em ≤30d: ${pct(playerStats.repetition.repeated / playerStats.repetition.cohort)}`
+                          : ""
+                      }`
+                    : "ninguém estreou ainda"
+                  : "sem dado de reservas jogadas"
+              }
+            />
+            <Kpi
+              label="Densidade (aprox.)"
+              value={
+                north.validMatchesPerUser
+                  ? north.validMatchesPerUser.avg_candidates.toLocaleString("pt-BR", {
+                      maximumFractionDigits: 1,
+                    })
+                  : "—"
+              }
+              context={
+                north.validMatchesPerUser
+                  ? `parceiros da MESMA categoria por usuário ativo (mín. ${north.validMatchesPerUser.min_candidates}) — clube e horário ainda não entram na conta`
+                  : "sem usuários ativos nivelados"
+              }
+            />
+            <Kpi
+              label="Só olharam o feed"
+              value={
+                north.appOpenNoAction7d && north.appOpenNoAction7d.dau > 0
+                  ? pct(north.appOpenNoAction7d.no_action / north.appOpenNoAction7d.dau)
+                  : north.appOpenNoAction && north.appOpenNoAction.dau > 0
+                    ? pct(north.appOpenNoAction.no_action / north.appOpenNoAction.dau)
+                    : "—"
+              }
+              context={
+                north.appOpenNoAction7d && north.appOpenNoAction7d.dau > 0
+                  ? `7 dias: ${north.appOpenNoAction7d.no_action} de ${north.appOpenNoAction7d.dau} sem nenhuma ação`
+                  : north.appOpenNoAction && north.appOpenNoAction.dau > 0
+                    ? `hoje: ${north.appOpenNoAction.no_action} de ${north.appOpenNoAction.dau} · amostra de 1 dia — janela de 7d chega no deploy do bff`
+                    : "sem dado de sessões"
+              }
+            />
+            <Kpi
+              label="Abriram o app na semana"
+              value={users.failed ? "—" : String(users.activity.hoje + users.activity.semana)}
+              context={
+                users.failed
+                  ? "falha ao carregar"
+                  : `abrir ≠ jogar: ${playerStats ? playerStats.players7 : "—"} jogaram nos últimos 7 dias`
+              }
+            />
+          </div>
         </div>
 
         {/* ── Coortes semanais de ativação — sinal semanas antes do card de 30d ── */}
