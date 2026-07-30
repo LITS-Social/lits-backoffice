@@ -812,15 +812,19 @@ export default async function MetricsPage() {
           <Kpi
             label="Repetição (2ª partida)"
             value={
-              playerStats && playerStats.repetition.cohort > 0
-                ? pct(playerStats.repetition.repeated / playerStats.repetition.cohort)
+              playerStats && playerStats.repetition.everPlayers > 0
+                ? pct(playerStats.repetition.everRepeated / playerStats.repetition.everPlayers)
                 : "—"
             }
             context={
               playerStats
-                ? playerStats.repetition.cohort > 0
-                  ? `${playerStats.repetition.repeated} de ${playerStats.repetition.cohort} que estrearam há 30d+ repetiram em ≤30d · ${playerStats.repetition.everRepeated} de ${playerStats.repetition.everPlayers} jogaram 2+ no total`
-                  : `ninguém estreou há 30d+ ainda · ${playerStats.repetition.everRepeated} de ${playerStats.repetition.everPlayers} já jogaram 2+`
+                ? playerStats.repetition.everPlayers > 0
+                  ? `${playerStats.repetition.everRepeated} de ${playerStats.repetition.everPlayers} que estrearam jogaram de novo (consolidado)${
+                      playerStats.repetition.cohort > 0
+                        ? ` · em ≤30d da estreia: ${pct(playerStats.repetition.repeated / playerStats.repetition.cohort)} (${playerStats.repetition.repeated} de ${playerStats.repetition.cohort} com janela fechada)`
+                        : " · janela de 30d ainda sem coorte fechada"
+                    }`
+                  : "ninguém estreou ainda"
                 : "sem dado de reservas jogadas"
             }
           />
