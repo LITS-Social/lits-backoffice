@@ -9,6 +9,7 @@ import { Timestamp } from "@/components/ui/timestamp";
 import { PlayerLink } from "@/components/ui/player-link";
 import { getApi } from "@/lib/api";
 import type { components } from "@/lib/api/openapi";
+import { DeviceList } from "../../_components/devices";
 import { DossierBookingsTable } from "./bookings-table";
 import { AccountActions } from "./account-actions";
 import { listUserSanctionsAction } from "./actions";
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
 type Dossier = components["schemas"]["OpsUserDossierResponseBody"];
 type Stats = components["schemas"]["OpsDossierStats"];
 type Report = components["schemas"]["PostReportItem"];
+type OpsUserDevice = components["schemas"]["OpsUserDevice"];
 
 /**
  * How many reports we scan looking for this player.
@@ -118,6 +120,12 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
         </Section>
 
         <Identity account={d.account} userId={id} />
+
+        <Devices
+          devices={d.devices}
+          caveat={d.devices_caveat}
+          failedReason={d.devices_unavailable_reason}
+        />
 
         <Profile profile={d.profile} />
 
@@ -317,6 +325,64 @@ function Identity({ account, userId }: { account: Dossier["account"]; userId: st
         <p className="mt-4 text-[11px] leading-snug text-[var(--text-tertiary)]">
           Sem telefone cadastrado nesta conta — não há número para ligar.
         </p>
+      )}
+    </Section>
+  );
+}
+
+/* ── Devices ──────────────────────────────────────────────────────────────── */
+
+/**
+ * Qual aparelho a pessoa usa — plataforma, versão do SO e versão do app.
+ *
+ * A qualificação (`caveat`) vem do BFF, não daqui. É um campo real da resposta
+ * justamente pra não poder sumir num redesign de frontend: a lista é filtrada
+ * por quem aceitou notificação, e uma seção vazia sem essa frase lê como "essa
+ * pessoa não tem celular" em vez de "não temos registro dessa pessoa".
+ *
+ * Por isso a nota é renderizada NOS DOIS estados — com aparelhos e sem —, e não
+ * só no vazio: uma lista com um aparelho também pode estar incompleta (o
+ * segundo aparelho da pessoa pode ser justamente o que recusou o push).
+ */
+function Devices({
+  devices,
+  caveat,
+  failedReason,
+}: {
+  // Nullable on the wire even though the BFF always sends an array: the schema
+  // is generated from a Go slice. Both shapes mean the same thing here.
+  devices: OpsUserDevice[] | null;
+  caveat: string;
+  failedReason?: string;
+}) {
+  const list = devices ?? [];
+
+  // "Não consegui ler" e "li e não tem nada" são fatos OPOSTOS, e a lista vazia
+  // sozinha não distingue os dois. Mesmo tratamento que a seção de denúncias.
+  if (failedReason) {
+    return (
+      <Section title="Dispositivos">
+        <div className="flex items-start gap-2.5 rounded-lg border border-[var(--color-error)]/25 bg-[var(--color-error-bg)] px-4 py-3">
+          <AlertTriangle
+            size={15}
+            strokeWidth={1.75}
+            className="mt-px shrink-0 text-[var(--color-error)]"
+          />
+          <p className="text-[12.5px] leading-relaxed text-[var(--color-error)]">{failedReason}</p>
+        </div>
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Dispositivos" note={caveat} noteTone="neutral">
+      {list.length === 0 ? (
+        <EmptyState
+          message="Nenhum aparelho registrado para push nesta conta."
+          tone="neutral"
+        />
+      ) : (
+        <DeviceList devices={list} />
       )}
     </Section>
   );

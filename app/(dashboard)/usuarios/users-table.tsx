@@ -9,6 +9,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn, formatRelative } from "@/lib/utils";
 import type { components } from "@/lib/api/openapi";
 import { Absent, Avatar, When } from "../_components/cells";
+import { DeviceCell, DEVICE_SOURCE_NOTE } from "../_components/devices";
+import { PanelNote } from "../_components/notes";
 import type { UsersAll } from "./actions";
 
 type OpsUserRow = components["schemas"]["OpsUserRow"];
@@ -16,7 +18,7 @@ type OpsUserRow = components["schemas"]["OpsUserRow"];
 // Written verbatim, one column per grid track — the sunken header band and every
 // data row share this template so cells line up down the table.
 const GRID =
-  "minmax(0,1.7fr) minmax(0,1fr) minmax(0,1.5fr) 132px 84px 108px";
+  "minmax(0,1.6fr) minmax(0,0.9fr) minmax(0,1.4fr) 118px 76px 100px 116px";
 
 const QUIET_LINK = cn(
   "truncate rounded-sm underline-offset-2 transition-colors",
@@ -24,7 +26,7 @@ const QUIET_LINK = cn(
   "focus-visible:text-[var(--primary)] focus-visible:underline"
 );
 
-const HEADS = ["Jogador", "Usuário", "Contato", "Cadastro", "Nível", "Últ. acesso"];
+const HEADS = ["Jogador", "Usuário", "Contato", "Cadastro", "Nível", "Últ. acesso", "Aparelho"];
 
 const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
 const fieldClass =
@@ -285,6 +287,10 @@ export function UsersTable({ initial }: { initial: UsersAll }) {
         )}
       </div>
 
+      {/* Sem esta linha, uma coluna Aparelho vazia lê como fato sobre a pessoa
+          em vez de fato sobre o nosso dado. Ver DEVICE_SOURCE_NOTE. */}
+      <PanelNote>{DEVICE_SOURCE_NOTE}</PanelNote>
+
       {filtered.length === 0 ? (
         <EmptyState
           message={
@@ -370,6 +376,10 @@ export function UsersTable({ initial }: { initial: UsersAll }) {
                     <span className="text-[var(--text-tertiary)]">nunca</span>
                   )}
                 </span>
+
+                {/* Aparelho — a plataforma registrada no push. Célula vazia NÃO
+                    é "sem celular": ver a nota acima da tabela e DeviceCell. */}
+                <DeviceCell devices={u.devices} />
               </div>
             ))}
           </div>
