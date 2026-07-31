@@ -11,6 +11,7 @@ import { getApi } from "@/lib/api";
 import type { components } from "@/lib/api/openapi";
 import { DossierBookingsTable } from "./bookings-table";
 import { AccountActions } from "./account-actions";
+import { ProfileEdit } from "./profile-edit";
 import { listUserSanctionsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -106,6 +107,19 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
           openReports={openAgainst.length}
           reportsConclusive={reportsComplete}
         />
+
+        <Section
+          title="Dados editáveis"
+          note="E-mail, gênero e categoria podem ser corrigidos aqui — o resto do perfil é do próprio jogador no app."
+        >
+          <ProfileEdit
+            userId={id}
+            initialEmail={d.account.email ?? ""}
+            initialGender={d.profile?.gender ?? ""}
+            initialCategory={d.profile?.category ?? ""}
+            hasProfile={Boolean(d.profile)}
+          />
+        </Section>
 
         <Section title="Ações">
           <AccountActions
