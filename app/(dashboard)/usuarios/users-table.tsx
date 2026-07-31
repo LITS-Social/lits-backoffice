@@ -17,8 +17,11 @@ type OpsUserRow = components["schemas"]["OpsUserRow"];
 
 // Written verbatim, one column per grid track — the sunken header band and every
 // data row share this template so cells line up down the table.
+// A última faixa cresceu de 116px pra caber "iOS + Android" numa linha só: um
+// crachá quebrado em duas linhas deixaria de ser o sinal de relance que ele
+// existe pra ser.
 const GRID =
-  "minmax(0,1.6fr) minmax(0,0.9fr) minmax(0,1.4fr) 118px 76px 100px 116px";
+  "minmax(0,1.6fr) minmax(0,0.9fr) minmax(0,1.4fr) 118px 76px 100px 140px";
 
 const QUIET_LINK = cn(
   "truncate rounded-sm underline-offset-2 transition-colors",
@@ -377,8 +380,9 @@ export function UsersTable({ initial }: { initial: UsersAll }) {
                   )}
                 </span>
 
-                {/* Aparelho — a plataforma registrada no push. Célula vazia NÃO
-                    é "sem celular": ver a nota acima da tabela e DeviceCell. */}
+                {/* Aparelho — a plataforma registrada no push, e um crachá
+                    preenchido quando são as duas. Célula vazia NÃO é "sem
+                    celular": ver a nota acima da tabela e DeviceCell. */}
                 <DeviceCell devices={u.devices} />
               </div>
             ))}

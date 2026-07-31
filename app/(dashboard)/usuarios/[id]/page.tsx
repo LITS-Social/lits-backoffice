@@ -9,7 +9,7 @@ import { Timestamp } from "@/components/ui/timestamp";
 import { PlayerLink } from "@/components/ui/player-link";
 import { getApi } from "@/lib/api";
 import type { components } from "@/lib/api/openapi";
-import { DeviceList } from "../../_components/devices";
+import { DeviceList, DeviceSummary } from "../../_components/devices";
 import { DossierBookingsTable } from "./bookings-table";
 import { AccountActions } from "./account-actions";
 import { listUserSanctionsAction } from "./actions";
@@ -382,7 +382,13 @@ function Devices({
           tone="neutral"
         />
       ) : (
-        <DeviceList devices={list} />
+        <>
+          {/* A resposta ("usa iOS e Android") antes do detalhe aparelho a
+              aparelho — deduzir isso comparando crachás de uma lista é trabalho
+              que a página pode fazer pelo operador. */}
+          <DeviceSummary devices={list} />
+          <DeviceList devices={list} />
+        </>
       )}
     </Section>
   );

@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Timestamp } from "@/components/ui/timestamp";
 import type { components } from "@/lib/api/openapi";
+import { cn } from "@/lib/utils";
 
 type OpsUserDevice = components["schemas"]["OpsUserDevice"];
 
@@ -30,6 +31,47 @@ export function platformLabel(platform: string): string {
 }
 
 /**
+ * Ordem de leitura fixa. A API devolve os aparelhos por RENOVAÇÃO de push, não
+ * por plataforma, então sem isto duas pessoas com exatamente os mesmos aparelhos
+ * apareceriam como "iOS + Android" e "Android + iOS" conforme quem abriu o app
+ * por último — e uma coluna que muda de forma não se lê de relance.
+ */
+const PLATFORM_ORDER = ["ios", "android", "web"];
+
+export type PlatformTally = { platform: string; devices: number };
+
+/**
+ * Uma linha por PLATAFORMA, não por aparelho: três iPhones somam "iOS ×3", e é
+ * essa lista deduplicada que responde "de onde essa pessoa vem". `devices.length`
+ * continua sendo a contagem de aparelhos — as duas perguntas são diferentes.
+ */
+export function tallyPlatforms(devices: OpsUserDevice[]): PlatformTally[] {
+  const counts = new Map<string, number>();
+  for (const d of devices) counts.set(d.platform, (counts.get(d.platform) ?? 0) + 1);
+
+  const rank = (p: string) => {
+    const i = PLATFORM_ORDER.indexOf(p);
+    return i === -1 ? PLATFORM_ORDER.length : i; // plataforma nova cai no fim, na ordem em que veio
+  };
+
+  return [...counts.entries()]
+    .map(([platform, count]) => ({ platform, devices: count }))
+    .sort((a, b) => rank(a.platform) - rank(b.platform));
+}
+
+/** Rótulo de crachá: "iOS", "iOS + Android". */
+export function platformsLabel(tally: PlatformTally[]): string {
+  return tally.map((t) => platformLabel(t.platform)).join(" + ");
+}
+
+/** A mesma informação em frase, pro dossiê: "Usa iOS e Android". */
+export function platformsSentence(tally: PlatformTally[]): string {
+  const names = tally.map((t) => platformLabel(t.platform));
+  if (names.length <= 1) return `Usa ${names[0] ?? ""}`;
+  return `Usa ${names.slice(0, -1).join(", ")} e ${names[names.length - 1]}`;
+}
+
+/**
  * O app manda a versão do SO CRUA — `ios.systemVersion` = "18.2",
  * `android.version.release` = "14" (lits_headers_interceptor.dart:87). Sozinho,
  * "18.2" não diz de que sistema é. A plataforma vem da coluna ao lado, então é
@@ -51,16 +93,25 @@ export function osLabel(platform: string, osVersion?: string): string {
  */
 export const DEVICE_SOURCE_NOTE =
   "A coluna Aparelho vem do registro de push: só aparece quem concedeu permissão de " +
-  "notificação. Quem recusou fica sem aparelho listado, mesmo tendo celular.";
+  "notificação. Quem recusou fica sem aparelho listado, mesmo tendo celular. " +
+  "O crachá destacado \"iOS + Android\" é quem registrou push nas duas plataformas.";
 
 /**
  * ── DeviceCell — a versão de tabela ───────────────────────────────────────────
  *
- * Compacta de propósito: uma linha de tabela responde "iOS ou Android?", e quem
- * quiser a versão exata do SO abre o dossiê. Plataformas distintas viram badges
- * (um usuário com iPhone e Android tem os dois); a versão do SO só aparece
- * quando é a MESMA em todos os aparelhos — senão seria escolher um aparelho
- * arbitrário pra representar a pessoa.
+ * Compacta de propósito: uma linha de tabela responde "de onde essa pessoa
+ * vem?", e quem quiser a versão exata do SO abre o dossiê.
+ *
+ * Quem usa DUAS plataformas é a exceção que interessa, e a primeira versão desta
+ * célula a escondia: dois crachás vazados lado a lado, no meio de uma coluna
+ * inteira de crachás vazados, some numa varredura rápida. Aqui as duas viram UM
+ * crachá preenchido ("iOS + Android") — um fato só, com fundo, sendo a única
+ * coisa colorida da coluna. É a diferença entre o operador ter que ler a coluna e
+ * a coluna se anunciar sozinha.
+ *
+ * A versão do SO só aparece quando há UM aparelho; com mais de um, a linha teria
+ * de eleger um deles pra representar a pessoa. No lugar dela vai a contagem, que
+ * vale pra qualquer número de aparelhos.
  */
 export function DeviceCell({ devices }: { devices?: OpsUserDevice[] | null }) {
   const list = devices ?? [];
@@ -76,28 +127,84 @@ export function DeviceCell({ devices }: { devices?: OpsUserDevice[] | null }) {
     );
   }
 
-  const platforms = [...new Set(list.map((d) => d.platform))];
+  const tally = tallyPlatforms(list);
+  const multi = tally.length > 1;
 
-  // A versão do SO só aparece na tabela quando há UM aparelho: com dois, a linha
-  // teria de escolher um deles pra representar a pessoa, e a escolha seria
-  // arbitrária. Quem precisa do detalhe de cada aparelho abre o dossiê.
   const only = list.length === 1 ? osLabel(list[0].platform, list[0].os_version) : "";
+  const detail = only || (list.length > 1 ? `${list.length} aparelhos` : "");
 
   return (
     <span className="flex min-w-0 flex-col gap-1">
       <span className="flex flex-wrap gap-1">
-        {platforms.map((p) => (
-          <Badge key={p} variant="muted">
-            {platformLabel(p)}
+        {multi ? (
+          // `whitespace-normal` sobrescreve o nowrap do Badge: numa combinação
+          // improvável e longa o crachá quebra em duas linhas em vez de ser
+          // cortado pelo overflow da tabela.
+          <Badge variant="info" className="max-w-full whitespace-normal">
+            {platformsLabel(tally)}
           </Badge>
-        ))}
+        ) : (
+          <Badge variant="muted">{platformLabel(tally[0].platform)}</Badge>
+        )}
       </span>
-      {only ? (
+      {detail ? (
         <span className="truncate text-[10.5px] leading-none text-[var(--text-tertiary)]">
-          {only}
+          {detail}
         </span>
       ) : null}
     </span>
+  );
+}
+
+/**
+ * ── DeviceSummary — a resposta antes do detalhe ───────────────────────────────
+ *
+ * No dossiê a lista abaixo tem uma linha por APARELHO; esta tem uma linha só,
+ * por PESSOA. Sem ela, "usa iPhone e Android" era uma conclusão que o operador
+ * tinha de tirar sozinho comparando crachás de três itens — e três iPhones se
+ * pareciam com três plataformas.
+ *
+ * O caso multi-plataforma ganha fundo e borda próprios porque é o único que
+ * muda o que se faz com a informação (testar um bug nos dois, ou não).
+ */
+export function DeviceSummary({ devices }: { devices: OpsUserDevice[] }) {
+  const tally = tallyPlatforms(devices);
+  if (tally.length === 0) return null;
+
+  const multi = tally.length > 1;
+
+  // Com um aparelho só, a linha de baixo já diz tudo — repetir "1 aparelho" aqui
+  // é ruído.
+  const breakdown =
+    devices.length < 2
+      ? ""
+      : multi
+        ? `${devices.length} aparelhos: ${tally
+            .map((t) => `${t.devices} ${platformLabel(t.platform)}`)
+            .join(", ")}`
+        : `${devices.length} aparelhos`;
+
+  return (
+    <div
+      className={cn(
+        "mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-4 py-3",
+        multi
+          ? "border-[var(--color-info)]/30 bg-[var(--color-info-bg)]"
+          : "border-[var(--border)] bg-[var(--surface)]"
+      )}
+    >
+      {/* Na faixa tingida do caso multi o fundo do crachá `info` é a MESMA cor da
+          faixa e o crachá desaparece; ali ele vira um chip claro sobre o tingido. */}
+      <Badge variant="info" className={multi ? "bg-[var(--surface)]" : undefined}>
+        {platformsLabel(tally)}
+      </Badge>
+      <span className="text-[13px] font-500 text-[var(--text-primary)]">
+        {platformsSentence(tally)}
+      </span>
+      {breakdown ? (
+        <span className="text-[11.5px] text-[var(--text-secondary)]">{breakdown}</span>
+      ) : null}
+    </div>
   );
 }
 
