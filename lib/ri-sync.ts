@@ -2,6 +2,23 @@ import "server-only";
 import type { ProductMetrics } from "@/lib/metrics";
 
 /**
+ * Campo que o BFF ainda NÃO declara no contrato, lido defensivamente — mesma
+ * convenção do `genderOf`/`birthdateOf` da tabela de usuários: o painel acende
+ * sozinho no dia em que o campo chegar, sem precisar de deploy do backoffice.
+ *
+ * `invites_accepted` e `quick_matches_filled` estavam no `openapi.d.ts`
+ * commitado mas NÃO existem no `openapi.json` do bff-backoffice — o arquivo
+ * gerado tinha derivado do contrato real, então `npm run generate:api` (o
+ * próprio script do repo) quebrava o typecheck. Ler por aqui tira a dependência
+ * do arquivo gerado estar adiantado, e o `?? null` que já existia continua
+ * valendo: o funil mostra "sem dado", não zero.
+ */
+function pendingNum(o: object, key: string): number | null {
+  const v = (o as Record<string, unknown>)[key];
+  return typeof v === "number" ? v : null;
+}
+
+/**
  * Sincronização com o portal de RI (ri.lits.social).
  *
  * O BFF exige o JWT humano em toda leitura, então nem o RI nem um cron
@@ -48,9 +65,9 @@ export function buildRiSnapshot(m: ProductMetrics) {
     funil: north.matchFunnel
       ? {
           convitesEnviados: north.matchFunnel.invites_sent ?? 0,
-          convitesAceitos: north.matchFunnel.invites_accepted ?? null,
+          convitesAceitos: pendingNum(north.matchFunnel, "invites_accepted"),
           quickMatchesAbertas: north.matchFunnel.quick_matches_opened ?? 0,
-          quickMatchesPreenchidas: north.matchFunnel.quick_matches_filled ?? null,
+          quickMatchesPreenchidas: pendingNum(north.matchFunnel, "quick_matches_filled"),
           realizadas: north.matchFunnel.played,
           conversao: north.matchFunnel.rate,
         }
