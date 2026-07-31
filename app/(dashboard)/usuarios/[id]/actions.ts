@@ -16,6 +16,13 @@ export type SanctionType = "ranked_suspension" | "platform_ban" | "shadowban";
 
 export type SanctionItem = components["schemas"]["SanctionItem"];
 
+/**
+ * The skill categories the BFF accepts, taken from the generated contract
+ * rather than retyped here — "none" is a real wire value meaning "não
+ * nivelado" (profiles.category IS NULL), not a UI placeholder.
+ */
+export type PlayerLevel = components["schemas"]["SetUserLevelRequestBody"]["level"];
+
 type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
 /** LGPD-style soft delete with a 30-day grace window. Staff-initiated. */
@@ -41,6 +48,39 @@ export async function reactivateUserAction(userId: string): Promise<ActionResult
   if (error) return { ok: false, error: error.detail || error.title || "Falha ao reativar." };
   revalidatePath(`/usuarios/${userId}`);
   return { ok: true, data: undefined };
+}
+
+/**
+ * Changes a player's skill category (nivelamento) — the operation that used to
+ * require a hand-run UPDATE on the production database.
+ *
+ * `reason` is mandatory on the wire: the BFF records it in lits.ops_audit_log
+ * together with the acting staff email and the from → to transition, which is
+ * the entire reason this endpoint exists rather than a psql session.
+ *
+ * A response whose `previous_level` equals `level` means the player was already
+ * in that category and nothing was written.
+ */
+export async function setUserLevelAction(
+  userId: string,
+  level: PlayerLevel,
+  reason: string
+): Promise<ActionResult<{ previousLevel: PlayerLevel; level: PlayerLevel; changed: boolean }>> {
+  const api = await getApi();
+  const { data, error } = await api.PUT("/v1/ops/users/{id}/level", {
+    params: { path: { id: userId } },
+    body: { level, reason },
+  });
+  if (error) return { ok: false, error: error.detail || error.title || "Falha ao mudar o nível." };
+  revalidatePath(`/usuarios/${userId}`);
+  return {
+    ok: true,
+    data: {
+      previousLevel: data.previous_level,
+      level: data.level,
+      changed: data.previous_level !== data.level,
+    },
+  };
 }
 
 export async function grantBadgeAction(

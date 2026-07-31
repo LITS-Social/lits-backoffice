@@ -892,6 +892,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/users/{id}/level": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a player's skill category (A|B|C|D|PRO or none)
+         * @description Staff-initiated nivelamento, replacing hand-run production UPDATEs. Goes through user-service UpdateProfile (which evicts the Redis profile cache — a direct DB write would not) and appends a lits.ops_audit_log row carrying the actor, the from → to transition and the operator's reason. reason is required. "none" clears the levelling and drops the player out of every Quick Match broadcast pool.
+         */
+        put: operations["ops-set-user-level"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/users/{id}/reactivate": {
         parameters: {
             query?: never;
@@ -3123,6 +3143,41 @@ export interface components {
              */
             total: number;
         };
+        SetUserLevelRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetUserLevelRequestBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Target skill category (profiles.category). "none" clears the levelling — that is NOT the same as category D, and it drops the player out of every Quick Match broadcast pool (matchmaking matches on p.category exactly).
+             * @enum {string}
+             */
+            level: "A" | "B" | "C" | "D" | "PRO" | "none";
+            /** @description Why the level is changing. Recorded verbatim in lits.ops_audit_log next to the from → to transition. */
+            reason: string;
+        };
+        SetUserLevelResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetUserLevelResponseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Category after this call, read back from user-service — not an echo of the request
+             * @enum {string}
+             */
+            level: "A" | "B" | "C" | "D" | "PRO" | "none";
+            /**
+             * @description Category before this call; "none" when the player had never been levelled. Equal to level = nothing changed.
+             * @enum {string}
+             */
+            previous_level: "A" | "B" | "C" | "D" | "PRO" | "none";
+            /** @description UUIDv7 of the user */
+            user_id: string;
+        };
         SuccessfulPaymentItem: {
             /**
              * Format: int64
@@ -5132,6 +5187,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeactivateUserResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-set-user-level": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the user whose level is being set */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetUserLevelRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetUserLevelResponseBody"];
                 };
             };
             /** @description Error */

@@ -9,7 +9,9 @@ import {
   liftSanctionAction,
   reactivateUserAction,
   revokeBadgeAction,
+  setUserLevelAction,
   type Badge as BadgeType,
+  type PlayerLevel,
   type SanctionItem,
   type SanctionType,
 } from "./actions";
@@ -41,6 +43,159 @@ function ErrorBanner({ message }: { message: string }) {
     <p className="rounded-md border border-[var(--color-error)]/30 bg-[var(--color-error-bg)] px-3 py-2 text-[11.5px] text-[var(--color-error)]">
       {message}
     </p>
+  );
+}
+
+/* ── Nível (categoria) ────────────────────────────────────────────────────── */
+
+const LEVEL_OPTIONS: PlayerLevel[] = ["A", "B", "C", "D", "PRO", "none"];
+
+// "none" is spelled out rather than shown as an empty option: an unlevelled
+// player is a state someone decided on (or never reached), not a missing value,
+// and it is NOT the bottom of the scale — D is.
+const LEVEL_LABEL: Record<PlayerLevel, string> = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  PRO: "PRO",
+  none: "não nivelado",
+};
+
+function LevelPill({ level }: { level: PlayerLevel }) {
+  return level === "none" ? (
+    <span className="text-[var(--text-tertiary)]">não nivelado</span>
+  ) : (
+    <span className="font-600 text-[var(--text-primary)]">{level}</span>
+  );
+}
+
+/**
+ * Changes profiles.category from the panel instead of from a psql session on
+ * production. Every save carries a mandatory reason and lands in
+ * lits.ops_audit_log stamped with the acting staff email and the from → to
+ * transition — see setUserLevelAction.
+ *
+ * Deliberately NOT on the user list: the level is a matchmaking input, and a
+ * one-click change from a table row is exactly the accident this screen exists
+ * to prevent. Picking a value here only opens the confirmation.
+ */
+function LevelSection({
+  userId,
+  hasProfile,
+  initialLevel,
+}: {
+  userId: string;
+  hasProfile: boolean;
+  initialLevel: PlayerLevel;
+}) {
+  const [current, setCurrent] = useState<PlayerLevel>(initialLevel);
+  const [choice, setChoice] = useState<PlayerLevel>(initialLevel);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  // No profiles row = no category column to write. The BFF 404s this case; say
+  // it here rather than letting someone pick a level and get an error back.
+  if (!hasProfile) {
+    return (
+      <p className="text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+        Este jogador tem conta mas <span className="font-600">não tem perfil</span> — o onboarding
+        nunca foi concluído, então não existe categoria para definir.
+      </p>
+    );
+  }
+
+  const dirty = choice !== current;
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[12.5px] text-[var(--text-secondary)]">
+          Categoria atual: <LevelPill level={current} />
+        </span>
+        <select
+          value={choice}
+          disabled={pending}
+          onChange={(e) => {
+            setChoice(e.target.value as PlayerLevel);
+            setError("");
+          }}
+          className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-[12px] text-[var(--text-primary)] disabled:opacity-50"
+        >
+          {LEVEL_OPTIONS.map((l) => (
+            <option key={l} value={l}>
+              {LEVEL_LABEL[l]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {dirty && (
+        <div className="space-y-2 rounded-lg border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-4 py-3.5">
+          <p className="text-[12.5px] text-[var(--text-primary)]">
+            <LevelPill level={current} /> <span className="text-[var(--text-tertiary)]">→</span>{" "}
+            <LevelPill level={choice} />
+          </p>
+
+          {/* The consequence, not just the field being written: matchmaking
+              broadcasts an open Jogo Rápido to everyone in the host's category
+              (exact match on profiles.category), so this moves the player
+              between pools — and "não nivelado" takes them out of all of them. */}
+          <p className="text-[11.5px] leading-snug text-[var(--color-clay)]">
+            {choice === "none"
+              ? "Remover o nivelamento tira o jogador de todos os pools de Jogo Rápido — ele deixa de receber convites abertos até ser nivelado de novo."
+              : `O jogador passa a receber os Jogos Rápidos abertos da categoria ${choice} e deixa de receber os da categoria anterior.`}
+          </p>
+
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Motivo (obrigatório) — fica registrado no log de auditoria com o seu e-mail"
+            rows={2}
+            className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)]"
+          />
+
+          {error && <ErrorBanner message={error} />}
+
+          <div className="flex items-center gap-2">
+            <button
+              disabled={pending || !reason.trim()}
+              onClick={() =>
+                startTransition(async () => {
+                  const res = await setUserLevelAction(userId, choice, reason.trim());
+                  if (!res.ok) {
+                    setError(res.error);
+                    return;
+                  }
+                  // Trust the value the BFF read back from user-service over the
+                  // one that was picked — if they ever disagree, the panel
+                  // should show what the database actually holds.
+                  setCurrent(res.data.level);
+                  setChoice(res.data.level);
+                  setReason("");
+                  setError("");
+                })
+              }
+              className="rounded-md bg-[var(--color-clay)] px-3 py-1.5 text-[11.5px] font-600 text-white transition-opacity disabled:opacity-50"
+            >
+              {pending ? "Salvando…" : "Confirmar mudança"}
+            </button>
+            <button
+              disabled={pending}
+              onClick={() => {
+                setChoice(current);
+                setReason("");
+                setError("");
+              }}
+              className="text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)] disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -329,18 +484,26 @@ function SanctionsSection({
 export function AccountActions({
   userId,
   isActive,
+  hasProfile,
+  level,
   badges,
   sanctions,
   sanctionsIncomplete,
 }: {
   userId: string;
   isActive: boolean;
+  hasProfile: boolean;
+  level: PlayerLevel;
   badges: string[];
   sanctions: SanctionItem[];
   sanctionsIncomplete: boolean;
 }) {
   return (
     <div className="space-y-6">
+      <div>
+        <p className="label-colus mb-2 text-[8.5px] text-[var(--text-tertiary)]">Nível</p>
+        <LevelSection userId={userId} hasProfile={hasProfile} initialLevel={level} />
+      </div>
       <div>
         <p className="label-colus mb-2 text-[8.5px] text-[var(--text-tertiary)]">Conta</p>
         <DeactivateSection userId={userId} isActive={isActive} />
