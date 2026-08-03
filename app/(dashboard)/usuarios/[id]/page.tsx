@@ -13,7 +13,7 @@ import { DeviceList, DeviceSummary } from "../../_components/devices";
 import { DossierBookingsTable } from "./bookings-table";
 import { AccountActions } from "./account-actions";
 import { ProfileEdit } from "./profile-edit";
-import { listUserSanctionsAction, type PlayerLevel } from "./actions";
+import { listUserSanctionsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -38,18 +38,6 @@ type OpsUserDevice = components["schemas"]["OpsUserDevice"];
  * make — so the UI says how far it actually looked instead. See ReportsSection.
  */
 const REPORT_SCAN_LIMIT = 200;
-
-/**
- * Narrows the dossier's free-string `profile.category` to the level editor's
- * value set. The column is a postgres enum so anything else is impossible in
- * practice, but this is a wire boundary — an unexpected value falls back to
- * "não nivelado" (the editor's "none") instead of being asserted into the union
- * and rendered as if it were a real category.
- */
-function toPlayerLevel(category: string | undefined): PlayerLevel {
-  const known: PlayerLevel[] = ["A", "B", "C", "D", "PRO"];
-  return known.find((l) => l === category) ?? "none";
-}
 
 export default async function UserDossierPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -124,12 +112,13 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
 
         <Section
           title="Dados editáveis"
-          note="E-mail e gênero podem ser corrigidos aqui — o resto do perfil é do próprio jogador no app. Nível fica em Ações, onde a mudança pede motivo."
+          note="E-mail, gênero e categoria podem ser corrigidos aqui — o resto do perfil é do próprio jogador no app. Mudança de categoria pede motivo e fica registrada."
         >
           <ProfileEdit
             userId={id}
             initialEmail={d.account.email ?? ""}
             initialGender={d.profile?.gender ?? ""}
+            initialCategory={d.profile?.category ?? ""}
             hasProfile={Boolean(d.profile)}
           />
         </Section>
@@ -139,7 +128,6 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
             userId={id}
             isActive={!d.account.deleted_at}
             hasProfile={!!d.profile}
-            level={toPlayerLevel(d.profile?.category)}
             badges={d.profile?.verified_badges ?? []}
             sanctions={sanctions.sanctions}
             sanctionsIncomplete={sanctions.incomplete}
