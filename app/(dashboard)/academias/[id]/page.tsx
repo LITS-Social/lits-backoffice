@@ -1,6 +1,7 @@
 import { PanelError } from "../../_components/notes";
 import { listCourtsAction } from "../../quadras/actions";
 import { AcademiaPage } from "./academia";
+import { getAcademiaMatches } from "./matches";
 
 export const dynamic = "force-dynamic";
 
@@ -28,5 +29,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       />
     );
   }
-  return <AcademiaPage courts={mine} />;
+  // Buscado aqui, no servidor, e não por fetch no cliente: é a mesma página, e
+  // o painel não deve piscar um bloco vazio antes de saber o que houve.
+  const matches = await getAcademiaMatches(mine.map((c) => c.id));
+  return <AcademiaPage courts={mine} matches={matches} />;
 }

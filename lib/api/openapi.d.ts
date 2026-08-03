@@ -1825,6 +1825,10 @@ export interface components {
         FinishedMatchItem: {
             alerts?: string[] | null;
             booking_id: string;
+            /** @description Nome da academia dona da quadra (franchises.name); vazio em quadra particular */
+            club_name?: string;
+            /** @description UUIDv7 da quadra reservada; vazio em quadra particular */
+            court_id?: string;
             court_label: string;
             currency?: string;
             /** Format: date-time */
@@ -2696,6 +2700,26 @@ export interface components {
             /** @description users.username; absent when the player never set one */
             username?: string;
         };
+        OpsUserDevice: {
+            /** @description LITS build on this device; empty on rows written before the app sent it */
+            app_version?: string;
+            /** @description push_tokens.device_id — stable per-install identifier */
+            device_id?: string;
+            /**
+             * Format: date-time
+             * @description When this device first registered for push
+             */
+            first_seen?: string;
+            /**
+             * Format: date-time
+             * @description Last push-token refresh from this device — NOT app activity (that is last_seen_at on the account)
+             */
+            last_seen?: string;
+            /** @description Handset OS version WITHOUT the OS name: '18.2' (iOS) / '14' (Android). Pair with platform to render 'iOS 18.2'. Empty until the device re-registers its push token after 2026-07-31. */
+            os_version?: string;
+            /** @description ios | android | web */
+            platform: string;
+        };
         OpsUserDossierResponseBody: {
             /**
              * Format: uri
@@ -2708,6 +2732,12 @@ export interface components {
             bookings: components["schemas"]["OpsDossierBooking"][] | null;
             /** @description True when the booking list hit the 100-row cap and is therefore incomplete */
             bookings_truncated: boolean;
+            /** @description Push-registered devices, newest refresh first. Empty is a valid answer — read devices_caveat before interpreting it. */
+            devices: components["schemas"]["OpsUserDevice"][] | null;
+            /** @description Why the device list may be incomplete — always populated */
+            devices_caveat: string;
+            /** @description Set when the device lookup failed; the empty device list then means nothing */
+            devices_unavailable_reason?: string;
             /** @description Absent when the user row exists but no profile row does (onboarding abandoned) */
             profile?: components["schemas"]["OpsDossierProfile"];
             ratings_received: components["schemas"]["OpsDossierRatings"];
@@ -2748,6 +2778,8 @@ export interface components {
              * @description Account creation (RFC3339)
              */
             created_at?: string;
+            /** @description Push-registered devices, newest refresh first. EMPTY DOES NOT MEAN 'no device' — see the panel note. */
+            devices?: components["schemas"]["OpsUserDevice"][] | null;
             /** @description users.email (staff-only contact field) */
             email?: string;
             /** @description profiles.gender: male|female|non_binary|prefer_not_say; absent when unset */
