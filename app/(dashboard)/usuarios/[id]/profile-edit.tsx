@@ -13,9 +13,6 @@ const GENDER_OPTIONS = [
   { value: "prefer_not_say", label: "Prefere não dizer" },
 ] as const;
 
-/** Enum category_skill. */
-const CATEGORY_OPTIONS = ["A", "B", "C", "D", "PRO"] as const;
-
 const fieldClass =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[12.5px] text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:bg-[var(--surface)] focus:outline-none";
 const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
@@ -24,45 +21,50 @@ const genderLabel = (v: string) =>
   GENDER_OPTIONS.find((g) => g.value === v)?.label ?? v;
 
 /**
- * Edição do que o staff pode corrigir no perfil: e-mail, gênero e categoria.
+ * Edição do que o staff pode corrigir no perfil: e-mail e gênero.
  *
- * Um formulário só, salvo de uma vez — os três campos vivem em duas tabelas,
- * mas para quem opera é "o perfil desta pessoa", e o backend grava tudo numa
- * transação. Campos em branco não limpam nada (o endpoint é esparso por
- * contrato); por isso o e-mail já nasce com o valor atual e os selects têm o
+ * CATEGORIA NÃO ESTÁ AQUI DE PROPÓSITO (decisão do founder 03/08). Ela também
+ * é `profiles.category`, e por um tempo teve DOIS editores nesta mesma página —
+ * "Categoria" neste formulário e "Nível" no bloco Ações. Mesmo campo, dois
+ * nomes, dois caminhos. O que decidiu a disputa não foi estética: o caminho
+ * daqui (PATCH /v1/ops/users/{id}) grava sem deixar rastro, enquanto o do bloco
+ * Ações (PUT /v1/ops/users/{id}/level) exige motivo e escreve em
+ * lits.ops_audit_log. Nivelamento muda com quem a pessoa é pareada; mudar isso
+ * sem registrar quem fez e por quê é o tipo de coisa que ninguém consegue
+ * reconstruir uma semana depois. Se for pra trazer categoria de volta pra cá,
+ * traga o motivo obrigatório junto — senão é regressão de auditoria.
+ *
+ * Um formulário só, salvo de uma vez — os dois campos vivem em tabelas
+ * diferentes, mas para quem opera é "o perfil desta pessoa", e o backend grava
+ * tudo numa transação. Campos em branco não limpam nada (o endpoint é esparso
+ * por contrato); por isso o e-mail já nasce com o valor atual e o select tem o
  * estado corrente selecionado.
  *
- * `hasProfile` falso = conta sem onboarding: gênero e categoria não têm onde
- * ser gravados, então os selects saem de cena em vez de aceitarem uma edição
- * que o serviço recusaria com 422.
+ * `hasProfile` falso = conta sem onboarding: gênero não tem onde ser gravado,
+ * então o select sai de cena em vez de aceitar uma edição que o serviço
+ * recusaria com 422.
  */
 export function ProfileEdit({
   userId,
   initialEmail,
   initialGender,
-  initialCategory,
   hasProfile,
 }: {
   userId: string;
   initialEmail: string;
   initialGender: string;
-  initialCategory: string;
   hasProfile: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState(initialEmail);
   const [gender, setGender] = useState(initialGender);
-  const [category, setCategory] = useState(initialCategory);
-  const [saved, setSaved] = useState<{ email: string; gender: string; category: string } | null>(
-    null
-  );
+  const [saved, setSaved] = useState<{ email: string; gender: string } | null>(null);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
 
   const current = saved ?? {
     email: initialEmail,
     gender: initialGender,
-    category: initialCategory,
   };
 
   if (!open) {
@@ -73,26 +75,16 @@ export function ProfileEdit({
           {current.email || <span className="text-[var(--text-tertiary)]">sem e-mail</span>}
         </p>
         {hasProfile && (
-          <>
-            <p className="text-[12px] font-300 text-[var(--text-secondary)]">
-              <span className="label-colus mr-2 text-[8.5px] text-[var(--text-tertiary)]">
-                Gênero
-              </span>
-              {current.gender ? (
-                genderLabel(current.gender)
-              ) : (
-                <span className="text-[var(--text-tertiary)]">não informado</span>
-              )}
-            </p>
-            <p className="text-[12px] font-300 text-[var(--text-secondary)]">
-              <span className="label-colus mr-2 text-[8.5px] text-[var(--text-tertiary)]">
-                Categoria
-              </span>
-              {current.category || (
-                <span className="text-[var(--text-tertiary)]">não nivelado</span>
-              )}
-            </p>
-          </>
+          <p className="text-[12px] font-300 text-[var(--text-secondary)]">
+            <span className="label-colus mr-2 text-[8.5px] text-[var(--text-tertiary)]">
+              Gênero
+            </span>
+            {current.gender ? (
+              genderLabel(current.gender)
+            ) : (
+              <span className="text-[var(--text-tertiary)]">não informado</span>
+            )}
+          </p>
         )}
         <button
           type="button"
@@ -108,7 +100,7 @@ export function ProfileEdit({
 
   return (
     <div className="space-y-3.5 rounded-lg border border-[var(--border)] bg-[var(--bg)]/40 px-4 py-4">
-      <div className={hasProfile ? "grid gap-3 sm:grid-cols-3" : ""}>
+      <div className={hasProfile ? "grid gap-3 sm:grid-cols-2" : ""}>
         <div>
           <label htmlFor="profile_email" className={labelClass}>
             Email
@@ -124,51 +116,30 @@ export function ProfileEdit({
         </div>
 
         {hasProfile && (
-          <>
-            <div>
-              <label htmlFor="profile_gender" className={labelClass}>
-                Gênero
-              </label>
-              <select
-                id="profile_gender"
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className={fieldClass}
-              >
-                <option value="">— não informado —</option>
-                {GENDER_OPTIONS.map((g) => (
-                  <option key={g.value} value={g.value}>
-                    {g.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="profile_category" className={labelClass}>
-                Categoria
-              </label>
-              <select
-                id="profile_category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className={fieldClass}
-              >
-                <option value="">— não nivelado —</option>
-                {CATEGORY_OPTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </>
+          <div>
+            <label htmlFor="profile_gender" className={labelClass}>
+              Gênero
+            </label>
+            <select
+              id="profile_gender"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              className={fieldClass}
+            >
+              <option value="">— não informado —</option>
+              {GENDER_OPTIONS.map((g) => (
+                <option key={g.value} value={g.value}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
       </div>
 
       <p className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
         {hasProfile
-          ? "Deixar um campo em branco mantém o valor atual — esta edição não apaga dados. A categoria aqui é a nivelada, não a declarada no onboarding."
+          ? "Deixar um campo em branco mantém o valor atual — esta edição não apaga dados. Nível do jogador se muda no bloco Ações, onde o motivo é obrigatório e fica registrado."
           : "Esta conta não concluiu o onboarding e não tem perfil: só o e-mail pode ser editado."}
       </p>
 
@@ -185,7 +156,7 @@ export function ProfileEdit({
           onClick={() =>
             startTransition(async () => {
               setError("");
-              const res = await updateUserProfileAction(userId, { email, gender, category });
+              const res = await updateUserProfileAction(userId, { email, gender });
               if (!res.ok) {
                 setError(res.error);
                 return;
@@ -193,7 +164,6 @@ export function ProfileEdit({
               setSaved({
                 email: res.data.email ?? email,
                 gender: res.data.gender ?? gender,
-                category: res.data.category ?? category,
               });
               setOpen(false);
             })
@@ -210,7 +180,6 @@ export function ProfileEdit({
             setError("");
             setEmail(current.email);
             setGender(current.gender);
-            setCategory(current.category);
           }}
           className="text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
         >

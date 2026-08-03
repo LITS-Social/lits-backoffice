@@ -124,13 +124,12 @@ export default async function UserDossierPage({ params }: { params: Promise<{ id
 
         <Section
           title="Dados editáveis"
-          note="E-mail, gênero e categoria podem ser corrigidos aqui — o resto do perfil é do próprio jogador no app."
+          note="E-mail e gênero podem ser corrigidos aqui — o resto do perfil é do próprio jogador no app. Nível fica em Ações, onde a mudança pede motivo."
         >
           <ProfileEdit
             userId={id}
             initialEmail={d.account.email ?? ""}
             initialGender={d.profile?.gender ?? ""}
-            initialCategory={d.profile?.category ?? ""}
             hasProfile={Boolean(d.profile)}
           />
         </Section>
