@@ -99,23 +99,6 @@ export function Sidebar({
         </Link>
       </div>
 
-      {/* ── Status line ────────────────────────────────────────────────── */}
-      <div className="px-5 pb-4">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <span className="relative flex h-1.5 w-1.5">
-              <span
-                className="live-dot inline-flex h-1.5 w-1.5 rounded-full bg-[var(--color-warning)]"
-                style={{ animation: "pulse-dot 2s ease-in-out infinite" }}
-              />
-            </span>
-            <span className="highlight text-[9px] leading-none text-[var(--text-tertiary)]">
-              Beta Closed
-            </span>
-          </span>
-        </div>
-      </div>
-
       {/* ── Global search mount point ──────────────────────────────────────
           Left empty on purpose. Another agent owns the search itself; pass it
           in as `searchSlot` and it lands here. The wrapper does not render at

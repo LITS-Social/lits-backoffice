@@ -838,6 +838,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit a user's email, gender and skill category (staff)
+         * @description Sparse staff edit over user-service AdminUpdateUser: `email` lands on users, `gender`/`category` on profiles, in one transaction. Omitted fields are left untouched — this endpoint cannot clear a field. 409 when the email already belongs to another account; 422 when the user has no profile row to carry gender/category. Returns the refreshed console row.
+         */
+        patch: operations["ops-update-user"];
+        trace?: never;
+    };
     "/v1/ops/users/{id}/badges": {
         parameters: {
             query?: never;
@@ -1825,6 +1845,10 @@ export interface components {
         FinishedMatchItem: {
             alerts?: string[] | null;
             booking_id: string;
+            /** @description Nome da academia dona da quadra (franchises.name); vazio em quadra particular */
+            club_name?: string;
+            /** @description UUIDv7 da quadra reservada; vazio em quadra particular */
+            court_id?: string;
             court_label: string;
             currency?: string;
             /** Format: date-time */
@@ -2259,7 +2283,12 @@ export interface components {
         MatchFunnel: {
             /**
              * Format: int64
-             * @description Direct guest invites created, all time. LOWER BOUND: a declined/expired free invite clears guest_id and leaves no trace
+             * @description Direct invites that got accepted (booking reached awaiting_guest_payment/confirmed/live/played), all time
+             */
+            invites_accepted: number;
+            /**
+             * Format: int64
+             * @description Invite attempts, all time: every non-quick-match booking created (direct/casual/ranked). Counts declined and expired invites too — booking_mode is persistent, unlike guest_id (which a declined/expired invite clears)
              */
             invites_sent: number;
             /**
@@ -2503,6 +2532,8 @@ export interface components {
             created_at?: string;
             /** @description profiles.display_name; empty when onboarding never completed */
             display_name?: string;
+            /** @description profiles.gender: male|female|non_binary|prefer_not_say; empty when unset */
+            gender?: string;
             neighborhood?: string;
             /** @description casual | ranked */
             play_style?: string;
@@ -2737,6 +2768,12 @@ export interface components {
             user_id: string;
         };
         OpsUserRow: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/OpsUserRow.json
+             */
+            readonly $schema?: string;
             /** @description URL of the first profile photo; empty when none */
             avatar_url?: string;
             /** @description profiles.birthdate as YYYY-MM-DD; absent when unset */
@@ -3356,6 +3393,26 @@ export interface components {
              */
             readonly $schema?: string;
             status: string;
+        };
+        UpdateUserInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateUserInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description New skill category (profiles.category); omit to leave unchanged
+             * @enum {string}
+             */
+            category?: "A" | "B" | "C" | "D" | "PRO";
+            /** @description New login/contact email (users.email). Must be unique; omit to leave unchanged. */
+            email?: string;
+            /**
+             * @description New profiles.gender; omit to leave unchanged
+             * @enum {string}
+             */
+            gender?: "male" | "female" | "non_binary" | "prefer_not_say";
         };
         UserReportItem: {
             /** @description RFC3339 creation timestamp */
@@ -5081,6 +5138,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListAllUsersResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-update-user": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the user being edited */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsUserRow"];
                 };
             };
             /** @description Error */

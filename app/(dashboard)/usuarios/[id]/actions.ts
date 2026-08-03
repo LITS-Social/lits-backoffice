@@ -183,3 +183,51 @@ export async function listUserSanctionsAction(userId: string): Promise<UserSanct
   // Hit MAX_PAGES without exhausting the cursor — genuinely incomplete.
   return { sanctions: matched, incomplete: true };
 }
+
+export type ProfileEdit = { email?: string; gender?: string; category?: string };
+
+/**
+ * Edição de perfil pelo staff: e-mail (users) + gênero e categoria (profiles),
+ * numa transação só no user-service.
+ *
+ * Só campos preenchidos são enviados — este endpoint não limpa campo, por
+ * decisão de contrato: um campo em branco no formulário é deslize, não ordem.
+ * O 409 (e-mail já usado) e o 422 (conta sem perfil) chegam com a mensagem do
+ * BFF, que já é específica o bastante para o operador agir.
+ */
+export async function updateUserProfileAction(
+  userId: string,
+  edit: ProfileEdit
+): Promise<ActionResult<{ email?: string; gender?: string; category?: string }>> {
+  const body: ProfileEdit = {};
+  if (edit.email?.trim()) body.email = edit.email.trim();
+  if (edit.gender?.trim()) body.gender = edit.gender.trim();
+  if (edit.category?.trim()) body.category = edit.category.trim();
+  if (Object.keys(body).length === 0) {
+    return { ok: false, error: "Nada para salvar." };
+  }
+
+  const api = await getApi();
+  const { data, error, response } = await api.PATCH("/v1/ops/users/{id}", {
+    params: { path: { id: userId } },
+    // O tipo gerado exige os enums literais; o form já restringe os valores.
+    body: body as { email?: string; gender?: "male" | "female" | "non_binary" | "prefer_not_say"; category?: "A" | "B" | "C" | "D" | "PRO" },
+  });
+  if (error) {
+    // 404 aqui significa BFF antigo (rota inexistente), não usuário sumido — a
+    // página acabou de carregar o dossiê desse mesmo id.
+    if (response?.status === 404) {
+      return {
+        ok: false,
+        error:
+          "Edição de perfil ainda não disponível: falta o deploy do bff-backoffice com PATCH /v1/ops/users/{id}.",
+      };
+    }
+    return { ok: false, error: error.detail || error.title || "Falha ao salvar o perfil." };
+  }
+  revalidatePath(`/usuarios/${userId}`);
+  return {
+    ok: true,
+    data: { email: data.email, gender: data.gender, category: data.level },
+  };
+}
