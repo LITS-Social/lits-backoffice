@@ -15,6 +15,8 @@ import {
 import { FranchiseSection } from "../../quadras/[id]/editar/edit-court";
 import { AcademiaCalendar } from "./calendar";
 import { ImportPrintAcademia } from "./import-print-academia";
+import { MatchesSection } from "./matches-section";
+import type { AcademiaMatches } from "./matches";
 
 /**
  * The academia page is the operating unit of the panel: definições (nome,
@@ -372,7 +374,13 @@ function CourtCard({ court }: { court: CourtListItem }) {
 
 /* ══ page ═════════════════════════════════════════════════════════════════ */
 
-export function AcademiaPage({ courts }: { courts: CourtListItem[] }) {
+export function AcademiaPage({
+  courts,
+  matches,
+}: {
+  courts: CourtListItem[];
+  matches: AcademiaMatches;
+}) {
   const router = useRouter();
   const base = courts[0];
   // Bumping this remounts the calendar so it refetches after grid rewrites.
@@ -436,6 +444,8 @@ export function AcademiaPage({ courts }: { courts: CourtListItem[] }) {
             </li>
           </ul>
         </SectionCard>
+
+        <MatchesSection data={matches} />
 
         <AcademiaCalendar key={calendarEpoch} courts={courts} windows={windows} />
 
