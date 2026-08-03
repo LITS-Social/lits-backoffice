@@ -517,7 +517,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
 }
 
 /**
- * `platforms` ainda NÃO existe no openapi.json do bff-backoffice, então ele não
+ * `platform_split` ainda NÃO existe no openapi.json do bff-backoffice, então ele não
  * existe no `openapi.d.ts` gerado — ler pelo tipo quebraria o typecheck no dia
  * em que alguém rodasse `npm run generate:api`. Mesma convenção do `pendingNum`
  * de lib/ri-sync.ts: o card acende sozinho quando o campo chegar, sem deploy do
@@ -527,7 +527,14 @@ async function fetchMatches(): Promise<MatchesMetrics> {
  * faz o card dizer "sem dado" em vez de desenhar quatro zeros.
  */
 function pendingPlatforms(o: object): PlatformSplit | null {
-  const v = (o as Record<string, unknown>).platforms;
+  // `platform_split`, com underscore — é o nome que o bff manda de verdade
+  // (`json:"platform_split"` em ops_product_metrics_handler.go). Ficou como
+  // `platforms` por um tempo e o card passou o dia dizendo "sem dado" com o
+  // backend respondendo certo do outro lado: a leitura defensiva daqui, que
+  // existe pra nunca inventar zero, engoliu o desencontro em silêncio. Se um
+  // dia mudar o nome no bff, mude AQUI junto — não há typecheck cobrindo isto
+  // enquanto o campo não entrar no openapi.d.ts gerado.
+  const v = (o as Record<string, unknown>).platform_split;
   if (v == null || typeof v !== "object") return null;
   const p = v as Record<string, unknown>;
   // Number.isFinite + não-negativo em vez de só `typeof === "number"`: contagem
