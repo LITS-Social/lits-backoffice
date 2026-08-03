@@ -152,6 +152,29 @@ export type NorthMetrics = {
   /** Intent→game conversion: played over invites + quick matches (all time).
       Null on the old-BFF deploy window. */
   matchFunnel: components["schemas"]["MatchFunnel"] | null;
+  /**
+   * Repartição da base por sistema, vinda do registro de push. Partição
+   * EXCLUSIVA: cada conta cai em exatamente uma das quatro caixas, e `unknown`
+   * é a única honesta para quem nunca registrou push — "não sabemos", não "não
+   * tem celular" (ver DEVICE_SOURCE_NOTE em _components/devices).
+   *
+   * Null enquanto o bff não publica o bloco: o card mostra "sem dado", não zero.
+   */
+  platforms: PlatformSplit | null;
+};
+
+export type PlatformSplit = {
+  iosOnly: number;
+  androidOnly: number;
+  /** Registrou push nas DUAS plataformas — a mesma exceção que na lista de
+      usuários vira o crachá preenchido "iOS + Android". */
+  both: number;
+  /** Nenhum registro de push. Ausência de DADO, não ausência de celular. */
+  unknown: number;
+  /** O `total` que o bff declara. O contrato diz que é a soma das quatro caixas;
+      guardado à parte para o card poder DIZER quando não for, em vez de tirar
+      percentuais sobre uma base que não fecha. Null se o campo não veio. */
+  reportedTotal: number | null;
 };
 
 /**
@@ -493,13 +516,44 @@ async function fetchMatches(): Promise<MatchesMetrics> {
   };
 }
 
+/**
+ * `platforms` ainda NÃO existe no openapi.json do bff-backoffice, então ele não
+ * existe no `openapi.d.ts` gerado — ler pelo tipo quebraria o typecheck no dia
+ * em que alguém rodasse `npm run generate:api`. Mesma convenção do `pendingNum`
+ * de lib/ri-sync.ts: o card acende sozinho quando o campo chegar, sem deploy do
+ * backoffice.
+ *
+ * Exige os quatro números; qualquer coisa fora disso vira null, e null é o que
+ * faz o card dizer "sem dado" em vez de desenhar quatro zeros.
+ */
+function pendingPlatforms(o: object): PlatformSplit | null {
+  const v = (o as Record<string, unknown>).platforms;
+  if (v == null || typeof v !== "object") return null;
+  const p = v as Record<string, unknown>;
+  // Number.isFinite + não-negativo em vez de só `typeof === "number"`: contagem
+  // de gente não é negativa nem NaN, e aceitar qualquer um dos dois faria o
+  // número ruim ATRAVESSAR o guard (NaN não é `== null`) e virar percentual
+  // NaN na tela. Contrato violado vira "sem dado", que é a leitura honesta —
+  // não um número inventado.
+  const num = (k: string) => {
+    const raw = p[k];
+    return typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : null;
+  };
+  const iosOnly = num("ios_only");
+  const androidOnly = num("android_only");
+  const both = num("both");
+  const unknown = num("unknown");
+  if (iosOnly == null || androidOnly == null || both == null || unknown == null) return null;
+  return { iosOnly, androidOnly, both, unknown, reportedTotal: num("total") };
+}
+
 async function fetchNorth(): Promise<NorthMetrics> {
   const failed: NorthMetrics = {
     failed: true,
     invitesSent7d: null, inviteAcceptance: null, newActive7d: null,
     onboarding: null, retentionWeek2: null, referralCodesUsed7d: null,
     woToday: null, appOpenNoAction: null, appOpenNoAction7d: null, validMatchesPerUser: null,
-    completion: null, matchFunnel: null,
+    completion: null, matchFunnel: null, platforms: null,
   };
 
   try {
@@ -524,6 +578,7 @@ async function fetchNorth(): Promise<NorthMetrics> {
       // old running BFF still omits the block.
       completion: data.completion ?? null,
       matchFunnel: data.match_funnel ?? null,
+      platforms: pendingPlatforms(data),
     };
   } catch {
     return failed;

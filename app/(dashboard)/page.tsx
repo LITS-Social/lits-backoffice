@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { getProductMetrics } from "@/lib/metrics";
+import { getProductMetrics, type PlatformSplit } from "@/lib/metrics";
 import { BP_MENSAL, BP_PREMISSAS, bpTarget, getBp } from "@/lib/bp";
 import { pushRiSnapshot } from "@/lib/ri-sync";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import {
   ChartsGrid,
   PaidShareMeter,
   } from "./_components/metric-charts";
+import { DEVICE_SOURCE_NOTE } from "./_components/devices";
 
 export const dynamic = "force-dynamic";
 
@@ -448,6 +449,214 @@ function ProgressCard({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/* ── Usuários por sistema — iOS × Android sobre a base inteira ──────────────
+   Decomposição do número de cima ("Usuários"), com a mesma fonte e a mesma
+   ressalva da coluna Aparelho da lista: o registro de push. Só existe linha
+   para quem concedeu permissão de notificação, então a base se parte em QUATRO
+   caixas, não duas.
+
+   Duas armadilhas moram aqui, e o desenho existe para desarmar as duas:
+
+   1. `unknown` não pode ser escondido. "62% iOS / 38% Android" calculado só
+      sobre quem tem registro, apresentado como se fosse a base, afirma algo
+      falso sobre todo mundo que recusou o push. Por isso a barra é sobre a base
+      INTEIRA — sem registro é uma faixa como as outras — e o par iOS × Android
+      carrega o próprio denominador escrito ao lado.
+   2. `both` não pode sumir. Quem registrou nas duas plataformas é a exceção que
+      muda o que se faz com a informação (testar um bug nos dois), e na lista de
+      usuários ela já ganha crachá preenchido. Aqui ela ganha faixa própria na
+      cor `info` — a mesma do crachá — e entra nos DOIS percentuais, que por
+      isso somam mais de 100%. A linha embaixo diz isso em vez de deixar a conta
+      parecer errada. */
+
+function PlatformCard({ split }: { split: PlatformSplit | null }) {
+  const shell = "grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6";
+
+  // Campo ainda não publicado pelo bff: sem dado, nunca zero — quatro zeros aqui
+  // leriam como "ninguém tem celular".
+  if (!split) {
+    return (
+      <div className={shell}>
+        <h2 className="eyebrow">Usuários por sistema</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          iOS × Android na base, pelo registro de push. Chega com o deploy do bff-backoffice
+          (bloco platforms) — até lá fica sem dado, não em zero.
+        </p>
+      </div>
+    );
+  }
+
+  const { iosOnly, androidOnly, both, unknown, reportedTotal } = split;
+  // Denominador = o que está desenhado. O `total` do contrato deveria bater com
+  // a soma; quando não bate, o card diz, em vez de tirar percentual sobre uma
+  // base que não fecha.
+  const base = iosOnly + androidOnly + both + unknown;
+  const known = iosOnly + androidOnly + both;
+  const mismatch = reportedTotal != null && reportedTotal !== base;
+
+  if (base === 0) {
+    return (
+      <div className={shell}>
+        <h2 className="eyebrow">Usuários por sistema</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          Nenhuma conta na base ainda.
+        </p>
+      </div>
+    );
+  }
+
+  // Quem usa iOS inclui quem usa os dois — é verdade sobre a pessoa, e é o que
+  // responde "quantos abrem o app num iPhone".
+  const iosUsers = iosOnly + both;
+  const androidUsers = androidOnly + both;
+
+  const segments = [
+    { name: "Só iOS", value: iosOnly, color: "var(--chart-cat-a)", muted: false },
+    { name: "Só Android", value: androidOnly, color: "var(--chart-cat-b)", muted: false },
+    { name: "iOS e Android", value: both, color: "var(--color-info)", muted: false },
+    // Ausência de dado não é uma categoria de produto: fica neutra, sem cor de
+    // série, para não parecer uma terceira plataforma.
+    { name: "Sem registro", value: unknown, color: "var(--surface-raised)", muted: true },
+  ];
+
+  const par = [
+    { name: "iOS", users: iosUsers },
+    { name: "Android", users: androidUsers },
+  ];
+
+  return (
+    <div className={shell}>
+      <div className="mb-5">
+        <h2 className="eyebrow">Usuários por sistema</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          De onde a base abre o app. A barra reparte as{" "}
+          <span className="font-600 text-[var(--text-secondary)]">{base}</span> contas em quatro
+          caixas que não se sobrepõem; o par à esquerda é a leitura por plataforma, e nele quem
+          usa os dois entra dos dois lados.
+        </p>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,230px)_minmax(0,1fr)]">
+        {/* ── iOS × Android, com o denominador escrito ──────────────────────── */}
+        <div className="lg:border-r lg:border-[var(--border)] lg:pr-6">
+          {known === 0 ? (
+            <p className="text-[12px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+              Nenhuma das {base} contas registrou push — não sabemos o sistema de nenhuma delas.
+            </p>
+          ) : (
+            <>
+              <p className="label-colus text-[8.5px] leading-snug text-[var(--text-tertiary)]">
+                Entre as {known} com registro
+              </p>
+              <div className="mt-3 space-y-2.5">
+                {par.map((p) => (
+                  <p key={p.name} className="flex items-baseline gap-2.5">
+                    <span className="w-[54px] shrink-0 text-[11.5px] font-600 text-[var(--text-secondary)]">
+                      {p.name}
+                    </span>
+                    <span className="numeral text-[30px] leading-none text-[var(--text-primary)]">
+                      {pct(p.users / known)}
+                    </span>
+                    <span className="text-[11px] font-300 text-[var(--text-tertiary)]">
+                      {p.users} contas
+                    </span>
+                  </p>
+                ))}
+              </div>
+              {both > 0 && (
+                <p className="mt-3 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+                  Passa de 100% somando os dois:{" "}
+                  <span className="font-600 text-[var(--text-secondary)]">{both}</span>{" "}
+                  {both === 1 ? "conta usa" : "contas usam"} iOS e Android.
+                </p>
+              )}
+              {/* O tamanho do buraco, dito antes que alguém leia os % acima como
+                  se fossem sobre a base. */}
+              <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+                {unknown === 0 ? (
+                  <>Todas as {base} contas da base têm registro de push.</>
+                ) : (
+                  <>
+                    Fora dessa conta:{" "}
+                    <span className="font-600 text-[var(--text-secondary)]">{unknown}</span> das{" "}
+                    {base} contas ({pct(unknown / base)}) sem registro — sistema desconhecido.
+                  </>
+                )}
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* ── A base inteira repartida ──────────────────────────────────────── */}
+        <div className="flex flex-col justify-center gap-4">
+          {/* aria-hidden: a barra é a versão VISUAL da lista logo abaixo, que
+              carrega os mesmos quatro números em texto. Sem isto o leitor de
+              tela anuncia tudo duas vezes — as faixas têm `title`, então elas
+              TÊM nome acessível. O `title` fica pro tooltip do mouse. */}
+          <div
+            aria-hidden="true"
+            className="flex h-4 w-full gap-[2px] overflow-hidden rounded-[4px]"
+          >
+            {segments.map(
+              (s) =>
+                s.value > 0 && (
+                  <div
+                    key={s.name}
+                    title={`${s.name}: ${s.value} de ${base}`}
+                    className={cn(
+                      "h-full rounded-[3px]",
+                      s.muted && "border border-[var(--border)]"
+                    )}
+                    style={{ width: `${(s.value / base) * 100}%`, background: s.color }}
+                  />
+                )
+            )}
+          </div>
+
+          <ul className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+            {segments.map((s) => (
+              <li key={s.name} className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="h-2 w-2 shrink-0 rounded-[2px] border border-[var(--border)]"
+                  style={{ background: s.color }}
+                />
+                <span
+                  className={cn(
+                    "text-[10.5px] font-300",
+                    s.muted ? "text-[var(--text-tertiary)]" : "text-[var(--text-secondary)]"
+                  )}
+                >
+                  {s.name}
+                </span>
+                <span className="numeral ml-auto text-[12px] text-[var(--text-primary)]">
+                  {s.value}
+                </span>
+                <span className="w-[34px] shrink-0 text-right text-[10.5px] font-300 tabular-nums text-[var(--text-tertiary)]">
+                  {pct(s.value / base)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {mismatch && (
+        <p className="mt-4 text-[10.5px] font-300 leading-relaxed text-[var(--color-warning)]">
+          O bff declara {reportedTotal} contas no total, mas as quatro caixas somam {base} — os
+          percentuais acima são sobre as {base} repartidas, não sobre a base declarada.
+        </p>
+      )}
+
+      {/* Uma explicação só sobre a origem do dado, escrita uma vez em
+          _components/devices e lida aqui e na lista de usuários. */}
+      <p className="mt-5 border-t border-[var(--border)] pt-3 text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+        Mesma fonte da lista de usuários. {DEVICE_SOURCE_NOTE}
+      </p>
     </div>
   );
 }
@@ -892,6 +1101,9 @@ export default async function MetricsPage() {
             }
           />
         </div>
+
+        {/* ── De onde a base abre o app — decomposição do "Usuários" acima ────── */}
+        <PlatformCard split={north.platforms} />
 
         {/* ── Dinheiro ─────────────────────────────────────────────────────────── */}
         <div>
