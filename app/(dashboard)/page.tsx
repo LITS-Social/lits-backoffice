@@ -531,36 +531,28 @@ function PlatformCard({ split }: { split: PlatformSplit | null }) {
     <div className={shell}>
       <div className="mb-5">
         <h2 className="eyebrow">Usuários por sistema</h2>
-        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          iOS × Android nas {base} contas, pelo registro de push.
-        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,230px)_minmax(0,1fr)]">
         {/* ── iOS × Android, com o denominador escrito ──────────────────────── */}
-        <div className="lg:border-r lg:border-[var(--border)] lg:pr-6">
+        <div className="flex flex-col justify-center lg:border-r lg:border-[var(--border)] lg:pr-6">
           {known === 0 ? (
-            <p className="text-[12px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+            <p className="text-center text-[12px] font-300 leading-relaxed text-[var(--text-tertiary)]">
               Nenhuma das {base} contas registrou push — não sabemos o sistema de nenhuma delas.
             </p>
           ) : (
             <>
-              <p className="label-colus text-[8.5px] leading-snug text-[var(--text-tertiary)]">
-                Entre as {known} com registro
-              </p>
-              <div className="mt-3 space-y-2.5">
+              <div className="flex items-start justify-center gap-10">
                 {par.map((p) => (
-                  <p key={p.name} className="flex items-baseline gap-2.5">
-                    <span className="w-[54px] shrink-0 text-[11.5px] font-600 text-[var(--text-secondary)]">
-                      {p.name}
-                    </span>
-                    <span className="numeral text-[30px] leading-none text-[var(--text-primary)]">
+                  <div key={p.name} className="text-center">
+                    <p className="text-[11.5px] font-600 text-[var(--text-secondary)]">{p.name}</p>
+                    <p className="numeral mt-1.5 text-[30px] leading-none text-[var(--text-primary)]">
                       {pct(p.users / known)}
-                    </span>
-                    <span className="text-[11px] font-300 text-[var(--text-tertiary)]">
+                    </p>
+                    <p className="mt-1.5 text-[11px] font-300 text-[var(--text-tertiary)]">
                       {p.users} contas
-                    </span>
-                  </p>
+                    </p>
+                  </div>
                 ))}
               </div>
             </>
@@ -593,7 +585,7 @@ function PlatformCard({ split }: { split: PlatformSplit | null }) {
             )}
           </div>
 
-          <ul className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+          <ul className="mx-auto grid w-full max-w-[560px] grid-cols-1 gap-x-10 gap-y-2 sm:grid-cols-2">
             {segments.map((s) => (
               <li key={s.name} className="flex items-center gap-2">
                 <span
@@ -628,7 +620,7 @@ function PlatformCard({ split }: { split: PlatformSplit | null }) {
         </p>
       )}
 
-      <p className="mt-5 border-t border-[var(--border)] pt-3 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+      <p className="mt-5 border-t border-[var(--border)] pt-3 text-center text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
         Só aparece quem permitiu notificação — quem recusou fica em “sem registro”. Quem usa os
         dois sistemas entra nos dois percentuais.
       </p>
