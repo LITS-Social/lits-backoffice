@@ -424,7 +424,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Apagar uma academia do banco (staff)
+         * @description Hard delete da franquia: quadras, grade e conectores cascateiam; preferências de clube e sugestões que apontavam para ela são anuladas na mesma transação. RECUSA com 409 quando qualquer quadra tem reserva ou quick match — histórico não se apaga; para tirar o local do app sem perder histórico, mude o tipo para diretório. 404 quando a franquia não existe.
+         */
+        delete: operations["ops-delete-franchise"];
         options?: never;
         head?: never;
         /**
@@ -1744,6 +1748,19 @@ export interface components {
              * @description Number of slots removed (available + blocked, past and future)
              */
             slots_deleted: number;
+        };
+        DeleteFranchiseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteFranchiseBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Quadras removidas junto com a academia (a grade cascateia)
+             */
+            courts_deleted: number;
         };
         DeletePostCommentRequestBody: {
             /**
@@ -4353,6 +4370,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FranchiseItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-delete-franchise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Franchise UUID to delete */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteFranchiseBody"];
                 };
             };
             /** @description Error */

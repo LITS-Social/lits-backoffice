@@ -688,3 +688,32 @@ export async function geocodeAction(q: string): Promise<GeocodeState> {
   }
   return { ok: true, results: data?.candidates ?? [] };
 }
+
+export type DeleteFranchiseState = { ok: boolean; courtsDeleted?: number; error?: string };
+
+/**
+ * Apaga a academia do banco — hard delete, com as quadras e a grade indo
+ * junto (cascade). O BFF recusa com 409 quando existe QUALQUER reserva ou
+ * quick match nas quadras: histórico não se apaga. O 404 aqui é rota
+ * inexistente (BFF antigo), não academia sumida — a página acabou de
+ * carregá-la.
+ */
+export async function deleteFranchiseAction(id: string): Promise<DeleteFranchiseState> {
+  const api = await getApi();
+  const { data, error, response } = await api.DELETE("/v1/ops/franchises/{id}", {
+    params: { path: { id } },
+  });
+  if (error) {
+    if (response?.status === 404) {
+      return {
+        ok: false,
+        error:
+          "Apagar academia ainda não disponível: falta o deploy do bff-backoffice com DELETE /v1/ops/franchises/{id}.",
+      };
+    }
+    return { ok: false, error: error.detail || error.title || "Falha ao apagar a academia." };
+  }
+  revalidatePath("/academias");
+  revalidatePath("/quadras");
+  return { ok: true, courtsDeleted: data.courts_deleted };
+}

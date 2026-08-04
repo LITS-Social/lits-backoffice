@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import type { CourtListItem } from "../../quadras/actions";
 import { deleteCourtAction } from "../../quadras/actions";
+import { deleteFranchiseAction } from "../../quadras/[id]/editar/actions";
 import {
   regenerateAvailabilityAction,
   updateFranchiseAction,
@@ -372,6 +373,103 @@ function CourtCard({ court }: { court: CourtListItem }) {
   );
 }
 
+/* ══ apagar academia ══════════════════════════════════════════════════════ */
+
+/**
+ * Hard delete da academia — quadras e grade vão junto (cascade no schema).
+ *
+ * Duas travas antes do banco: aqui, digitar o NOME da academia (não um "sim"
+ * mecânico — quem apaga a errada digitou o nome da errada); e no BFF, a recusa
+ * com 409 quando existe qualquer reserva ou quick match nas quadras, porque
+ * histórico não se apaga. Para tirar um local do app SEM perder histórico, o
+ * caminho é mudar o tipo para diretório, e o texto diz isso.
+ */
+function DeleteFranchiseSection({ franchiseId, franchiseName }: { franchiseId: string; franchiseName: string }) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [error, setError] = useState("");
+  const [pending, startTransition] = useTransition();
+  const nameMatches = typed.trim().toLowerCase() === franchiseName.trim().toLowerCase();
+
+  return (
+    <section className="rounded-xl border border-[var(--color-error)]/30 bg-[var(--surface)] p-4 sm:p-6">
+      <h2 className="eyebrow" style={{ color: "var(--color-error)" }}>
+        Zona de risco
+      </h2>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-xl text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          Apaga esta academia do banco — as quadras e toda a grade vão junto, sem volta. Só é
+          possível quando nenhuma quadra tem reserva ou quick match: histórico não se apaga. Para
+          tirar o local do app sem perder nada, mude o tipo para{" "}
+          <span className="font-600 text-[var(--text-secondary)]">diretório</span> lá em cima.
+        </p>
+        {!confirming && (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="shrink-0 rounded-md border border-[var(--color-error)]/40 px-3.5 py-2 text-[11.5px] font-500 text-[var(--color-error)] transition-colors hover:bg-[var(--color-error-bg)]"
+          >
+            Apagar academia
+          </button>
+        )}
+      </div>
+
+      {confirming && (
+        <div className="mt-4 space-y-3 rounded-lg border border-[var(--color-error)]/30 bg-[var(--color-error-bg)] px-4 py-4">
+          <p className="text-[11.5px] leading-relaxed text-[var(--color-error)]">
+            Digite <span className="font-600">{franchiseName}</span> para confirmar. Não há
+            desfazer.
+          </p>
+          <input
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder={franchiseName}
+            className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[12.5px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--color-error)] focus:outline-none"
+          />
+          {error && (
+            <p className="rounded-md border border-[var(--color-error)]/40 bg-[var(--surface)] px-3 py-2 text-[11.5px] text-[var(--color-error)]">
+              {error}
+            </p>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={pending || !nameMatches}
+              onClick={() =>
+                startTransition(async () => {
+                  setError("");
+                  const res = await deleteFranchiseAction(franchiseId);
+                  if (!res.ok) {
+                    setError(res.error ?? "Falha ao apagar.");
+                    return;
+                  }
+                  router.push("/academias");
+                  router.refresh();
+                })
+              }
+              className="rounded-md bg-[var(--color-error)] px-4 py-2 text-[11.5px] font-600 text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              {pending ? "Apagando…" : "Apagar de vez"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirming(false);
+                setTyped("");
+                setError("");
+              }}
+              className="text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /* ══ page ═════════════════════════════════════════════════════════════════ */
 
 export function AcademiaPage({
@@ -450,6 +548,11 @@ export function AcademiaPage({
         <AcademiaCalendar key={calendarEpoch} courts={courts} windows={windows} />
 
         <ImportPrintAcademia courts={courts} windows={windows} onDone={refresh} />
+
+        <DeleteFranchiseSection
+          franchiseId={base.franchise_id}
+          franchiseName={base.franchise_name}
+        />
       </div>
     </div>
   );
