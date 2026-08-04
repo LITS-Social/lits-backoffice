@@ -25,5 +25,9 @@ export async function deleteCourtAction(id: string): Promise<DeleteCourtState> {
   });
   if (error) return { ok: false, error: error.detail || error.title || "Falha ao excluir quadra." };
   revalidatePath("/quadras");
+  // A lista de academias é montada a partir das quadras (academias/page.tsx):
+  // apagar uma quadra muda a contagem — e apagar a última faz a academia sumir
+  // de lá. Sem isto o card volta obsoleto no Router Cache.
+  revalidatePath("/academias");
   return { ok: true };
 }

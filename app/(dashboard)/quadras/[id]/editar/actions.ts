@@ -655,6 +655,9 @@ export async function updateFranchiseAction(
     return { ok: false, error: error.detail || error.title || "Falha ao atualizar franquia." };
   }
   revalidatePath("/quadras");
+  // Nome, tipo e localização também desenham o card de /academias — a tela para
+  // onde o operador volta depois de salvar.
+  revalidatePath("/academias");
   return { ok: true, franchise: data };
 }
 
@@ -689,39 +692,7 @@ export async function geocodeAction(q: string): Promise<GeocodeState> {
   return { ok: true, results: data?.candidates ?? [] };
 }
 
-export type DeleteFranchiseState = { ok: boolean; courtsDeleted?: number; error?: string };
-
-/**
- * Apaga a academia do banco — hard delete, com as quadras e a grade indo
- * junto (cascade). O BFF recusa com 409 quando existe QUALQUER reserva ou
- * quick match nas quadras: histórico não se apaga. O 404 aqui é rota
- * inexistente (BFF antigo), não academia sumida — a página acabou de
- * carregá-la.
- */
-export async function deleteFranchiseAction(id: string): Promise<DeleteFranchiseState> {
-  const api = await getApi();
-  const { data, error, response } = await api.DELETE("/v1/ops/franchises/{id}", {
-    params: { path: { id } },
-  });
-  if (error) {
-    // BFF antigo: 404 (rota inexistente) ou 405 (a rota existe só com PATCH,
-    // e o DELETE volta Method Not Allowed) — os dois significam a mesma coisa.
-    if (response?.status === 404 || response?.status === 405) {
-      return {
-        ok: false,
-        error:
-          "Apagar academia ainda não disponível: falta o deploy do bff-backoffice com DELETE /v1/ops/franchises/{id} (PR #8 do lits-backend).",
-      };
-    }
-    return {
-      ok: false,
-      error:
-        error.detail ||
-        error.title ||
-        `Falha ao apagar a academia (HTTP ${response?.status ?? "?"}).`,
-    };
-  }
-  revalidatePath("/academias");
-  revalidatePath("/quadras");
-  return { ok: true, courtsDeleted: data.courts_deleted };
-}
+// Apagar academia mora em `app/(dashboard)/academias/actions.ts`, junto da tela
+// que a usa. Havia uma segunda cópia aqui que mandava o DELETE sem corpo — o que
+// o servidor entende como PRÉVIA, e responde 200 sem escrever nada. Uma ação de
+// apagar que não olha `deleted` no corpo é uma ação que nunca apaga.

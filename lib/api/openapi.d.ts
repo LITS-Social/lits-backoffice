@@ -425,8 +425,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Apagar uma academia do banco (staff)
-         * @description Hard delete da franquia: quadras, grade e conectores cascateiam; preferências de clube e sugestões que apontavam para ela são anuladas na mesma transação. RECUSA com 409 quando qualquer quadra tem reserva ou quick match — histórico não se apaga; para tirar o local do app sem perder histórico, mude o tipo para diretório. 404 quando a franquia não existe.
+         * Preview or hard-delete a franchise (two-step, audited)
+         * @description TWO STEPS. Called with no body (or an empty confirm_slug) this is a PREVIEW: nothing is written and the response reports exactly what a confirmed call would take — courts, their ENTIRE availability grid and the sync connectors are deleted by ON DELETE CASCADE, and profiles / saved audiences / partner suggestions / match proposals / posts are listed as detached. To actually delete, echo the venue's slug in confirm_slug and supply a reason. REFUSES with 409 (never a 500 from a constraint) when the venue has ANY booking — on the venue (bookings.club_id RESTRICT) or on its courts (bookings.court_id RESTRICT, reached through the courts cascade) — or an open quick match (quick_matches.court_id is NOT NULL, nothing to clear): the response carries the counts. Profiles whose home club is this venue and cached partner suggestions do NOT block: those references are NULLed in the same transaction (a preference is not history), and the id is removed from announcement_audiences.club_ids, which has no FK and would otherwise be silently orphaned. Posts are never deleted: lits.posts.location_id is SET NULL and the location_label frozen at publish time keeps showing where the match was played — except for posts published before 2026-07-31, which have no label and lose the venue name; that count is reported as posts_losing_venue_name. franchises is mirrored in the public and lits schemas with DIFFERENT ids (the natural key is slug), so both copies are resolved and deleted in ONE transaction under row locks. Writes lits.ops_audit_log (action franchise_delete) in the same transaction. 404 if the franchise does not exist.
          */
         delete: operations["ops-delete-franchise"];
         options?: never;
@@ -1749,19 +1749,6 @@ export interface components {
              */
             slots_deleted: number;
         };
-        DeleteFranchiseBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/DeleteFranchiseBody.json
-             */
-            readonly $schema?: string;
-            /**
-             * Format: int64
-             * @description Quadras removidas junto com a academia (a grade cascateia)
-             */
-            courts_deleted: number;
-        };
         DeletePostCommentRequestBody: {
             /**
              * Format: uri
@@ -1917,6 +1904,120 @@ export interface components {
             sender_id: string;
             /** @description Chat thread UUID */
             thread_id: string;
+        };
+        FranchiseDeleteBlockers: {
+            /**
+             * Format: int64
+             * @description Bookings on courts of this venue (bookings.court_id, ON DELETE RESTRICT), both schemas — reached through the courts cascade
+             */
+            bookings_on_courts: number;
+            /**
+             * Format: int64
+             * @description Bookings referencing this venue directly (bookings.club_id, ON DELETE RESTRICT), both schemas
+             */
+            bookings_on_venue: number;
+            /**
+             * Format: int64
+             * @description bookings_on_venue + bookings_on_courts. A booking is history, never cascaded over
+             */
+            bookings_total: number;
+            /**
+             * Format: int64
+             * @description Quick matches on courts of this venue (quick_matches.court_id, NOT NULL + NO ACTION), public schema only
+             */
+            quick_matches: number;
+            /**
+             * Format: int64
+             * @description Sum of every blocker. Zero means the delete can run
+             */
+            total: number;
+        };
+        FranchiseDeleteCascade: {
+            /**
+             * Format: int64
+             * @description Availability slots deleted with those courts (court_availability.court_id ON DELETE CASCADE) — the venue's entire grid, both schemas
+             */
+            availability_slots: number;
+            /**
+             * Format: int64
+             * @description Courts deleted by courts.franchise_id ON DELETE CASCADE, both schemas
+             */
+            courts: number;
+            /**
+             * Format: int64
+             * @description Sync connectors deleted by data_source_connectors.franchise_id ON DELETE CASCADE, both schemas
+             */
+            data_source_connectors: number;
+        };
+        FranchiseDeleteDetached: {
+            /**
+             * Format: int64
+             * @description Saved audiences whose club_ids uuid[] contained this venue; the id is removed from the array — there is no FK, so nothing else would have noticed
+             */
+            announcement_audiences: number;
+            /**
+             * Format: int64
+             * @description Match proposals hinting this club; cleared by match_proposals.club_hint_id ON DELETE SET NULL
+             */
+            match_proposals: number;
+            /**
+             * Format: int64
+             * @description Cached partner suggestions pointing here; NULLed by this handler in-transaction (24h recompute cache, reader already COALESCEs to '')
+             */
+            partner_suggestions: number;
+            /**
+             * Format: int64
+             * @description Live feed posts published here; location_id cleared by ON DELETE SET NULL — the post itself is never touched
+             */
+            posts: number;
+            /**
+             * Format: int64
+             * @description Of those posts, how many have NO frozen location_label and therefore lose the venue name for good — every post published before 2026-07-31 (migration 20260731140000)
+             */
+            posts_losing_venue_name: number;
+            /**
+             * Format: int64
+             * @description Profiles whose self-declared home club was this venue; NULLed by this handler in-transaction instead of blocking (preference is not history)
+             */
+            profiles_preferred_club: number;
+        };
+        FranchiseDeleteRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FranchiseDeleteRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Echo the venue's slug (as returned by the preview) to actually perform the delete. Empty or omitted = preview only, nothing is written */
+            confirm_slug?: string;
+            /** @description Why the venue is being removed. Required when confirm_slug is set; recorded verbatim in lits.ops_audit_log */
+            reason?: string;
+        };
+        FranchiseDeleteResultBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FranchiseDeleteResultBody.json
+             */
+            readonly $schema?: string;
+            /** @description Rows that refuse the delete. Non-zero total means a confirmed call returns 409 */
+            blockers: components["schemas"]["FranchiseDeleteBlockers"];
+            /** @description Rows the database deletes along with the venue */
+            cascade: components["schemas"]["FranchiseDeleteCascade"];
+            /** @description False for a preview (nothing was written); true when the venue was actually removed */
+            deleted: boolean;
+            /** @description Rows that survive with their reference to the venue cleared */
+            detached: components["schemas"]["FranchiseDeleteDetached"];
+            /** @description Public-schema franchise UUID */
+            franchise_id: string;
+            /** @description Venue display name */
+            name: string;
+            /** @description Which schemas hold(held) a row for this venue, e.g. ["public","lits"]. Both copies are deleted in one transaction */
+            schemas: string[] | null;
+            /** @description Venue slug — the natural key, and the value confirm_slug must echo */
+            slug: string;
+            /** @description One-line human summary of the same numbers, for the confirmation dialog */
+            summary: string;
         };
         FranchiseDetail: {
             /**
@@ -2313,6 +2414,16 @@ export interface components {
              * @description Bookings with status='played', all time
              */
             played: number;
+            /**
+             * Format: double
+             * @description Median hours from quick-match creation to confirmation, over the filled ones; null when none filled yet. Fill-rate says IF it filled; this says how much slack was left
+             */
+            quick_match_median_fill_hours: number | null;
+            /**
+             * Format: int64
+             * @description Quick-match bookings that got confirmed (confirmed_at set — an opponent filled it), all time
+             */
+            quick_matches_filled: number;
             /**
              * Format: int64
              * @description Quick-match bookings created, all time
@@ -2876,6 +2987,33 @@ export interface components {
             currency?: string;
             paid: boolean;
         };
+        PlatformSplit: {
+            /**
+             * Format: int64
+             * @description Usuários com token de push android e nenhum ios
+             */
+            android_only: number;
+            /**
+             * Format: int64
+             * @description Registraram push nas DUAS plataformas — mesma pessoa, dois aparelhos
+             */
+            both: number;
+            /**
+             * Format: int64
+             * @description Usuários com token de push ios e nenhum android
+             */
+            ios_only: number;
+            /**
+             * Format: int64
+             * @description Total de contas em public.users, sem nenhum filtro — o MESMO universo do card USUÁRIOS do painel (que pagina GET /v1/ops/users, e AdminListUsers não filtra deleted_at nem is_active). ios_only+android_only+both+unknown = total
+             */
+            total: number;
+            /**
+             * Format: int64
+             * @description NENHUM token de push. É 'não sabemos o aparelho' (recusou a permissão de notificação, ou só registrou push web), NÃO é 'não tem celular'
+             */
+            unknown: number;
+        };
         PlayerEvaluationItem: {
             /**
              * Format: double
@@ -2950,6 +3088,8 @@ export interface components {
             readonly $schema?: string;
             /** @description Today's (SP day) DAU vs users who opened the app but took no action; frontend computes the % */
             app_open_no_action: components["schemas"]["AppOpenNoAction"];
+            /** @description Rolling 7-day twin of app_open_no_action: WAU (last_seen_at in 7d) vs those with no product action in 7d — the stable window the dashboard rates read */
+            app_open_no_action_7d: components["schemas"]["AppOpenNoAction"];
             /**
              * Format: double
              * @description Always null: game_feedback has only a 1–5 partner rating, no balance/equilíbrio field. Partner rating lives in GET /v1/ops/player-evaluations
@@ -2978,6 +3118,8 @@ export interface components {
             new_active_users_7d: number | null;
             /** @description Onboarding→first-match conversion over the 14-day completion cohort */
             onboarding_to_first_match: components["schemas"]["OnboardingFunnel"];
+            /** @description Recorte da base por sistema operacional, derivado do registro de push (lits.push_tokens). unknown = sem token nenhum, ou seja 'não sabemos o aparelho' — não 'não tem celular'. Null quando não há usuário nenhum na base — sem dado, nunca um zero fabricado */
+            platform_split: components["schemas"]["PlatformSplit"];
             /**
              * Format: int64
              * @description invitation_code_uses rows with used_at in the last 7 days (signup code redemptions via auth-bridge)
@@ -4388,12 +4530,16 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Franchise UUID to delete */
+                /** @description Franchise UUID as returned by GET /v1/ops/franchises (the public-schema id) */
                 id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["FranchiseDeleteRequestBody"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -4401,7 +4547,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeleteFranchiseBody"];
+                    "application/json": components["schemas"]["FranchiseDeleteResultBody"];
                 };
             };
             /** @description Error */
