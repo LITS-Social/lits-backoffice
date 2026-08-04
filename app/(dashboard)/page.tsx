@@ -11,7 +11,6 @@ import {
   ChartsGrid,
   PaidShareMeter,
   } from "./_components/metric-charts";
-import { DEVICE_SOURCE_NOTE } from "./_components/devices";
 
 export const dynamic = "force-dynamic";
 
@@ -533,10 +532,7 @@ function PlatformCard({ split }: { split: PlatformSplit | null }) {
       <div className="mb-5">
         <h2 className="eyebrow">Usuários por sistema</h2>
         <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          De onde a base abre o app. A barra reparte as{" "}
-          <span className="font-600 text-[var(--text-secondary)]">{base}</span> contas em quatro
-          caixas que não se sobrepõem; o par à esquerda é a leitura por plataforma, e nele quem
-          usa os dois entra dos dois lados.
+          iOS × Android nas {base} contas, pelo registro de push.
         </p>
       </div>
 
@@ -567,26 +563,6 @@ function PlatformCard({ split }: { split: PlatformSplit | null }) {
                   </p>
                 ))}
               </div>
-              {both > 0 && (
-                <p className="mt-3 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-                  Passa de 100% somando os dois:{" "}
-                  <span className="font-600 text-[var(--text-secondary)]">{both}</span>{" "}
-                  {both === 1 ? "conta usa" : "contas usam"} iOS e Android.
-                </p>
-              )}
-              {/* O tamanho do buraco, dito antes que alguém leia os % acima como
-                  se fossem sobre a base. */}
-              <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-                {unknown === 0 ? (
-                  <>Todas as {base} contas da base têm registro de push.</>
-                ) : (
-                  <>
-                    Fora dessa conta:{" "}
-                    <span className="font-600 text-[var(--text-secondary)]">{unknown}</span> das{" "}
-                    {base} contas ({pct(unknown / base)}) sem registro — sistema desconhecido.
-                  </>
-                )}
-              </p>
             </>
           )}
         </div>
@@ -652,10 +628,9 @@ function PlatformCard({ split }: { split: PlatformSplit | null }) {
         </p>
       )}
 
-      {/* Uma explicação só sobre a origem do dado, escrita uma vez em
-          _components/devices e lida aqui e na lista de usuários. */}
-      <p className="mt-5 border-t border-[var(--border)] pt-3 text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-        Mesma fonte da lista de usuários. {DEVICE_SOURCE_NOTE}
+      <p className="mt-5 border-t border-[var(--border)] pt-3 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+        Só aparece quem permitiu notificação — quem recusou fica em “sem registro”. Quem usa os
+        dois sistemas entra nos dois percentuais.
       </p>
     </div>
   );
@@ -1102,9 +1077,6 @@ export default async function MetricsPage() {
           />
         </div>
 
-        {/* ── De onde a base abre o app — decomposição do "Usuários" acima ────── */}
-        <PlatformCard split={north.platforms} />
-
         {/* ── Dinheiro ─────────────────────────────────────────────────────────── */}
         <div>
           <p className="eyebrow mb-3">Dinheiro</p>
@@ -1340,6 +1312,9 @@ export default async function MetricsPage() {
             />
           </div>
         </div>
+
+        {/* ── De onde a base abre o app — leitura de apoio, por isso no fim ───── */}
+        <PlatformCard split={north.platforms} />
 
         {/* ── A planilha, viva ─────────────────────────────────────────────────── */}
         <MetricsTable title="Ação imediata — verificar todo dia" rows={daily} />
