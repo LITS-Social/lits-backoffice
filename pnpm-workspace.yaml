@@ -14,3 +14,19 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
   workerd: true
+
+# Security overrides (pnpm audit 2026-08-04) — transitivas presas por pais que pinam
+# versão vulnerável. Todas patch/minor dentro do range do CVE:
+#   postcss    — next pina 8.4.31 exato; CVEs de sourcemap/path traversal (<8.5.23)
+#   sharp      — next quer ^0.34; libvips CVEs herdados (<0.35.0)
+#   brace-exp. — DoS em 3 majors distintos via minimatch (eslint/glob/redocly)
+#   js-yaml    — merge-key quadrático (<4.3.0), via @redocly/openapi-core
+#   undici     — 5 advisories (<7.29.0), via wrangler>miniflare
+overrides:
+  "postcss@8": ^8.5.23
+  "sharp@0.34": ^0.35.0
+  "brace-expansion@1": ^1.1.18
+  "brace-expansion@2": ^2.1.4
+  "brace-expansion@5": ^5.0.9
+  "js-yaml@4": ^4.3.0
+  "undici@7": ^7.29.0
