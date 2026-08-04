@@ -704,14 +704,22 @@ export async function deleteFranchiseAction(id: string): Promise<DeleteFranchise
     params: { path: { id } },
   });
   if (error) {
-    if (response?.status === 404) {
+    // BFF antigo: 404 (rota inexistente) ou 405 (a rota existe só com PATCH,
+    // e o DELETE volta Method Not Allowed) — os dois significam a mesma coisa.
+    if (response?.status === 404 || response?.status === 405) {
       return {
         ok: false,
         error:
-          "Apagar academia ainda não disponível: falta o deploy do bff-backoffice com DELETE /v1/ops/franchises/{id}.",
+          "Apagar academia ainda não disponível: falta o deploy do bff-backoffice com DELETE /v1/ops/franchises/{id} (PR #8 do lits-backend).",
       };
     }
-    return { ok: false, error: error.detail || error.title || "Falha ao apagar a academia." };
+    return {
+      ok: false,
+      error:
+        error.detail ||
+        error.title ||
+        `Falha ao apagar a academia (HTTP ${response?.status ?? "?"}).`,
+    };
   }
   revalidatePath("/academias");
   revalidatePath("/quadras");
