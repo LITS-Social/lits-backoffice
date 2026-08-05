@@ -4,8 +4,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { getProductMetrics, type PlatformSplit } from "@/lib/metrics";
 import { BP_MENSAL, BP_PREMISSAS, bpTarget, getBp } from "@/lib/bp";
 import { pushRiSnapshot } from "@/lib/ri-sync";
+import { buildBpPace } from "@/lib/bp-pace";
 import { cn } from "@/lib/utils";
 import {
+  BpPaceGrid,
   ChartCard,
   ChartUnavailable,
   ChartsGrid,
@@ -747,6 +749,13 @@ export default async function MetricsPage() {
   // — fire-and-forget: o investidor vê "Real vs Plano" com o mesmo agregado
   // deste render, sem PII.
   const bpMensal = await getBp();
+  // A trajetória "Rumo ao BP" só precisa de users/matches, mas o builder lê o
+  // agregado inteiro — o mesmo objeto que o snapshot do RI já monta abaixo.
+  const bpPace = buildBpPace(
+    { users, matches, scorePosts, north, completion, partnerRating,
+      activationMonth, monthly, playerStats, cohorts },
+    bpMensal
+  );
   // Réguas do topo: agosto/26 do BP (julho é pré-lançamento no plano). O /api/bp
   // do RI não carrega partidas totais, então essas caem na cópia local.
   const bpAgo = bpMensal["2026-08"] ?? {};
@@ -1117,6 +1126,9 @@ export default async function MetricsPage() {
             />
           </div>
         </div>
+
+        {/* ── Rumo ao BP — real × meta interpolada, dia a dia ou semana a semana ── */}
+        <BpPaceGrid items={bpPace} />
 
         {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão — com filtro
             de período compartilhado entre crescimento e ritmo ─────────────────── */}

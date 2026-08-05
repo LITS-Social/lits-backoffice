@@ -519,6 +519,192 @@ export function ChartsGrid({
   );
 }
 
+/* ── Rumo ao BP — real acumulado × meta interpolada, em small multiples ───────
+   O BP é mensal; a linha tracejada é a interpolação linear entre fechamentos
+   de mês — régua de ritmo, não promessa diária. O real para em hoje; o resto
+   da tracejada mostra o que o mês ainda cobra. Um gráfico por card do topo. */
+
+export type BpPacePoint = { label: string; real: number | null; meta: number | null };
+export type BpPaceItem = {
+  key: string;
+  label: string;
+  kind: "count" | "brl";
+  daily: BpPacePoint[];
+  weekly: BpPacePoint[];
+  realNow: number;
+  metaNow: number | null;
+};
+
+const paceBRL = (v: number) =>
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+
+function paceFmt(kind: "count" | "brl", v: number): string {
+  return kind === "brl" ? paceBRL(v) : Math.round(v).toLocaleString("pt-BR");
+}
+
+function PaceChartSmall({ item, mode }: { item: BpPaceItem; mode: Granularity }) {
+  const points = mode === "daily" ? item.daily : item.weekly;
+  return (
+    <div className="h-[132px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={points} margin={{ top: 6, right: 4, bottom: 0, left: -8 }}>
+          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" opacity={0.5} />
+          <XAxis
+            dataKey="label"
+            axisLine={false}
+            tickLine={false}
+            tick={{ ...AXIS_TICK, fontSize: 8 }}
+            dy={4}
+            interval="preserveStartEnd"
+            minTickGap={40}
+          />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            width={46}
+            tickCount={3}
+            allowDecimals={false}
+            tick={{ ...AXIS_TICK, fontFamily: "var(--font-display)", fontSize: 9, fontWeight: 400 }}
+            tickFormatter={(v: number) =>
+              item.kind === "brl" ? `${Math.round(v / 1000)}k` : String(Math.round(v))
+            }
+          />
+          <Tooltip
+            cursor={{ stroke: "var(--border-strong)", strokeDasharray: "2 4" }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const pt = payload[0].payload as BpPacePoint;
+              const lines: string[] = [];
+              if (pt.real != null) lines.push(`real: ${paceFmt(item.kind, pt.real)}`);
+              if (pt.meta != null) lines.push(`meta BP: ${paceFmt(item.kind, pt.meta)}`);
+              if (pt.real != null && pt.meta != null)
+                lines.push(`gap: ${paceFmt(item.kind, pt.real - pt.meta)}`);
+              return <CardTooltip label={pt.label} lines={lines} />;
+            }}
+          />
+          <Line
+            type="monotone"
+            dataKey="meta"
+            stroke="var(--text-secondary)"
+            strokeWidth={1.75}
+            strokeDasharray="5 3"
+            dot={false}
+            activeDot={false}
+            isAnimationActive={false}
+            connectNulls
+          />
+          <Line
+            type="monotone"
+            dataKey="real"
+            stroke="var(--primary)"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 3, fill: "var(--primary)", stroke: "var(--surface)" }}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export function BpPaceGrid({ items }: { items: BpPaceItem[] }) {
+  const mounted = useMounted();
+  const [mode, setMode] = useState<Granularity>("daily");
+  if (items.length === 0) return null;
+
+  return (
+    <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div>
+          <h2 className="eyebrow">Rumo ao BP</h2>
+          <p className="mt-2 max-w-2xl text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+            O acumulado real contra onde o plano diz que deveríamos estar em cada dia. A meta é a
+            rampa do BP repartida em ritmo constante dentro do mês — régua de ritmo, não promessa
+            diária.
+          </p>
+          <p className="mt-2 flex items-center gap-4 text-[10px] font-300 text-[var(--text-tertiary)]">
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="inline-block h-[2px] w-5 rounded-full bg-[var(--primary)]" />
+              real
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="inline-block h-[2px] w-5 rounded-full"
+                style={{
+                  backgroundImage:
+                    "repeating-linear-gradient(90deg, var(--text-secondary) 0 5px, transparent 5px 8px)",
+                }}
+              />
+              meta BP
+            </span>
+          </p>
+        </div>
+        {mounted && (
+          <div className="flex gap-1">
+            {(
+              [
+                { key: "daily", name: "Dia a dia" },
+                { key: "weekly", name: "Semana a semana" },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                aria-pressed={mode === m.key}
+                onClick={() => setMode(m.key)}
+                className={
+                  mode === m.key
+                    ? "rounded-md bg-[var(--surface-raised)] px-2 py-1 text-[9px] font-700 uppercase tracking-[0.1em] text-[var(--text-primary)]"
+                    : "rounded-md px-2 py-1 text-[9px] font-700 uppercase tracking-[0.1em] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                }
+              >
+                {m.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-x-8 gap-y-7 sm:grid-cols-2 xl:grid-cols-3">
+        {items.map((item) => {
+          const behind = item.metaNow != null && item.realNow < item.metaNow;
+          const pctOfMeta =
+            item.metaNow != null && item.metaNow > 0 ? item.realNow / item.metaNow : null;
+          return (
+            <div key={item.key}>
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">{item.label}</p>
+                <p className="flex items-baseline gap-2">
+                  <span className="numeral text-[15px] text-[var(--text-primary)]">
+                    {paceFmt(item.kind, item.realNow)}
+                  </span>
+                  {item.metaNow != null && (
+                    <span
+                      className="text-[9.5px] font-600 tabular-nums"
+                      style={{ color: behind ? "var(--color-clay)" : "var(--color-success)" }}
+                    >
+                      {pctOfMeta != null
+                        ? `${Math.round(pctOfMeta * 100)}% da meta de hoje`
+                        : "no plano"}
+                    </span>
+                  )}
+                </p>
+              </div>
+              {mounted ? (
+                <PaceChartSmall item={item} mode={mode} />
+              ) : (
+                <div className="h-[132px]" aria-hidden />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 /* ── Pagas × grátis — share de todas as partidas num meter único ───────────────
    Uma razão única contra o todo pede um meter, não um donut de duas fatias:
    barra empilhada com o mesmo par de cores da série diária, % pagas como

@@ -89,6 +89,9 @@ export type MatchesMetrics = {
   /** Instantes das reservas jogadas COM cobrança — série pagas × normais.
       Null quando a página é parcial. */
   paidStartsAtMs: number[] | null;
+  /** As pagas com instante E valor — série diária de GMV/receita (trajetória
+      vs BP). Null quando a página é parcial. */
+  paidEvents: { t: number; cents: number }[] | null;
   /** Reservas jogadas por mecânica (match_type). Null quando parcial. */
   playedByMode: { invite: number; quick: number } | null;
   /** GMV das jogadas pagas (soma de price_cents) e a receita LITS pela
@@ -421,7 +424,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, playedByMode: null, gmv: null, legs: null, paidLegs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, paidEvents: null, playedByMode: null, gmv: null, legs: null, paidLegs: null };
   }
 
   const matches = data.matches;
@@ -480,6 +483,9 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     startsAtMs,
     paidStartsAtMs: complete
       ? paidRows.map((m) => new Date(m.starts_at).getTime())
+      : null,
+    paidEvents: complete
+      ? paidRows.map((m) => ({ t: new Date(m.starts_at).getTime(), cents: m.price_cents ?? 0 }))
       : null,
     playedByMode: complete
       ? {
