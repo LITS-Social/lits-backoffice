@@ -5,8 +5,8 @@ import type { ProductMetrics } from "@/lib/metrics";
 
 /**
  * Trajetória vs BP — a série que responde "estamos no ritmo?" por dia e por
- * semana, para os seis cards do topo (usuários, partidas totais, pagas, GMV,
- * receita e ticket médio).
+ * semana, para os seis do topo (usuários, partidas totais, pagas, GMV,
+ * receita e membros).
  *
  * O BP é MENSAL. A meta diária é a interpolação linear entre os fechamentos de
  * mês — uma régua de ritmo, não uma promessa dia a dia — e o rótulo da seção
@@ -27,8 +27,9 @@ export type PaceItem = {
   kind: "count" | "brl";
   daily: PacePoint[];
   weekly: PacePoint[];
-  /** Acumulado real hoje e a meta interpolada de hoje (null = BP não define). */
-  realNow: number;
+  /** Acumulado real hoje (null = sem instrumentação ainda — nunca zero
+      inventado) e a meta interpolada de hoje (null = BP não define). */
+  realNow: number | null;
   metaNow: number | null;
 };
 
@@ -234,19 +235,31 @@ export function buildBpPace(m: ProductMetrics, mensal: Record<string, BpMonth>):
       true
     )
   );
-  // Ticket médio: razão de acumulados (GMV ÷ pagas) contra a premissa chapada.
-  push(
-    "ticket",
-    "Ticket médio (pago)",
-    "brl",
-    matches.paidEvents?.map((e) => ({ t: e.t, v: e.cents / 100 })) ?? null,
-    0,
-    [
-      { atMs: startMs, cum: BP_PREMISSAS.ticketMedioCents / 100 },
-      { atMs: endMs, cum: BP_PREMISSAS.ticketMedioCents / 100 },
-    ],
-    matches.paidStartsAtMs?.map((t) => ({ t, v: 1 })) ?? null
-  );
+  // Membros (assinantes): a meta existe no BP, mas o BFF ainda não expõe
+  // assinaturas em nenhum endpoint ops — o real fica declaradamente sem dado
+  // (nunca um zero inventado) e o gráfico mostra só a rampa a cumprir.
+  {
+    const cps = checkpoints(mensal, (x) => x.membros, false);
+    if (cps.length > 0) {
+      const daily = series([], 0, cps, startMs, endMs, today, DAY_MS).map((p) => ({
+        ...p,
+        real: null,
+      }));
+      const weekly = series([], 0, cps, startMs, endMs, today, 7 * DAY_MS).map((p) => ({
+        ...p,
+        real: null,
+      }));
+      items.push({
+        key: "membros",
+        label: "Membros (assinantes)",
+        kind: "count",
+        daily,
+        weekly,
+        realNow: null,
+        metaNow: metaAt(cps, today),
+      });
+    }
+  }
 
   return items;
 }

@@ -531,7 +531,7 @@ export type BpPaceItem = {
   kind: "count" | "brl";
   daily: BpPacePoint[];
   weekly: BpPacePoint[];
-  realNow: number;
+  realNow: number | null;
   metaNow: number | null;
 };
 
@@ -566,7 +566,9 @@ function PaceChartSmall({ item, mode }: { item: BpPaceItem; mode: Granularity })
             allowDecimals={false}
             tick={{ ...AXIS_TICK, fontFamily: "var(--font-display)", fontSize: 9, fontWeight: 400 }}
             tickFormatter={(v: number) =>
-              item.kind === "brl" ? `${Math.round(v / 1000)}k` : String(Math.round(v))
+              item.kind === "brl" && v >= 1000
+                ? `${Math.round(v / 1000)}k`
+                : String(Math.round(v))
             }
           />
           <Tooltip
@@ -669,18 +671,31 @@ export function BpPaceGrid({ items }: { items: BpPaceItem[] }) {
 
       <div className="grid grid-cols-1 gap-x-8 gap-y-7 sm:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => {
-          const behind = item.metaNow != null && item.realNow < item.metaNow;
+          const behind =
+            item.realNow != null && item.metaNow != null && item.realNow < item.metaNow;
           const pctOfMeta =
-            item.metaNow != null && item.metaNow > 0 ? item.realNow / item.metaNow : null;
+            item.realNow != null && item.metaNow != null && item.metaNow > 0
+              ? item.realNow / item.metaNow
+              : null;
           return (
             <div key={item.key}>
               <div className="mb-2 flex items-baseline justify-between gap-3">
                 <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">{item.label}</p>
                 <p className="flex items-baseline gap-2">
-                  <span className="numeral text-[15px] text-[var(--text-primary)]">
-                    {paceFmt(item.kind, item.realNow)}
-                  </span>
-                  {item.metaNow != null && (
+                  {item.realNow != null ? (
+                    <span className="numeral text-[15px] text-[var(--text-primary)]">
+                      {paceFmt(item.kind, item.realNow)}
+                    </span>
+                  ) : (
+                    /* Sem instrumentação ainda — a rampa fica visível e o real é
+                       declaradamente desconhecido, nunca um zero inventado. */
+                    <span className="text-[10px] font-300 text-[var(--text-tertiary)]">
+                      real sem dado
+                      {item.metaNow != null &&
+                        ` · meta de hoje: ${paceFmt(item.kind, item.metaNow)}`}
+                    </span>
+                  )}
+                  {item.realNow != null && item.metaNow != null && (
                     <span
                       className="text-[9.5px] font-600 tabular-nums"
                       style={{ color: behind ? "var(--color-clay)" : "var(--color-success)" }}
