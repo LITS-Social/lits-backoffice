@@ -524,7 +524,12 @@ export function ChartsGrid({
    de mês — régua de ritmo, não promessa diária. O real para em hoje; o resto
    da tracejada mostra o que o mês ainda cobra. Um gráfico por card do topo. */
 
-export type BpPacePoint = { label: string; real: number | null; meta: number | null };
+export type BpPacePoint = {
+  label: string;
+  real: number | null;
+  realParcial?: number | null;
+  meta: number | null;
+};
 export type BpPaceItem = {
   key: string;
   label: string;
@@ -577,10 +582,14 @@ function PaceChartSmall({ item, mode }: { item: BpPaceItem; mode: Granularity })
               if (!active || !payload?.length) return null;
               const pt = payload[0].payload as BpPacePoint;
               const lines: string[] = [];
-              if (pt.real != null) lines.push(`real: ${paceFmt(item.kind, pt.real)}`);
+              const real = pt.real ?? pt.realParcial ?? null;
+              if (real != null)
+                lines.push(
+                  `real: ${paceFmt(item.kind, real)}${pt.real == null ? " (semana em curso)" : ""}`
+                );
               if (pt.meta != null) lines.push(`meta BP: ${paceFmt(item.kind, pt.meta)}`);
-              if (pt.real != null && pt.meta != null)
-                lines.push(`gap: ${paceFmt(item.kind, pt.real - pt.meta)}`);
+              if (real != null && pt.meta != null)
+                lines.push(`gap: ${paceFmt(item.kind, real - pt.meta)}`);
               return <CardTooltip label={pt.label} lines={lines} />;
             }}
           />
@@ -601,6 +610,18 @@ function PaceChartSmall({ item, mode }: { item: BpPaceItem; mode: Granularity })
             stroke="var(--primary)"
             strokeWidth={2}
             dot={false}
+            activeDot={{ r: 3, fill: "var(--primary)", stroke: "var(--surface)" }}
+            isAnimationActive={false}
+          />
+          {/* A semana em curso: pontilhada e com o ponto do valor na ponta —
+              ainda não fechou, não pode parecer fechada. */}
+          <Line
+            type="monotone"
+            dataKey="realParcial"
+            stroke="var(--primary)"
+            strokeWidth={2}
+            strokeDasharray="2 4"
+            dot={{ r: 2.5, fill: "var(--primary)", stroke: "var(--surface)", strokeWidth: 1 }}
             activeDot={{ r: 3, fill: "var(--primary)", stroke: "var(--surface)" }}
             isAnimationActive={false}
           />

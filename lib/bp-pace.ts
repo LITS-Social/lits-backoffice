@@ -18,7 +18,14 @@ import type { ProductMetrics } from "@/lib/metrics";
 const DAY_MS = 24 * 3600_000;
 const SP_OFFSET = "-03:00";
 
-export type PacePoint = { label: string; real: number | null; meta: number | null };
+export type PacePoint = {
+  label: string;
+  real: number | null;
+  /** A semana em curso no modo semanal: do último fechamento até hoje,
+      desenhada pontilhada — ainda não fechou, não parece fechada. */
+  realParcial?: number | null;
+  meta: number | null;
+};
 
 export type PaceItem = {
   key: string;
@@ -111,29 +118,58 @@ function series(
 ): PacePoint[] {
   const sorted = [...events].sort((a, b) => a.t - b.t);
   const den = ratioDen ? [...ratioDen].sort((a, b) => a.t - b.t) : null;
-  const out: PacePoint[] = [];
-  for (let t = startMs; ; t += stepMs) {
-    const clamped = Math.min(t, endMs);
-    let real: number | null = null;
-    if (clamped <= todayMs + DAY_MS - 1) {
-      let cum = baseOffset;
-      for (const e of sorted) {
-        if (e.t <= clamped) cum += e.v;
+
+  const realAt = (clamped: number): number | null => {
+    let cum = baseOffset;
+    for (const e of sorted) {
+      if (e.t <= clamped) cum += e.v;
+      else break;
+    }
+    if (den) {
+      let d = 0;
+      for (const e of den) {
+        if (e.t <= clamped) d += e.v;
         else break;
       }
-      if (den) {
-        let d = 0;
-        for (const e of den) {
-          if (e.t <= clamped) d += e.v;
-          else break;
-        }
-        real = d > 0 ? cum / d : null;
-      } else {
-        real = cum;
-      }
+      return d > 0 ? cum / d : null;
     }
-    out.push({ label: dayLabel(clamped), real, meta: metaAt(cps, clamped) });
+    return cum;
+  };
+
+  // A grade de instantes: passos fixos + fim da janela. No modo semanal, HOJE
+  // entra como instante extra quando cai no meio de uma semana — é o ponto do
+  // trecho pontilhado (a semana em curso).
+  const ticks: number[] = [];
+  for (let t = startMs; ; t += stepMs) {
+    ticks.push(Math.min(t, endMs));
     if (t >= endMs) break;
+  }
+  const weekly = stepMs > DAY_MS;
+  if (weekly && todayMs > startMs && todayMs < endMs && !ticks.includes(todayMs)) {
+    ticks.push(todayMs);
+    ticks.sort((a, b) => a - b);
+  }
+
+  // Último instante da grade que já FECHOU (aconteceu por inteiro). Um
+  // fechamento que cai exatamente em hoje ainda está em curso — o dia não
+  // acabou — então "fechado" é estritamente antes de hoje.
+  const lastClosed = ticks.filter((t) => t < todayMs).at(-1) ?? null;
+
+  const out: PacePoint[] = [];
+  for (const t of ticks) {
+    const elapsed = t <= todayMs + DAY_MS - 1;
+    const real = elapsed ? realAt(t) : null;
+    const point: PacePoint = { label: dayLabel(t), real: null, meta: metaAt(cps, t) };
+    if (weekly && lastClosed != null && t > lastClosed && elapsed) {
+      // Semana em curso: só o trecho pontilhado carrega o valor.
+      point.realParcial = real;
+    } else {
+      point.real = real;
+      // O fechamento mais recente também abre o pontilhado, senão o trecho
+      // em curso nasce solto no ar.
+      if (weekly && t === lastClosed && todayMs > t) point.realParcial = real;
+    }
+    out.push(point);
   }
   return out;
 }
@@ -170,7 +206,7 @@ export function buildBpPace(m: ProductMetrics, mensal: Record<string, BpMonth>):
     if (!events) return; // série parcial: melhor ausente que com a forma errada
     const daily = series(events, baseOffset, cps, startMs, endMs, today, DAY_MS, ratioDen ?? undefined);
     const weekly = series(events, baseOffset, cps, startMs, endMs, today, 7 * DAY_MS, ratioDen ?? undefined);
-    const last = daily.filter((p) => p.real != null).at(-1);
+    const last = daily.filter((p) => p.real != null || p.realParcial != null).at(-1);
     const todayPoint = daily.find((p) => p.label === dayLabel(today));
     items.push({
       key,
@@ -178,7 +214,7 @@ export function buildBpPace(m: ProductMetrics, mensal: Record<string, BpMonth>):
       kind,
       daily,
       weekly,
-      realNow: last?.real ?? 0,
+      realNow: last?.real ?? last?.realParcial ?? 0,
       metaNow: todayPoint?.meta ?? metaAt(cps, today),
     });
   };
