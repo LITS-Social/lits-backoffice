@@ -62,12 +62,9 @@ const ALERTING_PANELS = ["06", "07", "09"];
 
 export function Sidebar({
   summary = {},
-  searchSlot,
   mobileOpen = false,
 }: {
   summary?: OpsSummary;
-  /** Global-search trigger. Owned by another agent; mounts at #global-search-slot. */
-  searchSlot?: React.ReactNode;
   /** Below lg the sidebar is a drawer; AppShell owns this state. */
   mobileOpen?: boolean;
 }) {
@@ -80,34 +77,27 @@ export function Sidebar({
         mobileOpen ? "translate-x-0" : "-translate-x-full"
       )}
     >
-      {/* ── Lockup ─────────────────────────────────────────────────────── */}
-      <div className="px-5 pt-6 pb-4">
-        <Link href="/" className="group flex items-center gap-2.5" aria-label="LITS — Operações">
+      {/* ── Lockup ─────────────────────────────────────────────────────────
+          The search trigger used to live below this, in the space now freed
+          for the wordmark to breathe (⌘K still works — see AppShell). Vertical
+          stack, centered — the mark carries the weight, "Operações" just
+          names the house underneath it. */}
+      <div className="flex flex-col items-center gap-2.5 px-5 pt-9 pb-7">
+        <Link href="/" aria-label="LITS — Operações" className="group">
           {/* The real wordmark, painted with currentColor via CSS mask. */}
           <span
             aria-hidden
-            className="h-[22px] w-[41px] shrink-0 bg-[var(--text-primary)] transition-colors group-hover:bg-[var(--primary)]"
+            className="block h-[42px] w-[78px] bg-[var(--text-primary)] transition-colors group-hover:bg-[var(--primary)]"
             style={{
               WebkitMask: "url('/assets/lits.svg') center/contain no-repeat",
               mask: "url('/assets/lits.svg') center/contain no-repeat",
             }}
           />
-          <span className="mt-px h-3.5 w-px bg-[var(--border-strong)]" />
-          <span className="label-colus text-[9px] leading-none text-[var(--text-tertiary)]">
-            Operações
-          </span>
         </Link>
+        <span className="label-colus text-center text-[9.5px] leading-none tracking-[0.16em] text-[var(--text-tertiary)]">
+          Operações
+        </span>
       </div>
-
-      {/* ── Global search mount point ──────────────────────────────────────
-          Left empty on purpose. Another agent owns the search itself; pass it
-          in as `searchSlot` and it lands here. The wrapper does not render at
-          all when the slot is empty — an empty box would read as a broken input. */}
-      {searchSlot && (
-        <div id="global-search-slot" className="px-4 pb-4">
-          {searchSlot}
-        </div>
-      )}
 
       <div className="mx-5 h-px bg-[var(--border)]" />
 

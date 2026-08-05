@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import type { OpsSummary } from "@/lib/ops";
+import { CommandPalette } from "@/components/command-palette";
 import { Sidebar } from "./sidebar";
 
 /**
@@ -15,11 +16,9 @@ import { Sidebar } from "./sidebar";
  */
 export function AppShell({
   summary,
-  searchSlot,
   children,
 }: {
   summary: OpsSummary;
-  searchSlot?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -36,7 +35,10 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar summary={summary} searchSlot={searchSlot} mobileOpen={open} />
+      {/* Headless: no visible box anywhere, ⌘K just works from every page —
+          the sidebar lockup no longer gives up space for it. */}
+      <CommandPalette hideTrigger />
+      <Sidebar summary={summary} mobileOpen={open} />
 
       {/* Backdrop — tap anywhere off the drawer to dismiss it. */}
       {open && (

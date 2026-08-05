@@ -93,7 +93,7 @@ function buildRows(results: SearchHit[]): Row[] {
   return rows;
 }
 
-export function CommandPalette() {
+export function CommandPalette({ hideTrigger = false }: { hideTrigger?: boolean } = {}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -224,26 +224,30 @@ export function CommandPalette() {
 
   return (
     <>
-      {/* ── Trigger (mounts into the sidebar's #global-search-slot) ───────── */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={cn(
-          "group flex w-full items-center gap-2 rounded-md border border-[var(--border)]",
-          "bg-[var(--surface-raised)] px-2.5 py-[7px] text-left transition-colors",
-          "hover:border-[var(--border-strong)]"
-        )}
-      >
-        <Search
-          size={13}
-          strokeWidth={1.75}
-          className="shrink-0 text-[var(--text-tertiary)] transition-colors group-hover:text-[var(--text-secondary)]"
-        />
-        <span className="flex-1 truncate text-[12px] text-[var(--text-tertiary)]">Buscar</span>
-        <kbd className="label-colus shrink-0 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-[2px] text-[8px] leading-none text-[var(--text-tertiary)]">
-          ⌘K
-        </kbd>
-      </button>
+      {/* ── Trigger — hidden when `hideTrigger`: ⌘K still opens it from
+          anywhere (the listener above doesn't care), there is just no visible
+          box taking up sidebar space. ─────────────────────────────────────── */}
+      {!hideTrigger && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={cn(
+            "group flex w-full items-center gap-2 rounded-md border border-[var(--border)]",
+            "bg-[var(--surface-raised)] px-2.5 py-[7px] text-left transition-colors",
+            "hover:border-[var(--border-strong)]"
+          )}
+        >
+          <Search
+            size={13}
+            strokeWidth={1.75}
+            className="shrink-0 text-[var(--text-tertiary)] transition-colors group-hover:text-[var(--text-secondary)]"
+          />
+          <span className="flex-1 truncate text-[12px] text-[var(--text-tertiary)]">Buscar</span>
+          <kbd className="label-colus shrink-0 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-[2px] text-[8px] leading-none text-[var(--text-tertiary)]">
+            ⌘K
+          </kbd>
+        </button>
+      )}
 
       {!open ? null : (
         <div
