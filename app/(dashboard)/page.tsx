@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { getProductMetrics, type PlatformSplit } from "@/lib/metrics";
+import { getProductMetrics, type NorthMetrics, type PlatformSplit } from "@/lib/metrics";
 import { BP_MENSAL, BP_PREMISSAS, bpTarget, getBp } from "@/lib/bp";
 import { pushRiSnapshot } from "@/lib/ri-sync";
 import { buildBpPace } from "@/lib/bp-pace";
@@ -13,6 +13,7 @@ import {
   ChartsGrid,
   PaidShareMeter,
   } from "./_components/metric-charts";
+import { MGM_SENT_NOTE } from "./_components/mgm";
 
 export const dynamic = "force-dynamic";
 
@@ -630,6 +631,161 @@ function PlatformCard({ split }: { split: PlatformSplit | null }) {
   );
 }
 
+/* ── Convites entre jogadores (MGM) — a indicação, não o convite de jogo ─────
+   TRÊS mecânicas de "convite" convivem nesta tela e este card é só UMA delas:
+   1. convite de RESERVA (linhas "Convites enviados"/"Taxa de aceitação" e o
+      painel 03) — chamar alguém para uma partida;
+   2. código de SIGNUP do beta (linha "Códigos de indicação usados",
+      invitation_code_uses) — o gate de entrada do beta via auth-bridge;
+   3. ESTE card: indicação jogador→jogador (MGM, código compartilhável do app,
+      prêmio VIP aos 3 aceites).
+   O título carrega "(MGM)" e o rodapé diz de onde o número vem exatamente para
+   o founder não somar dois "convites" que medem coisas diferentes.
+
+   O que o card NÃO mostra, de propósito: "enviados". O share é client-side e
+   o servidor só vê o aceite — ver MGM_SENT_NOTE. "Geraram código" é o proxy
+   mais próximo do outro lado do funil e está rotulado pelo que é (abrir a tela
+   de convite), não pelo que gostaríamos que fosse. */
+
+function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
+  const shell =
+    "grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6";
+
+  // Bloco ainda não publicado pelo bff (ou ilegível do lado de lá): sem dado,
+  // nunca zero — quatro zeros aqui leriam como "ninguém indica ninguém".
+  if (!mgm) {
+    return (
+      <div className={shell}>
+        <h2 className="eyebrow">Convites entre jogadores (MGM)</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          Indicação jogador→jogador pelo código de convite do app. Chega com o deploy do
+          bff-backoffice (bloco mgm) — até lá fica sem dado, não em zero.
+        </p>
+      </div>
+    );
+  }
+
+  const boxes = [
+    {
+      label: "Aceites · total",
+      value: mgm.accepted_total,
+      hint: "piso, desde o início",
+    },
+    {
+      label: "Aceites · 7 dias",
+      value: mgm.accepted_7d,
+      hint: "pelo accepted_at",
+    },
+    {
+      label: "Convidadores com aceite",
+      value: mgm.inviters,
+      hint: "pessoas com ≥1 indicado",
+    },
+    {
+      label: "Geraram código",
+      value: mgm.codes_created,
+      hint: "abriram a tela de convite — não é envio",
+    },
+  ];
+  const top = mgm.top_inviters ?? [];
+
+  return (
+    <div className={shell}>
+      <div className="mb-5">
+        <h2 className="eyebrow">Convites entre jogadores (MGM)</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          A indicação jogador→jogador — quem compartilha o código do app e quem aceita. Não é o
+          convite de partida (esse vive no funil acima e no painel 03) nem o código de signup do
+          beta (linha da planilha abaixo). Zeros aqui são zeros reais.
+        </p>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,260px)]">
+        {/* ── Os quatro números ─────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 gap-3">
+          {boxes.map((b) => (
+            <div
+              key={b.label}
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg)]/40 p-3.5"
+            >
+              <p className="label-colus text-[8.5px] leading-snug text-[var(--text-tertiary)]">
+                {b.label}
+              </p>
+              <p className="numeral mt-2 text-[28px] leading-none text-[var(--text-primary)]">
+                {b.value}
+              </p>
+              <p className="mt-1.5 text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
+                {b.hint}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Top convidadores + prêmio ─────────────────────────────────────── */}
+        <div className="flex flex-col lg:border-l lg:border-[var(--border)] lg:pl-6">
+          <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">Top convidadores</p>
+          {top.length > 0 ? (
+            <ol className="mt-3 space-y-2">
+              {top.map((t, i) => (
+                <li key={t.user_id} className="flex items-baseline gap-2.5">
+                  <span className="label-colus w-4 shrink-0 text-[9px] text-[var(--text-tertiary)]">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-500 text-[var(--text-primary)]">
+                    {t.name}
+                  </span>
+                  <span className="numeral shrink-0 text-[14px] text-[var(--text-primary)]">
+                    {t.accepted}
+                  </span>
+                  <span className="label-colus shrink-0 text-[7px] text-[var(--text-tertiary)]">
+                    {t.accepted === 1 ? "aceite" : "aceites"}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : mgm.accepted_total > 0 ? (
+            // Ranking vazio COM aceites no agregado = a query do top-5 falhou
+            // sozinha; o handler serve o resto do bloco mesmo quando `topErr`
+            // estoura. Dizer "nenhum aceite" aqui contradiria o número ao lado —
+            // é a mesma classe de erro de leitura do painel que contava POSTS de
+            // placar achando que contava partidas.
+            <p className="mt-3 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+              Ranking indisponível agora — os totais ao lado continuam válidos.
+            </p>
+          ) : (
+            <p className="mt-3 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+              Nenhum aceite ainda — sem ranking para mostrar.
+            </p>
+          )}
+          <p className="mt-4 border-t border-[var(--border)] pt-3 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {mgm.reward_reached > 0 ? (
+              <>
+                <span className="font-600 text-[var(--text-secondary)]">{mgm.reward_reached}</span>{" "}
+                {mgm.reward_reached === 1 ? "convidador já completou" : "convidadores já completaram"}{" "}
+                os 3 convites (prêmio VIP).
+              </>
+            ) : (
+              <>Ninguém completou os 3 convites (prêmio VIP) ainda.</>
+            )}
+          </p>
+          <Link
+            href="/convites/indicacoes"
+            className="mt-3 inline-flex items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
+          >
+            Detalhe por convidador <ArrowUpRight size={11} />
+          </Link>
+        </div>
+      </div>
+
+      {/* A ressalva de origem, escrita uma vez em _components/mgm e lida aqui e
+          no detalhe — o equivalente MGM do DEVICE_SOURCE_NOTE. */}
+      <p className="mt-5 border-t border-[var(--border)] pt-3 text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+        {MGM_SENT_NOTE}
+      </p>
+    </div>
+  );
+}
+
 /** A linha da planilha de métricas. `value === undefined` significa "o backend
     ainda não instrumenta isso" — a linha fica na página mesmo assim, porque a
     meta e a ação continuam sendo o checklist diário do fundador. */
@@ -986,10 +1142,13 @@ export default async function MetricsPage() {
         ? {
             value: String(north.referralCodesUsed7d),
             ok: north.referralCodesUsed7d >= 7,
-            note: "últimos 7 dias",
+            // invitation_code_uses = o código de ENTRADA do beta (auth-bridge),
+            // não a indicação MGM — o action antigo mandava ler este número
+            // como saúde do MGM e os dois nunca vão bater.
+            note: "últimos 7 dias · códigos de signup do beta — não é o MGM",
           }
         : {}),
-      action: "Zero por 3 dias: MGM não está rodando",
+      action: "Zero por 3 dias: aquisição parada. MGM tem card próprio acima",
     },
   ];
 
@@ -1077,6 +1236,10 @@ export default async function MetricsPage() {
             }
           />
         </div>
+
+        {/* ── Indicação entre jogadores — a mecânica MGM, não o convite de jogo ── */}
+        <MgmCard mgm={north.mgm} />
+
 
         {/* ── Dinheiro ─────────────────────────────────────────────────────────── */}
         <div>

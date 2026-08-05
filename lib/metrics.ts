@@ -164,6 +164,17 @@ export type NorthMetrics = {
    * Null enquanto o bff não publica o bloco: o card mostra "sem dado", não zero.
    */
   platforms: PlatformSplit | null;
+  /**
+   * Convites entre jogadores (indicação MGM, mgm_codes/mgm_invites) — a
+   * TERCEIRA mecânica de "convite" deste payload, e a única jogador→jogador:
+   * não confundir com o convite de reserva (invitesSent7d/inviteAcceptance,
+   * sobre bookings) nem com o código de signup do beta (referralCodesUsed7d,
+   * sobre invitation_code_uses). Zeros aqui são zeros REAIS (contagem direta
+   * nas tabelas); null = o bloco não veio (bff antigo na janela de deploy) —
+   * o card fica "sem dado", nunca zero. "Enviados" não existe de propósito:
+   * o share é client-side e o servidor só vê o ACEITE.
+   */
+  mgm: components["schemas"]["MgmSummary"] | null;
 };
 
 export type PlatformSplit = {
@@ -566,7 +577,7 @@ async function fetchNorth(): Promise<NorthMetrics> {
     invitesSent7d: null, inviteAcceptance: null, newActive7d: null,
     onboarding: null, retentionWeek2: null, referralCodesUsed7d: null,
     woToday: null, appOpenNoAction: null, appOpenNoAction7d: null, validMatchesPerUser: null,
-    completion: null, matchFunnel: null, platforms: null,
+    completion: null, matchFunnel: null, platforms: null, mgm: null,
   };
 
   try {
@@ -592,6 +603,11 @@ async function fetchNorth(): Promise<NorthMetrics> {
       completion: data.completion ?? null,
       matchFunnel: data.match_funnel ?? null,
       platforms: pendingPlatforms(data),
+      // Mesmo guard de deploy-window do completion: o schema diz required, mas
+      // um bff antigo ainda no ar omite o bloco — e um erro de leitura nas
+      // tabelas mgm_* faz o bff mandar null de propósito. Nos dois casos o
+      // card diz "sem dado".
+      mgm: data.mgm ?? null,
     };
   } catch {
     return failed;

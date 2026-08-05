@@ -515,6 +515,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/mgm-referrals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Indicações entre jogadores (MGM) por convidador
+         * @description Detalhe do agregado `mgm` do product-metrics: um convidador por linha (aceites, ativos, prêmio de 3 convites, último aceite) com os indicados expandidos. Aceites são PISO (o 4º aceite de um convidador cheio é descartado sem linha; invitee é UNIQUE) e não existe 'enviados' server-side — o share é client-side. Mesmo filtro de contas de teste do product-metrics.
+         */
+        get: operations["ops-list-mgm-referrals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/open-invites": {
         parameters: {
             query?: never;
@@ -2487,6 +2507,102 @@ export interface components {
              */
             total_users: number;
         };
+        MgmReferralInvitee: {
+            /**
+             * Format: date-time
+             * @description Quando o indicado aceitou o código (POST /v1/mgm/accept)
+             */
+            accepted_at: string;
+            /** @description Nome resolvido: display_name → @username → id curto; conta apagada vira 'Conta excluída' */
+            name: string;
+            /**
+             * @description HOJE sempre 'first_match': nenhum writer flipa status. Os outros valores existem no CHECK do schema, sem instrumentação — não leia a ausência deles como 'ninguém converteu'
+             * @enum {string}
+             */
+            status: "first_match" | "converted" | "completed" | "fraudulent" | "expired";
+            /** @description UUID do indicado (mgm_invites.invitee_id) */
+            user_id: string;
+        };
+        MgmReferralRow: {
+            /**
+             * Format: int64
+             * @description Aceites deste convidador (qualquer status). PISO — ver MgmSummary
+             */
+            accepted: number;
+            /**
+             * Format: int64
+             * @description Aceites com status fora de fraudulent/expired — os que contam para o teto de 3 slots e para o prêmio. Hoje igual a accepted (status congelado em first_match)
+             */
+            active: number;
+            /** @description Os indicados, do aceite mais antigo ao mais novo */
+            invitees: components["schemas"]["MgmReferralInvitee"][] | null;
+            /** @description UUID do convidador */
+            inviter_id: string;
+            /**
+             * Format: date-time
+             * @description Aceite mais recente deste convidador
+             */
+            last_accepted_at: string;
+            /** @description Nome resolvido: display_name → @username → id curto; conta apagada vira 'Conta excluída' */
+            name: string;
+            /** @description True quando active >= 3 (prêmio VIP de 3 convites — mgmGoal do bff-mobile) */
+            reward_reached: boolean;
+        };
+        MgmReferralsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MgmReferralsResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description Convidadores ordenados por aceites DESC */
+            referrals: components["schemas"]["MgmReferralRow"][] | null;
+            /**
+             * Format: int64
+             * @description Total de convidadores com >=1 aceite, após o filtro de contas de teste (METRICS_EXCLUDE_USER_IDS nos dois lados da indicação)
+             */
+            total: number;
+        };
+        MgmSummary: {
+            /**
+             * Format: int64
+             * @description Aceites nos últimos 7 dias (accepted_at). Mesmo piso do total
+             */
+            accepted_7d: number;
+            /**
+             * Format: int64
+             * @description Aceites de indicação desde o início (COUNT de public.mgm_invites). PISO, não total: o aceite de um convidador que já tem 3 slots ativos é descartado em silêncio (nenhuma linha nasce) e o UNIQUE(invitee_id) descarta re-indicação de quem já foi indicado
+             */
+            accepted_total: number;
+            /**
+             * Format: int64
+             * @description Códigos de convite existentes (COUNT de public.mgm_codes). NÃO é envio: o código nasce lazy no primeiro GET /v1/mgm/me — mede quem ABRIU a tela de convite. O envio (share sheet) é client-side e o servidor não vê
+             */
+            codes_created: number;
+            /**
+             * Format: int64
+             * @description Convidadores distintos com >=1 aceite
+             */
+            inviters: number;
+            /**
+             * Format: int64
+             * @description Convidadores que atingiram os 3 slots ativos (status fora de fraudulent/expired) — o prêmio VIP de 3 convites (mgmGoal do bff-mobile)
+             */
+            reward_reached: number;
+            /** @description Top 5 convidadores por aceites. Ausente quando não há aceite nenhum, ou quando só a query do top falhou (o resto do bloco continua válido) */
+            top_inviters?: components["schemas"]["MgmTopInviter"][] | null;
+        };
+        MgmTopInviter: {
+            /**
+             * Format: int64
+             * @description Aceites deste convidador (linhas em mgm_invites, qualquer status). Mesmo piso de accepted_total
+             */
+            accepted: number;
+            /** @description Nome resolvido: profiles.display_name → @username → id curto. Conta apagada (users.deleted_at) vira 'Conta excluída' em vez de sumir da lista — a indicação aconteceu, apagar a conta não desfaz o fato */
+            name: string;
+            /** @description UUID do convidador (public.mgm_invites.inviter_id) */
+            user_id: string;
+        };
         OnboardingFunnel: {
             /**
              * Format: int64
@@ -3111,6 +3227,8 @@ export interface components {
             invites_sent_7d: number | null;
             /** @description Intent→game conversion: played over invites sent + quick matches opened, all time */
             match_funnel: components["schemas"]["MatchFunnel"];
+            /** @description Convites entre jogadores (indicação MGM, public.mgm_*). Zeros aqui são zeros REAIS — contagem direta nas tabelas; null = o bloco não pôde ser lido (tabelas da migration 20260727120000 ausentes, ou erro de query) — sem dado, não zero. Não há breakdown por status de propósito: nenhum writer flipa first_match → converted/completed/fraudulent/expired hoje, então um funil por status pareceria instrumentado sem ser */
+            mgm: components["schemas"]["MgmSummary"];
             /**
              * Format: int64
              * @description Users created in the last 7 days with last_seen_at stamped (>=1 authenticated request since signup). Excludes deleted accounts
@@ -4708,6 +4826,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetricsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-mgm-referrals": {
+        parameters: {
+            query?: {
+                /** @description Máximo de convidadores por página */
+                limit?: number;
+                /** @description Deslocamento na ordenação (aceites DESC, mais recente primeiro no empate) */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MgmReferralsResponseBody"];
                 };
             };
             /** @description Error */

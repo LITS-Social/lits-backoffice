@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { getApi } from "@/lib/api";
 import { StatRail } from "../_components/stat-rail";
-import { PanelError, TruncationNote } from "../_components/notes";
+import { PanelError, PanelNote, TruncationNote } from "../_components/notes";
 import { OpenInvitesTable } from "./table";
 
 const URGENT_MS = 30 * 60_000;
@@ -69,6 +70,21 @@ export default async function ConvitesPage() {
       />
 
       <div className="space-y-3 px-4 sm:px-8 py-6">
+        {/* Dois "convites" moram debaixo desta rota e são mecânicas diferentes:
+            aqui é o convite de RESERVA (chamar alguém pra uma partida); a
+            indicação MGM (código compartilhável, prêmio VIP) tem página irmã. */}
+        <PanelNote>
+          Esta lista é de convites de <span className="font-600">partida</span>. A indicação
+          entre jogadores (MGM) tem painel próprio —{" "}
+          <Link
+            href="/convites/indicacoes"
+            className="font-600 text-[var(--primary)] transition-opacity hover:opacity-70"
+          >
+            Indicações (MGM)
+          </Link>
+          .
+        </PanelNote>
+
         {/* Still honest if the set ever outgrows the 500-row fetch: the table paginates
             what it holds, and this says so when it does not hold everything. */}
         <TruncationNote
