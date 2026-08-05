@@ -55,6 +55,34 @@ export async function repriceCourtAction(id: string, priceCents: number): Promis
   return { ok: true, slotsUpdated: data.slots_updated };
 }
 
+/** O BFF valida no máximo 200 slots por POST (maxItems do contrato). Uma grade
+    de 30 dias passa de 500 — este helper fatia o envio e soma os resultados.
+    Em falha no meio, devolve quanto já entrou: o chamador diz a verdade parcial
+    em vez de um "falhou" que faria o operador repetir o que já foi. */
+const SLOTS_PER_POST = 200;
+
+async function postSlotsChunked(
+  api: Awaited<ReturnType<typeof getApi>>,
+  id: string,
+  slots: AddSlotInput[]
+): Promise<{ created: number; skipped: number; error?: string }> {
+  let created = 0;
+  let skipped = 0;
+  for (let i = 0; i < slots.length; i += SLOTS_PER_POST) {
+    const batch = slots.slice(i, i + SLOTS_PER_POST);
+    const { data, error } = await api.POST("/v1/ops/courts/{id}/slots", {
+      params: { path: { id } },
+      body: { slots: batch },
+    });
+    if (error) {
+      return { created, skipped, error: error.detail || error.title || "erro" };
+    }
+    created += data.slots_created;
+    skipped += data.slots_skipped ?? 0;
+  }
+  return { created, skipped };
+}
+
 export async function regenerateAvailabilityAction(
   id: string,
   params: {
@@ -111,21 +139,19 @@ export async function regenerateAvailabilityAction(
     }
   }
 
-  const add = await api.POST("/v1/ops/courts/{id}/slots", {
-    params: { path: { id } },
-    body: { slots },
-  });
+  const add = await postSlotsChunked(api, id, slots);
   if (add.error) {
     return {
       ok: false,
       error:
-        "Grade antiga apagada, mas falhou ao criar a nova: " +
-        (add.error.detail || add.error.title || "erro"),
+        `Grade antiga apagada e ${add.created} horários criados antes da falha: ` +
+        add.error +
+        " — gere de novo para completar (horários já criados são pulados).",
     };
   }
 
   revalidatePath("/quadras");
-  return { ok: true, slotsDeleted: del.data.slots_deleted, slotsCreated: add.data.slots_created };
+  return { ok: true, slotsDeleted: del.data.slots_deleted, slotsCreated: add.created };
 }
 
 export type ReorderState = { ok: boolean; error?: string };
@@ -198,13 +224,18 @@ export async function addCourtSlotsAction(
   slots: AddSlotInput[]
 ): Promise<AddSlotsState> {
   const api = await getApi();
-  const { data, error } = await api.POST("/v1/ops/courts/{id}/slots", {
-    params: { path: { id } },
-    body: { slots },
-  });
-  if (error) return { ok: false, error: error.detail || error.title || "Falha ao adicionar horários." };
+  const res = await postSlotsChunked(api, id, slots);
+  if (res.error) {
+    return {
+      ok: false,
+      error:
+        res.created > 0
+          ? `${res.created} horários entraram antes da falha: ${res.error}`
+          : res.error,
+    };
+  }
   revalidatePath("/quadras");
-  return { ok: true, slotsCreated: data.slots_created, slotsSkipped: data.slots_skipped };
+  return { ok: true, slotsCreated: res.created, slotsSkipped: res.skipped };
 }
 
 /* ══ import from a schedule print ═════════════════════════════════════════ */
@@ -513,14 +544,14 @@ export async function applyPrintSlotsAction(
   }
 
   // Now create the missing instants; the endpoint skips the existing ones.
-  const addRes = await api.POST("/v1/ops/courts/{id}/slots", {
-    params: { path: { id: courtId } },
-    body: { slots },
-  });
+  const addRes = await postSlotsChunked(api, courtId, slots);
   if (addRes.error) {
     return {
       ok: false,
-      error: addRes.error.detail || addRes.error.title || "Falha ao adicionar horários.",
+      error:
+        addRes.created > 0
+          ? `${addRes.created} horários entraram antes da falha: ${addRes.error}`
+          : addRes.error,
     };
   }
   revalidatePath("/quadras");
