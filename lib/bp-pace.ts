@@ -56,10 +56,11 @@ const dayLabel = (ms: number) =>
 
 type Checkpoint = { atMs: number; cum: number };
 
-/** Fechamentos cumulativos: cada mês do BP vira (fim do mês, acumulado). O
-    âncora inicial é o começo do primeiro mês definido, com o acumulado que já
-    existia (0 para fluxos; para estoque — usuários — o próprio primeiro valor
-    fica só no fechamento, sem âncora inventada). */
+/** Fechamentos cumulativos: cada mês do BP vira (fim do mês, acumulado), com
+    âncora 0 no COMEÇO do primeiro mês definido — o "–" da planilha antes dele
+    é pré-lançamento, e pré-lançamento parte do zero. Sem a âncora, uma métrica
+    cujo primeiro fechamento cai no fim do mês corrente (membros em agosto)
+    vira um ponto único, e ponto único não desenha linha. */
 function checkpoints(
   mensal: Record<string, BpMonth>,
   pick: (m: BpMonth) => number | undefined,
@@ -73,10 +74,7 @@ function checkpoints(
     const v = pick(mensal[k]);
     if (v === undefined) continue;
     if (!anchored) {
-      // Fluxo (partidas, GMV): antes do primeiro mês definido o plano é 0.
-      // Estoque (base acumulada): não há como saber a rampa anterior — a meta
-      // começa a existir no primeiro fechamento.
-      if (flow) out.push({ atMs: monthStartMs(k), cum: 0 });
+      out.push({ atMs: monthStartMs(k), cum: 0 });
       anchored = true;
     }
     cum = flow ? cum + v : v;
@@ -146,15 +144,17 @@ export function buildBpPace(m: ProductMetrics, mensal: Record<string, BpMonth>):
   const today = todayStartMs(now);
   const { users, matches } = m;
 
-  // Janela: do primeiro mês do BP até o fim do mês corrente.
+  // Janela: o MÊS CORRENTE, do dia 1 ao último dia. O acumulado real entra no
+  // dia 1 já carregando tudo que veio antes — a pergunta da seção é "este mês
+  // está no ritmo?", não a história desde o lançamento.
   const keys = Object.keys(mensal).sort();
   if (keys.length === 0) return [];
-  const startMs = monthStartMs(keys[0]);
   const curYm = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
     year: "numeric",
     month: "2-digit",
   }).format(new Date(now));
+  const startMs = monthStartMs(curYm);
   const endMs = monthEndMs(curYm) - DAY_MS; // último dia do mês corrente
 
   const items: PaceItem[] = [];

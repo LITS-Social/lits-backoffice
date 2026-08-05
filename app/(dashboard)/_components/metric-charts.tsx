@@ -620,11 +620,6 @@ export function BpPaceGrid({ items }: { items: BpPaceItem[] }) {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div>
           <h2 className="eyebrow">Rumo ao BP</h2>
-          <p className="mt-2 max-w-2xl text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-            O acumulado real contra onde o plano diz que deveríamos estar em cada dia. A meta é a
-            rampa do BP repartida em ritmo constante dentro do mês — régua de ritmo, não promessa
-            diária.
-          </p>
           <p className="mt-2 flex items-center gap-4 text-[10px] font-300 text-[var(--text-tertiary)]">
             <span className="inline-flex items-center gap-1.5">
               <span aria-hidden className="inline-block h-[2px] w-5 rounded-full bg-[var(--primary)]" />
