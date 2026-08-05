@@ -524,11 +524,31 @@ export interface paths {
         };
         /**
          * Indicações entre jogadores (MGM) por convidador
-         * @description Detalhe do agregado `mgm` do product-metrics: um convidador por linha (aceites, ativos, prêmio de 3 convites, último aceite) com os indicados expandidos. Aceites são PISO (o 4º aceite de um convidador cheio é descartado sem linha; invitee é UNIQUE) e não existe 'enviados' server-side — o share é client-side. Mesmo filtro de contas de teste do product-metrics.
+         * @description Detalhe do agregado `mgm` do product-metrics: um convidador por linha (aceites, vagas declaradas, quantos JOGARAM, ativos, último aceite) com os indicados expandidos. O prêmio exige 3 em 'played' — 3 que jogaram, não 3 cadastros (ADR-0064 §3-bis, decisão do founder 05/08). Aceites são PISO (o 4º aceite de um convidador cheio é descartado sem linha; invitee é UNIQUE) e não existe 'enviados' server-side — o share é client-side. Mesmo filtro de contas de teste do product-metrics.
          */
         get: operations["ops-list-mgm-referrals"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/mgm-referrals/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Marcar uma indicação como fraude (ou desfazer)
+         * @description Revisão humana antes do prêmio — o controle anti-fraude do MGM (ADR-0064 §8). 'fraudulent' tira a linha do teto de 3 slots do convidador e do prêmio na hora, e GRUDA: nenhuma varredura promove linha condenada. 'signed_up' desfaz, e a partir daí a varredura do user-service volta a poder promovê-la para 'played' sozinha se a janela da reserva justificar. 'played' NÃO é escrevível aqui: é derivado da reserva, e um botão que o escrevesse seria um botão de fabricar prêmio. reason é obrigatório e vai literal para lits.ops_audit_log com o e-mail do operador, DENTRO da mesma transação — falha de registro aborta a ação. Condenar uma vaga ainda 'declared' APAGA o HMAC do telefone declarado e é irreversível.
+         */
+        post: operations["ops-set-mgm-invite-status"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2510,42 +2530,54 @@ export interface components {
         MgmReferralInvitee: {
             /**
              * Format: date-time
-             * @description Quando o indicado aceitou o código (POST /v1/mgm/accept)
+             * @description Quando o indicado aceitou o código (POST /v1/mgm/accept). VAZIO na vaga declarada — não houve aceite
              */
             accepted_at: string;
-            /** @description Nome resolvido: display_name → @username → id curto; conta apagada vira 'Conta excluída' */
+            /** @description UUID da linha em public.mgm_invites. Sempre presente (a vaga declarada não tem invitee_id, mas tem id) — é o alvo de POST /v1/ops/mgm-referrals/{id}/status */
+            invite_id: string;
+            /** @description Nome resolvido: display_name → @username → id curto; conta apagada vira 'Conta excluída'; vaga declarada vira 'Convite pendente' */
             name: string;
             /**
-             * @description HOJE sempre 'first_match': nenhum writer flipa status. Os outros valores existem no CHECK do schema, sem instrumentação — não leia a ausência deles como 'ninguém converteu'
+             * @description 'declared' = vaga reservada por telefone, sem convidado ainda. 'signed_up' = a pessoa se cadastrou (falta jogar). 'played' = a janela de uma reserva dela terminou — o ÚNICO que conta prêmio. 'first_match' = valor LEGADO, mesmo significado de 'signed_up', só durante a janela de deploy da migration 20260805130000. converted/completed existem no CHECK e não têm writer: não leia a ausência deles como 'ninguém converteu'
              * @enum {string}
              */
-            status: "first_match" | "converted" | "completed" | "fraudulent" | "expired";
-            /** @description UUID do indicado (mgm_invites.invitee_id) */
+            status: "declared" | "signed_up" | "played" | "first_match" | "converted" | "completed" | "fraudulent" | "expired";
+            /** @description UUID do indicado (mgm_invites.invitee_id). VAZIO quando status='declared': a vaga foi reservada por telefone e ninguém se cadastrou com ele ainda */
             user_id: string;
         };
         MgmReferralRow: {
             /**
              * Format: int64
-             * @description Aceites deste convidador (qualquer status). PISO — ver MgmSummary
+             * @description Linhas deste convidador (qualquer status, vagas declaradas incluídas). O nome é histórico: NÃO são todos aceites — a vaga declarada nunca foi aceita por ninguém. PISO — ver MgmSummary
              */
             accepted: number;
             /**
              * Format: int64
-             * @description Aceites com status fora de fraudulent/expired — os que contam para o teto de 3 slots e para o prêmio. Hoje igual a accepted (status congelado em first_match)
+             * @description Linhas fora de fraudulent/expired — as que ocupam os 3 slots. Inclui as declaradas, porque vaga reservada ocupa slot (ADR-0064 §5). NÃO é a conta do prêmio: veja played/reward_reached
              */
             active: number;
-            /** @description Os indicados, do aceite mais antigo ao mais novo */
+            /**
+             * Format: int64
+             * @description Vagas reservadas por telefone e ainda sem convidado (status='declared', ADR-0064). Estão dentro de accepted e de active
+             */
+            declared: number;
+            /** @description Os indicados, do mais antigo ao mais novo (COALESCE(matched_at, declared_at, accepted_at)) */
             invitees: components["schemas"]["MgmReferralInvitee"][] | null;
             /** @description UUID do convidador */
             inviter_id: string;
             /**
              * Format: date-time
-             * @description Aceite mais recente deste convidador
+             * @description Aceite mais recente deste convidador. VAZIO quando ele só tem vagas declaradas — não houve aceite nenhum
              */
             last_accepted_at: string;
             /** @description Nome resolvido: display_name → @username → id curto; conta apagada vira 'Conta excluída' */
             name: string;
-            /** @description True quando active >= 3 (prêmio VIP de 3 convites — mgmGoal do bff-mobile) */
+            /**
+             * Format: int64
+             * @description Indicados que JOGARAM (status='played': a janela de uma reserva deles terminou depois do casamento). É A CONTA DO PRÊMIO desde 05/08 — cadastro não basta mais
+             */
+            played: number;
+            /** @description True quando played >= 3. Nem vaga declarada nem cadastro sem jogo conquistam o prêmio (ADR-0064 §3-bis, decisão do founder 05/08): quem estava 3/3 por cadastro volta a aparecer como pendente */
             reward_reached: boolean;
         };
         MgmReferralsResponseBody: {
@@ -2559,19 +2591,19 @@ export interface components {
             referrals: components["schemas"]["MgmReferralRow"][] | null;
             /**
              * Format: int64
-             * @description Total de convidadores com >=1 aceite, após o filtro de contas de teste (METRICS_EXCLUDE_USER_IDS nos dois lados da indicação)
+             * @description Total de convidadores com >=1 LINHA em mgm_invites — vaga só declarada conta, porque ela também é um convidador ativo. Após o filtro de contas de teste (METRICS_EXCLUDE_USER_IDS nos dois lados da indicação)
              */
             total: number;
         };
         MgmSummary: {
             /**
              * Format: int64
-             * @description Aceites nos últimos 7 dias (accepted_at). Mesmo piso do total
+             * @description Aceites nos últimos 7 dias (accepted_at). Mesmo piso do total; vaga declarada não tem accepted_at e não entra
              */
             accepted_7d: number;
             /**
              * Format: int64
-             * @description Aceites de indicação desde o início (COUNT de public.mgm_invites). PISO, não total: o aceite de um convidador que já tem 3 slots ativos é descartado em silêncio (nenhuma linha nasce) e o UNIQUE(invitee_id) descarta re-indicação de quem já foi indicado
+             * @description Aceites de indicação desde o início — linhas de public.mgm_invites com convidado de verdade. Vaga só declarada (status='declared', ADR-0064) NÃO entra: ninguém aceitou nada ainda. PISO, não total: o aceite de um convidador que já tem 3 slots ativos é descartado em silêncio (nenhuma linha nasce) e o UNIQUE parcial em invitee_id descarta re-indicação de quem já foi indicado
              */
             accepted_total: number;
             /**
@@ -2581,12 +2613,22 @@ export interface components {
             codes_created: number;
             /**
              * Format: int64
-             * @description Convidadores distintos com >=1 aceite
+             * @description Vagas reservadas por telefone e ainda sem convidado (status='declared', ADR-0064). É a fila do funil, não aceite — por isso fora de accepted_total
+             */
+            declared: number;
+            /**
+             * Format: int64
+             * @description Convidadores distintos com >=1 linha (vaga declarada conta: ele já usou um slot)
              */
             inviters: number;
             /**
              * Format: int64
-             * @description Convidadores que atingiram os 3 slots ativos (status fora de fraudulent/expired) — o prêmio VIP de 3 convites (mgmGoal do bff-mobile)
+             * @description Indicados que JOGARAM (status='played': a janela de uma reserva deles terminou depois do casamento, ADR-0064 §3-bis). Subconjunto de accepted_total, e é a base de reward_reached
+             */
+            played: number;
+            /**
+             * Format: int64
+             * @description Convidadores com 3 indicados que JOGARAM (status='played') — o prêmio VIP de 3 convites. Desde a decisão do founder de 05/08 (ADR-0064 §3-bis) cadastro NÃO basta: este número CAIU de propósito em relação ao que o painel mostrava antes, porque o anterior contava cadastro. Nem vaga declarada nem 'signed_up' entram
              */
             reward_reached: number;
             /** @description Top 5 convidadores por aceites. Ausente quando não há aceite nenhum, ou quando só a query do top falhou (o resto do bloco continua válido) */
@@ -2595,7 +2637,7 @@ export interface components {
         MgmTopInviter: {
             /**
              * Format: int64
-             * @description Aceites deste convidador (linhas em mgm_invites, qualquer status). Mesmo piso de accepted_total
+             * @description Aceites deste convidador (linhas em mgm_invites com convidado; vaga só declarada não conta). Mesmo piso de accepted_total
              */
             accepted: number;
             /** @description Nome resolvido: profiles.display_name → @username → id curto. Conta apagada (users.deleted_at) vira 'Conta excluída' em vez de sumir da lista — a indicação aconteceu, apagar a conta não desfaz o fato */
@@ -3227,7 +3269,7 @@ export interface components {
             invites_sent_7d: number | null;
             /** @description Intent→game conversion: played over invites sent + quick matches opened, all time */
             match_funnel: components["schemas"]["MatchFunnel"];
-            /** @description Convites entre jogadores (indicação MGM, public.mgm_*). Zeros aqui são zeros REAIS — contagem direta nas tabelas; null = o bloco não pôde ser lido (tabelas da migration 20260727120000 ausentes, ou erro de query) — sem dado, não zero. Não há breakdown por status de propósito: nenhum writer flipa first_match → converted/completed/fraudulent/expired hoje, então um funil por status pareceria instrumentado sem ser */
+            /** @description Convites entre jogadores (indicação MGM, public.mgm_*). Zeros aqui são zeros REAIS — contagem direta nas tabelas; null = o bloco não pôde ser lido (tabelas da migration 20260727120000 ausentes, ou erro de query) — sem dado, não zero. O funil tem TRÊS estados com writer de verdade desde a ADR-0064 (declared → signed_up → played), e eles aparecem como campos próprios (declared, played). converted/completed continuam no CHECK SEM writer: por isso não há campo para eles — seria um funil que parece instrumentado sem ser */
             mgm: components["schemas"]["MgmSummary"];
             /**
              * Format: int64
@@ -3456,6 +3498,39 @@ export interface components {
              * @description Total members targeted (audience members, or all PlayTennis members on the legacy default)
              */
             total: number;
+        };
+        SetMgmInviteStatusRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetMgmInviteStatusRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @description Por que esta linha está sendo marcada. Gravado literalmente em lits.ops_audit_log ao lado do ator e da transição de → para. Obrigatório: a revisão humana É o controle anti-fraude, e revisão sem justificativa registrada não é revisão */
+            reason: string;
+            /**
+             * @description 'fraudulent' condena a indicação: ela sai do teto de 3 slots do convidador e do prêmio na hora. 'signed_up' DESFAZ uma condenação e devolve a linha a 'entrou, falta jogar' — a partir daí a varredura do user-service volta a poder promovê-la para 'played' sozinha, se a janela da reserva justificar. 'played' NÃO é escrevível aqui: ele é derivado da reserva, e um botão que o escrevesse seria um botão de fabricar prêmio
+             * @enum {string}
+             */
+            status: "fraudulent" | "signed_up";
+        };
+        SetMgmInviteStatusResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetMgmInviteStatusResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @description false quando a linha já estava no status pedido */
+            changed: boolean;
+            /** @description UUID da linha alterada */
+            invite_id: string;
+            /** @description true quando esta chamada apagou o HMAC do telefone declarado. Acontece ao condenar uma vaga 'declared': cumprida a finalidade, o dado do terceiro morre (ADR-0064 §7). É IRREVERSÍVEL — sem o hash a vaga não casa com ninguém, e desfazer a condenação dela não é possível: o convidador precisa declarar o número de novo */
+            phone_hash_cleared: boolean;
+            /** @description Status antes desta chamada. Igual a status = nada mudou (nenhuma escrita, nenhuma linha de auditoria) */
+            previous_status: string;
+            /** @description Status depois desta chamada, lido de volta do banco — não é eco do pedido */
+            status: string;
         };
         SetUserLevelRequestBody: {
             /**
@@ -4860,6 +4935,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MgmReferralsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-set-mgm-invite-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID da linha em public.mgm_invites (o campo invite_id do indicado em GET /v1/ops/mgm-referrals) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMgmInviteStatusRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetMgmInviteStatusResponseBody"];
                 };
             };
             /** @description Error */

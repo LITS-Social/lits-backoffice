@@ -637,8 +637,9 @@ function PlatformCard({ split }: { split: PlatformSplit | null }) {
       painel 03) — chamar alguém para uma partida;
    2. código de SIGNUP do beta (linha "Códigos de indicação usados",
       invitation_code_uses) — o gate de entrada do beta via auth-bridge;
-   3. ESTE card: indicação jogador→jogador (MGM, código compartilhável do app,
-      prêmio VIP aos 3 aceites).
+   3. ESTE card: indicação jogador→jogador (MGM, código compartilhável do app
+      ou telefone declarado antes do cadastro; prêmio VIP a 3 indicados que
+      JOGARAM — cadastro deixou de bastar em 05/08, ADR-0064 §3-bis).
    O título carrega "(MGM)" e o rodapé diz de onde o número vem exatamente para
    o founder não somar dois "convites" que medem coisas diferentes.
 
@@ -665,11 +666,25 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
     );
   }
 
+  // A ORDEM É O ARGUMENTO. "Jogaram" vem colado em "Aceites · total" porque a
+  // leitura errada que este card produzia era exatamente a de que aceite =
+  // prêmio. Lado a lado, a diferença entre cadastrar e jogar fica na cara em vez
+  // de exigir que o founder abra o detalhe.
   const boxes = [
     {
       label: "Aceites · total",
       value: mgm.accepted_total,
-      hint: "piso, desde o início",
+      hint: "piso, desde o início — é cadastro, não jogo",
+    },
+    {
+      label: "Jogaram",
+      value: mgm.played,
+      hint: "janela da reserva terminou — a única conta que vale prêmio",
+    },
+    {
+      label: "Reservados",
+      value: mgm.declared,
+      hint: "telefone nomeado, ninguém se cadastrou ainda — ocupa slot",
     },
     {
       label: "Aceites · 7 dias",
@@ -677,9 +692,9 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
       hint: "pelo accepted_at",
     },
     {
-      label: "Convidadores com aceite",
+      label: "Convidadores",
       value: mgm.inviters,
-      hint: "pessoas com ≥1 indicado",
+      hint: "pessoas com ≥1 linha, vaga reservada incluída",
     },
     {
       label: "Geraram código",
@@ -694,9 +709,10 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
       <div className="mb-5">
         <h2 className="eyebrow">Convites entre jogadores (MGM)</h2>
         <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          A indicação jogador→jogador — quem compartilha o código do app e quem aceita. Não é o
-          convite de partida (esse vive no funil acima e no painel 03) nem o código de signup do
-          beta (linha da planilha abaixo). Zeros aqui são zeros reais.
+          A indicação jogador→jogador — quem convida (pelo código do app ou nomeando o telefone do
+          amigo antes do cadastro) e o que aconteceu depois. Não é o convite de partida (esse vive
+          no funil acima e no painel 03) nem o código de signup do beta (linha da planilha abaixo).
+          Zeros aqui são zeros reais.
         </p>
       </div>
 
@@ -758,14 +774,21 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
             </p>
           )}
           <p className="mt-4 border-t border-[var(--border)] pt-3 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {/* "3 convites" era o texto antigo e virou mentira em 05/08: o
+                prêmio exige 3 indicados que JOGARAM. Quem estava 3/3 por
+                cadastro voltou a pendente de propósito — se este número caiu,
+                foi isso, não perda de dado. */}
             {mgm.reward_reached > 0 ? (
               <>
                 <span className="font-600 text-[var(--text-secondary)]">{mgm.reward_reached}</span>{" "}
-                {mgm.reward_reached === 1 ? "convidador já completou" : "convidadores já completaram"}{" "}
-                os 3 convites (prêmio VIP).
+                {mgm.reward_reached === 1 ? "convidador já tem" : "convidadores já têm"} 3 indicados
+                que JOGARAM (prêmio VIP). Cadastro não conta desde 05/08.
               </>
             ) : (
-              <>Ninguém completou os 3 convites (prêmio VIP) ainda.</>
+              <>
+                Ninguém tem 3 indicados que JOGARAM (prêmio VIP) ainda. Desde 05/08 cadastro não
+                basta — quem estava 3/3 por cadastro voltou a pendente de propósito.
+              </>
             )}
           </p>
           <Link
