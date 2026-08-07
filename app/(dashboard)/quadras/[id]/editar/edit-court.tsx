@@ -22,6 +22,7 @@ import {
   geocodeAction,
   regenerateAvailabilityAction,
   repriceCourtAction,
+  priceSlotRangeAction,
   updateCourtAction,
   updateCourtSlotAction,
   updateFranchiseAction,
@@ -460,6 +461,183 @@ function RepriceSection({
         {result !== null && (
           <SuccessNote>
             Preço aplicado em {result.toLocaleString("pt-BR")} horário{result === 1 ? "" : "s"}.
+          </SuccessNote>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+/* ══ preço por faixa de horário ═══════════════════════════════════════════ */
+
+const DOW_OPTIONS = [
+  { v: 1, label: "Seg" },
+  { v: 2, label: "Ter" },
+  { v: 3, label: "Qua" },
+  { v: 4, label: "Qui" },
+  { v: 5, label: "Sex" },
+  { v: 6, label: "Sáb" },
+  { v: 0, label: "Dom" },
+] as const;
+
+/**
+ * Preço de uma FAIXA — "o horário nobre custa mais". A seção acima põe um
+ * preço só na quadra inteira; esta cobra diferente por hora do dia, que é como
+ * clube de verdade preça.
+ *
+ * Os dias da semana são opcionais: nenhum marcado = todos. Reserva real fica
+ * de fora por regra (o preço de um jogo vendido é o que o jogador combinou),
+ * e a tela diz quantas foram puladas em vez de omitir.
+ */
+function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
+  const [startHour, setStartHour] = useState(18);
+  const [endHour, setEndHour] = useState(22);
+  const [price, setPrice] = useState("");
+  const [days, setDays] = useState<number[]>([]);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{
+    updated: number;
+    skippedBooked: number;
+    failed: number;
+  } | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const toggleDay = (v: number) =>
+    setDays((cur) => (cur.includes(v) ? cur.filter((d) => d !== v) : [...cur, v]));
+
+  function apply() {
+    setError("");
+    setResult(null);
+    const cents = reaisToCents(price);
+    if (cents === null) {
+      setError("Preço inválido. Use ex: 400 ou 400,50.");
+      return;
+    }
+    if (startHour > endHour) {
+      setError("A hora inicial precisa ser menor ou igual à final.");
+      return;
+    }
+    startTransition(async () => {
+      const res = await priceSlotRangeAction(courtId, {
+        startHour,
+        endHour,
+        priceCents: cents,
+        weekdays: days,
+      });
+      if (!res.ok) {
+        setError(res.error ?? "Falha ao aplicar o preço da faixa.");
+        return;
+      }
+      setResult({
+        updated: res.updated ?? 0,
+        skippedBooked: res.skippedBooked ?? 0,
+        failed: res.failed ?? 0,
+      });
+      onDone();
+    });
+  }
+
+  return (
+    <SectionCard
+      title="Preço por faixa de horário"
+      description="Cobre diferente por hora do dia nesta quadra — por exemplo, o horário nobre mais caro que a manhã. Vale para os horários futuros dos próximos 30 dias; reservas já vendidas mantêm o preço combinado."
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_1fr_1.4fr]">
+          <div>
+            <label htmlFor="range_start" className={labelClass}>
+              Da hora
+            </label>
+            <input
+              id="range_start"
+              type="number"
+              min={0}
+              max={23}
+              value={startHour}
+              onChange={(e) => setStartHour(Number(e.target.value))}
+              className={fieldClass}
+            />
+          </div>
+          <div>
+            <label htmlFor="range_end" className={labelClass}>
+              Até a hora (inclusive)
+            </label>
+            <input
+              id="range_end"
+              type="number"
+              min={0}
+              max={23}
+              value={endHour}
+              onChange={(e) => setEndHour(Number(e.target.value))}
+              className={fieldClass}
+            />
+          </div>
+          <div>
+            <label htmlFor="range_price" className={labelClass}>
+              Preço da hora (R$)
+            </label>
+            <input
+              id="range_price"
+              inputMode="decimal"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="ex: 400"
+              className={fieldClass}
+            />
+          </div>
+        </div>
+
+        <div>
+          <span className={labelClass}>Dias da semana</span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {DOW_OPTIONS.map((d) => {
+              const on = days.includes(d.v);
+              return (
+                <button
+                  key={d.v}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleDay(d.v)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-[11.5px] font-500 transition-colors",
+                    on
+                      ? "border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary)]"
+                      : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]"
+                  )}
+                >
+                  {d.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {days.length === 0
+              ? "Nenhum dia marcado — a faixa vale para todos os dias."
+              : `A faixa vale só ${days.length === 1 ? "neste dia" : "nestes dias"}.`}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={apply} disabled={pending} className={primaryBtn}>
+            {pending ? "Aplicando…" : "Aplicar na faixa"}
+          </button>
+          <span className="text-[11px] font-300 text-[var(--text-tertiary)]">
+            {startHour === endHour
+              ? `só o horário das ${startHour}h`
+              : `horários que começam entre ${startHour}h e ${endHour}h`}
+          </span>
+        </div>
+
+        {error && <ErrorBanner message={error} />}
+        {result !== null && (
+          <SuccessNote>
+            Preço aplicado em {result.updated.toLocaleString("pt-BR")} horário
+            {result.updated === 1 ? "" : "s"}.
+            {result.skippedBooked > 0 &&
+              ` ${result.skippedBooked} com reserva ${
+                result.skippedBooked === 1 ? "ficou" : "ficaram"
+              } com o preço combinado.`}
+            {result.failed > 0 && ` ${result.failed} não responderam — tente de novo nessa faixa.`}
           </SuccessNote>
         )}
       </div>
@@ -1838,6 +2016,7 @@ export function EditCourt({
         defaultPriceCents={currentPriceCents}
         onDone={reloadSlots}
       />
+      <PriceRangeSection courtId={court.id} onDone={reloadSlots} />
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />
       <AddSlotsSection courtId={court.id} onDone={reloadSlots} />
       <ImportPrintSection courtId={court.id} courtName={court.name} onDone={reloadSlots} />

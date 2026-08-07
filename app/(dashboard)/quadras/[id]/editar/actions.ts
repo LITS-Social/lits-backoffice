@@ -727,3 +727,107 @@ export async function geocodeAction(q: string): Promise<GeocodeState> {
 // que a usa. Havia uma segunda cópia aqui que mandava o DELETE sem corpo — o que
 // o servidor entende como PRÉVIA, e responde 200 sem escrever nada. Uma ação de
 // apagar que não olha `deleted` no corpo é uma ação que nunca apaga.
+
+/* ══ preço por faixa de horário ═══════════════════════════════════════════ */
+
+export type PriceRangeState = {
+  ok: boolean;
+  /** Quantos horários tiveram o preço trocado. */
+  updated?: number;
+  /** Reservas reais encontradas na faixa — puladas, nunca repreçadas. */
+  skippedBooked?: number;
+  /** Falharam no PATCH; o resto foi aplicado mesmo assim. */
+  failed?: number;
+  error?: string;
+};
+
+/** Quantos dias à frente a faixa alcança. Mesma janela da grade padrão. */
+const PRICE_RANGE_DAYS = 30;
+
+/**
+ * Aplica um preço a uma FAIXA DE HORÁRIO desta quadra — "das 18h às 22h custa
+ * R$ 400" — em vez de um preço só para a quadra inteira.
+ *
+ * `startHour`/`endHour` são inclusivos e lidos no fuso de São Paulo: a faixa
+ * 18–22 pega os slots que COMEÇAM às 18, 19, 20, 21 e 22. `weekdays` (0=dom)
+ * vazio significa todos os dias.
+ *
+ * Reserva real nunca é tocada: o preço de um slot vendido é o que o jogador
+ * combinou, e mudá-lo por baixo reescreveria o que ele deve. Elas são contadas
+ * e reportadas, não repreçadas — o operador precisa saber que existiram.
+ */
+export async function priceSlotRangeAction(
+  courtId: string,
+  params: {
+    startHour: number;
+    endHour: number;
+    priceCents: number;
+    /** 0=domingo … 6=sábado. Vazio = todos os dias. */
+    weekdays?: number[];
+  }
+): Promise<PriceRangeState> {
+  const { startHour, endHour, priceCents, weekdays = [] } = params;
+  if (startHour > endHour) {
+    return { ok: false, error: "A hora inicial precisa ser menor ou igual à final." };
+  }
+
+  const api = await getApi();
+  const now = new Date();
+  const to = new Date(now.getTime() + PRICE_RANGE_DAYS * 24 * 3_600_000);
+  const { data, error } = await api.GET("/v1/ops/courts/{id}/slots", {
+    params: {
+      path: { id: courtId },
+      query: { from: now.toISOString(), to: to.toISOString() },
+    },
+  });
+  if (error) {
+    return { ok: false, error: error.detail || error.title || "Falha ao ler a grade." };
+  }
+
+  // Hora e dia da semana lidos em São Paulo — o worker roda em UTC, e sem isto
+  // a faixa da noite cairia na hora errada.
+  const hourFmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    hour12: false,
+  });
+  const dowFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "short",
+  });
+  const DOW: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+  const nowMs = now.getTime();
+  let skippedBooked = 0;
+  const targets: string[] = [];
+  for (const s of data.slots ?? []) {
+    const startMs = new Date(s.slot_start).getTime();
+    if (startMs <= nowMs) continue; // passado não se repreça
+    const hour = Number(hourFmt.format(new Date(startMs)));
+    if (hour < startHour || hour > endHour) continue;
+    if (weekdays.length > 0) {
+      const dow = DOW[dowFmt.format(new Date(startMs))];
+      if (dow === undefined || !weekdays.includes(dow)) continue;
+    }
+    if (s.status === "booked") {
+      skippedBooked++;
+      continue;
+    }
+    if (s.price_cents === priceCents) continue; // já está no preço
+    targets.push(s.slot_start);
+  }
+
+  let updated = 0;
+  let failed = 0;
+  for (const slotStart of targets) {
+    const res = await api.PATCH("/v1/ops/courts/{id}/slots/{slot_start}", {
+      params: { path: { id: courtId, slot_start: slotStart } },
+      body: { price_cents: priceCents },
+    });
+    if (res.error) failed++;
+    else updated++;
+  }
+
+  revalidatePath("/quadras");
+  return { ok: true, updated, skippedBooked, failed };
+}
