@@ -2,11 +2,11 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    LITS — Painel Operacional
-   Design foundation on the LITS design system (brandbook V1.0, claude.ai/design
-   project "LITS" — tokens/*.css is the source of truth). Light = off-white
-   paper with white cards; dark = the club: Verde LITS canvas, green cards,
-   brown raised surfaces, cream ink. Surfaces feel like printed paper: 1px
-   khaki borders and value shifts, no shadows.
+   Design foundation on the LITS design system (design-system/tokens/*.css é a
+   fonte de verdade). Claro = a camada do brandbook: página em Bege claro,
+   painéis em Off-white — branco puro não existe no sistema. Escuro = o clube:
+   canvas Verde LITS, cards verde-700, raised em Marrom, tinta creme. As
+   superfícies são papel impresso: hairline de caqui e troca de valor, sem sombra.
 
    Faces, a strict voice split (brandbook):
      Colus           400 only, never italic — titles, named things, big numbers.
@@ -17,12 +17,12 @@
                      "Nikkei does the working."
      Gravesend Sans  Bold, short highlights only — never titles, never body.
 
-   Colour law of this console:
-     terracotta   = the ONLY energy colour. Primary CTAs, active states
-                    (nav, focus ring), key data. Never decorative.
-     court green  = institutional. The dark "club" canvas, calm structure.
-     RED          = money or moderation. Nothing else. An alert colour that
-                    fires on healthy rows is an alert nobody reads.
+   Lei de cor — SETE cores, nenhuma outra (nem cinza, nem branco puro). Tudo o
+   mais sai delas por mistura:
+     terracota    = a única cor de ação. CTA primário, estado ativo, dado-chave.
+                    Nunca decorativa, nunca além de ~5% da área da tela.
+     verde LITS   = institucional. Canvas do clube, status positivo, estrutura.
+     bege         = atenção e metadado. Onde a intuição pediria cinza.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ─── Brand faces (self-hosted, files from the design system) ─────────────── */
@@ -124,19 +124,20 @@
   --color-gold: #A39175;
 
   /* Feedback — values are re-declared per theme below; these are the light
-     defaults and the keys Tailwind compiles utilities against. */
-  --color-success: #2C6B45;
-  --color-success-bg: #D6E1D4;
-  --color-warning: #B54A29;
-  --color-warning-bg: #EFDFCC;
-  --color-error: #A82A20;
-  --color-error-bg: #F0D9D4;
-  --color-info: #6B5B3E;
-  --color-info-bg: #E3DCC6;
+     defaults and the keys Tailwind compiles utilities against. Todos saem das
+     sete cores: ✓ Verde LITS, ⚠ Bege, ✗ Laranja Saibro. */
+  --color-success: #2E433A;
+  --color-success-bg: #DEE0D5;
+  --color-warning: #6E6047;
+  --color-warning-bg: #EAE5D5;
+  --color-error: #B54A29;
+  --color-error-bg: #F4E2DB;
+  --color-info: #A39175;
+  --color-info-bg: #EAE5D5;
 
-  --color-clay: #8F3A20; /* terracotta-700 — brand token */
-  --color-win: #2C6B45;
-  --color-loss: #A82A20;
+  --color-clay: #91401F; /* terracota escurecida com Preto */
+  --color-win: #2E433A;
+  --color-loss: #B54A29;
 
   /* Motion */
   --ease-brand: cubic-bezier(0.2, 0.65, 0.25, 1);
@@ -162,12 +163,14 @@
 :root {
   color-scheme: light;
 
-  --bg: #F6F5EC;             /* page — brandbook Off-white */
-  --surface: #FFFFFF;        /* the data plane — white card on paper */
-  --surface-raised: #E2DECC; /* Bege claro — cream do brandbook em hovers/chips */
-  --surface-sunken: #E8E7E1; /* recessed — secondary paper fill */
+  /* A camada do brandbook: página em Bege claro, painéis em Off-white.
+     Branco puro NÃO existe no sistema — as sete cores e o que sai delas. */
+  --bg: #E2DECC;             /* Bege claro — a página */
+  --surface: #F6F5EC;        /* Off-white — o painel sobre o papel */
+  --surface-raised: #EDEBDE; /* off-white + bege claro — hovers e chips */
+  --surface-sunken: #DAD5C0; /* bege claro + caqui — detalhe recuado */
 
-  --border: #C9BFA8;         /* khaki-300 — the brand's 1px hairline */
+  --border: #D3CBB5;         /* caqui a 42% sobre bege claro */
   --border-strong: #A39175;  /* Bege / khaki */
 
   --primary: #B54A29;        /* Laranja Saibro — the ONLY energy colour */
@@ -186,15 +189,18 @@
      é assim que o brandbook assenta títulos em peças claras. */
   --text-display: #2E433A;
 
-  --color-success: #2C6B45;
-  --color-success-bg: #DDE7DB;
-  --color-warning: #B54A29;
-  --color-warning-bg: #F0E2DB; /* terracotta wash — DS --lits-terracotta-100 */
-  --color-error: #A82A20;
-  --color-error-bg: #F2DDD8;
-  --color-info: #6B5B3E;
-  --color-info-bg: #EAE4D2;
-  --color-clay: #8F3A20; /* terracotta-700 — brand token */
+  /* Status nativos da marca: ✓ Verde LITS, ⚠ Bege, ✗ Laranja Saibro.
+     Nenhum hex fora das sete — o verde-garrafa e o vermelho de alerta que
+     moravam aqui não existem no brandbook. */
+  --color-success: #2E433A;    /* Verde LITS */
+  --color-success-bg: #DEE0D5; /* verde a 12% sobre off-white */
+  --color-warning: #6E6047;    /* Bege escurecido com Preto */
+  --color-warning-bg: #EAE5D5; /* bege a 18% sobre off-white */
+  --color-error: #B54A29;      /* Laranja Saibro */
+  --color-error-bg: #F4E2DB;   /* terracota a 12% sobre off-white */
+  --color-info: #A39175;       /* Bege */
+  --color-info-bg: #EAE5D5;
+  --color-clay: #91401F;       /* terracota escurecida com Preto */
 
   --grain-opacity: 0.2;
   --grain-blend: multiply;
@@ -230,13 +236,15 @@
     --text-tertiary: #A39175;  /* Bege / caqui — text-muted do DS */
     --text-display: #E2DECC;   /* títulos Colus em creme sobre o verde */
 
-    --color-success: #8CC1A1;                     /* degrau claro do Verde LITS */
-    --color-success-bg: rgba(47, 122, 74, 0.16);
-    --color-warning: #D0764A;
-    --color-warning-bg: rgba(181, 74, 41, 0.18);  /* accent-wash escuro do DS */
-    --color-error: #E8776B;
-    --color-error-bg: rgba(168, 42, 32, 0.20);
-    --color-info: #C9BFA8;                        /* khaki-300 */
+    /* No verde do clube os status clareiam para manter contraste, mas seguem
+       saindo das sete: ✓ verde + creme, ⚠ Bege, ✗ terracota + off-white. */
+    --color-success: #8CA394;                     /* Verde LITS + creme */
+    --color-success-bg: rgba(46, 67, 58, 0.30);
+    --color-warning: #A39175;                     /* Bege */
+    --color-warning-bg: rgba(163, 145, 117, 0.16);
+    --color-error: #CE8B73;                       /* terracota + off-white */
+    --color-error-bg: rgba(181, 74, 41, 0.22);
+    --color-info: #C9BFA8;                        /* Bege + off-white */
     --color-info-bg: rgba(163, 145, 117, 0.14);
     --color-clay: #D0764A;
 
@@ -268,12 +276,12 @@
   --text-tertiary: #A39175;
   --text-display: #E2DECC;
 
-  --color-success: #8CC1A1;
-  --color-success-bg: rgba(47, 122, 74, 0.16);
-  --color-warning: #D0764A;
-  --color-warning-bg: rgba(181, 74, 41, 0.18);
-  --color-error: #E8776B;
-  --color-error-bg: rgba(168, 42, 32, 0.20);
+  --color-success: #8CA394;
+  --color-success-bg: rgba(46, 67, 58, 0.30);
+  --color-warning: #A39175;
+  --color-warning-bg: rgba(163, 145, 117, 0.16);
+  --color-error: #CE8B73;
+  --color-error-bg: rgba(181, 74, 41, 0.22);
   --color-info: #C9BFA8;
   --color-info-bg: rgba(163, 145, 117, 0.14);
   --color-clay: #D0764A;
@@ -288,12 +296,12 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg: #F6F5EC;
-  --surface: #FFFFFF;
-  --surface-raised: #E2DECC;
-  --surface-sunken: #E8E7E1;
+  --bg: #E2DECC;
+  --surface: #F6F5EC;
+  --surface-raised: #EDEBDE;
+  --surface-sunken: #DAD5C0;
 
-  --border: #C9BFA8;
+  --border: #D3CBB5;
   --border-strong: #A39175;
 
   --primary: #B54A29;
@@ -304,15 +312,15 @@
   --text-tertiary: #655E4F;
   --text-display: #2E433A;
 
-  --color-success: #2C6B45;
-  --color-success-bg: #DDE7DB;
-  --color-warning: #B54A29;
-  --color-warning-bg: #F0E2DB;
-  --color-error: #A82A20;
-  --color-error-bg: #F2DDD8;
-  --color-info: #6B5B3E;
-  --color-info-bg: #EAE4D2;
-  --color-clay: #8F3A20;
+  --color-success: #2E433A;
+  --color-success-bg: #DEE0D5;
+  --color-warning: #6E6047;
+  --color-warning-bg: #EAE5D5;
+  --color-error: #B54A29;
+  --color-error-bg: #F4E2DB;
+  --color-info: #A39175;
+  --color-info-bg: #EAE5D5;
+  --color-clay: #91401F;
 
   --grain-opacity: 0.2;
   --grain-blend: multiply;
@@ -414,38 +422,33 @@ body::after {
 }
 
 /* ─── Editorial devices ──────────────────────────────────────────────────────
-   The tracked-uppercase Nikkei label is the signature "club" device — Nikkei
-   does the working. The eyebrow adds a leading rule in clay; every panel
-   header wears one.
+   Três vozes, três papéis (brandbook): Colus fala nos títulos e nos números,
+   Nikkei trabalha no corpo e nos detalhes, Gravesend acentua o que é curto —
+   eyebrow de seção e rótulo de botão. Nunca se substituem.
    ──────────────────────────────────────────────────────────────────────────── */
 
 .eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-family: var(--font-sans);
+  /* Gravesend Bold, caixa alta, tracking largo — igual ao .lits-eyebrow do
+     design system. Sem traço à esquerda: o sistema não tem esse device, e a
+     régua repetida em toda seção virava ruído. E sem terracota: a cor de
+     energia não passa de ~5% da tela, então o eyebrow fica em bege. */
+  display: inline-block;
+  font-family: var(--font-highlight);
   font-weight: 700;
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: 12px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--color-clay);
+  color: var(--text-tertiary);
   line-height: 1;
 }
-.eyebrow::before {
-  content: "";
-  width: 24px;
-  height: 1px;
-  background: currentColor;
-  flex-shrink: 0;
-}
 
-/* The label with no rule — column heads, field labels, folio numbers.
-   (Historically Colus; the design system sets labels in tracked Nikkei —
-   the class name survives its font.) */
+/* Detalhe — cabeçalho de coluna, rótulo de campo, metadado. Nikkei em caixa
+   alta com tracking (.lits-detail do sistema). Regular: a família não tem
+   corte mais pesado, e a ênfase vem do tracking. */
 .label-colus {
   font-family: var(--font-sans);
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-weight: 400;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -458,6 +461,23 @@ body::after {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   line-height: 1;
+}
+
+/* ─── Rótulo de botão — a assinatura da marca na interface ───────────────────
+   O sistema põe TODO rótulo de botão em Gravesend caixa alta (.lits-btn). Aqui
+   os botões são Tailwind inline em 65 lugares, então a regra é central e casa
+   pelo atributo class: qualquer CTA que vista o terracota SÓLIDO herda a face
+   certa sem tocar em cada arquivo. As variantes com alpha (`/12` do item ativo
+   da nav) ficam de fora — item de menu não é botão, e caixa alta ali quebraria
+   a leitura da lista.
+   ──────────────────────────────────────────────────────────────────────────── */
+:is(button, a)[class*="bg-[var(--primary)]"]:not([class*="bg-[var(--primary)]/"]),
+:is(button, a)[class*="bg-[var(--color-error)]"]:not([class*="bg-[var(--color-error)]/"]),
+:is(button, a)[class*="bg-[var(--text-primary)]"]:not([class*="bg-[var(--text-primary)]/"]) {
+  font-family: var(--font-highlight);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 /* Editorial numeral — Colus, tabular, tight. Numbers are content: counts that

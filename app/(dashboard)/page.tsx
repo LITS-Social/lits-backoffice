@@ -404,7 +404,7 @@ function ProgressCard({
   eyebrow,
   value,
   target,
-  targetLabel = "meta da fase",
+  targetLabel,
   footer,
   failed,
   truncated,
@@ -412,7 +412,7 @@ function ProgressCard({
   eyebrow: string;
   value: number;
   target: number;
-  targetLabel?: string;
+  targetLabel: string;
   footer: React.ReactNode;
   failed: boolean;
   truncated?: boolean;
@@ -1180,7 +1180,7 @@ export default async function MetricsPage() {
       <PageHeader
         eyebrow="Métricas"
         title="Norte do Produto"
-        description="As metas do beta e onde estamos agora. O que o backend ainda não mede fica marcado como sem dado — nunca como zero."
+        description="Onde estamos contra o BP. O que o backend ainda não mede fica marcado como sem dado — nunca como zero."
       />
 
       <div className="space-y-6 px-4 sm:px-8 py-6">
@@ -1337,7 +1337,7 @@ export default async function MetricsPage() {
           engagementSlot={
             <ChartCard
               eyebrow="Pagas × grátis"
-              hint="Share de todas as reservas jogadas desde o início. A evolução diária está no gráfico ao lado."
+              hint="Share de todas as reservas jogadas desde o início. A evolução diária está no gráfico abaixo."
             >
               {!matches.failed && matches.paid ? (
                 <PaidShareMeter

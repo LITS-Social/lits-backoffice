@@ -60,8 +60,8 @@ export default function SemAcessoPage() {
         />
         <span className="sr-only">LITS</span>
 
-        {/* Colus, uppercase, with the leading rule — inline colour because
-            .eyebrow is unlayered CSS and its clay hard-set beats utilities. */}
+        {/* Gravesend em caixa alta. Cor inline porque .eyebrow é CSS sem layer
+            e o tom do sistema não tem contraste sobre o marrom desta tela. */}
         <span
           className="eyebrow mt-9 justify-center"
           style={{ color: "#F0A88A" }}

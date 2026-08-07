@@ -6,9 +6,9 @@ interface PageHeaderProps {
 }
 
 /**
- * The masthead of every panel. Tracked Nikkei eyebrow with its leading rule,
- * the panel's folio number set as an oversized Colus watermark, then the title
- * in upright Colus — the design system's editorial grammar on an ops console.
+ * The masthead of every panel. Gravesend eyebrow in tracked caps, the panel's
+ * folio number set as an oversized Colus watermark, then the title in upright
+ * Colus — the design system's editorial grammar on an ops console.
  */
 export function PageHeader({ eyebrow, title, description, action }: PageHeaderProps) {
   const num = eyebrow.replace("#", "");
