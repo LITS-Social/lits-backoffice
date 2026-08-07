@@ -508,8 +508,13 @@ body::after {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* `backwards`, NUNCA `both`. Com `both` o último keyframe fica grudado — e
+   `transform: translateY(0)` ainda é um transform: o elemento vira bloco de
+   contenção e TODO `position: fixed` dentro dele passa a se medir por ele, não
+   pela viewport. Era por isso que o modal de apagar academia abria a 2500px
+   daqui: o AppShell embrulha a página inteira nesta classe. */
 .animate-fade-in-up {
-  animation: fade-in-up 0.35s var(--ease-brand) both;
+  animation: fade-in-up 0.35s var(--ease-brand) backwards;
 }
 
 .live-dot {

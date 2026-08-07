@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { AlertCircle, AlertTriangle, Check, Trash2, X } from "lucide-react";
 import {
   deleteFranchiseAction,
@@ -119,10 +119,44 @@ export function DangerZone({
   const [delisted, setDelisted] = useState(false);
   const [typedSlug, setTypedSlug] = useState("");
   const [reason, setReason] = useState("");
+
   const [loadingPreview, startPreview] = useTransition();
   const [deleting, startDeleting] = useTransition();
   const [delisting, startDelisting] = useTransition();
   const busy = loadingPreview || deleting || delisting;
+
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  /* Quando o modal sobe, a tela vai PARA ele: o fundo trava (senão a página
+     continua rolando atrás de um diálogo que pede confirmação digitada), o
+     foco entra no diálogo e o Esc fecha. Sem isso o operador pode rolar para
+     longe do modal e perder de vista o que está prestes a apagar. */
+  useEffect(() => {
+    if (!open) return;
+
+    const { body } = document;
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    const prevOverflow = body.style.overflow;
+    const prevPadding = body.style.paddingRight;
+    body.style.overflow = "hidden";
+    // Compensa a barra que some, senão o layout inteiro dá um salto lateral.
+    if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+
+    dialogRef.current?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeModal();
+    };
+    window.addEventListener("keydown", onKey);
+
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPadding;
+      window.removeEventListener("keydown", onKey);
+    };
+    // `closeModal` é estável o bastante: só lê `busy`, e o efeito rearma a cada
+    // mudança dele — que é exatamente quando o Esc deve voltar a funcionar.
+  }, [open, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const alreadyListing = franchiseKind === "listing";
   const courtsLabel = plural(courtCount, "quadra", "quadras");
@@ -267,11 +301,13 @@ export function DangerZone({
           onClick={closeModal}
         >
           <div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-franchise-title"
+            tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
-            className="grain animate-fade-in-up max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
+            className="grain animate-fade-in-up max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl focus:outline-none"
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 pt-6 pb-5">
               <div>
