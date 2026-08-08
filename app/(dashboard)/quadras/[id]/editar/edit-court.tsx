@@ -5,15 +5,11 @@ import {
   AlertCircle,
   Check,
   ClipboardPaste,
-  Lock,
-  LockOpen,
   MapPin,
-  Pencil,
   Plus,
   RefreshCw,
   Search,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { cn, formatCurrency, reaisToCents } from "@/lib/utils";
 import type { CourtListItem } from "../../actions";
 import {
@@ -24,14 +20,14 @@ import {
   repriceCourtAction,
   priceSlotRangeAction,
   updateCourtAction,
-  updateCourtSlotAction,
   updateFranchiseAction,
-  listCourtSlotsAction,
   type AddSlotInput,
   type CourtSlotItem,
   type GeocodeCandidate,
 } from "./actions";
 import { ImportPrintSection } from "./import-print";
+import { AcademiaCalendar } from "../../../academias/[id]/calendar";
+import { initialWindows } from "../../../academias/[id]/academia";
 
 type Surface = "clay" | "hard" | "grass" | "beach" | "carpet";
 
@@ -41,18 +37,6 @@ const SURFACE_LABELS: Record<Surface, string> = {
   grass: "Grama",
   beach: "Areia",
   carpet: "Carpete",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  available: "Disponível",
-  booked: "Reservado",
-  blocked: "Bloqueado",
-};
-
-const STATUS_VARIANT: Record<string, "success" | "info" | "warning" | "muted"> = {
-  available: "success",
-  booked: "info",
-  blocked: "warning",
 };
 
 const fieldClass =
@@ -108,41 +92,10 @@ function SectionCard({
 const primaryBtn =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50";
 
-/* ── helpers ──────────────────────────────────────────────────────────────── */
-
-function hhmm(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(
-    new Date(iso)
-  );
-}
-
-function dayKeyOf(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
-}
-
-function dayLabelOf(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-  }).format(new Date(iso));
-}
-
-function priceLabel(cents: number | null): string {
-  return cents == null ? "—" : formatCurrency(cents);
-}
-
 function reaisFromCents(cents: number | null): string {
   if (cents == null) return "";
   const v = cents / 100;
   return v % 1 === 0 ? String(v) : v.toFixed(2).replace(".", ",");
-}
-
-function dayStartISO(y: string): string {
-  return new Date(`${y}T00:00:00`).toISOString();
 }
 
 /* ── geo helpers ──────────────────────────────────────────────────────────── */
@@ -199,10 +152,6 @@ function splitLatLngPair(text: string): { lat: string; lng: string } | null {
 
 function mapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-}
-
-function dayEndISO(y: string): string {
-  return new Date(`${y}T23:59:59.999`).toISOString();
 }
 
 /* ── add-slots helpers ────────────────────────────────────────────────────── */
@@ -588,7 +537,16 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
         </div>
 
         <div>
-          <span className={labelClass}>Dias da semana</span>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className={labelClass}>Dias da semana</span>
+            <button
+              type="button"
+              onClick={() => setDays(days.length === 7 ? [] : DOW_OPTIONS.map((d) => d.v))}
+              className="text-[10.5px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
+            >
+              {days.length === 7 ? "Limpar seleção" : "Selecionar todos"}
+            </button>
+          </div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {DOW_OPTIONS.map((d) => {
               const on = days.includes(d.v);
@@ -611,8 +569,8 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
             })}
           </div>
           <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            {days.length === 0
-              ? "Nenhum dia marcado — a faixa vale para todos os dias."
+            {days.length === 0 || days.length === 7
+              ? "A faixa vale para todos os dias da semana."
               : `A faixa vale só ${days.length === 1 ? "neste dia" : "nestes dias"}.`}
           </p>
         </div>
@@ -1268,290 +1226,6 @@ export function FranchiseSection({
   );
 }
 
-/* ══ slot editor ══════════════════════════════════════════════════════════ */
-
-function SlotRow({
-  courtId,
-  slot,
-  onUpdated,
-}: {
-  courtId: string;
-  slot: CourtSlotItem;
-  onUpdated: (s: CourtSlotItem) => void;
-}) {
-  const [mode, setMode] = useState<"idle" | "blocking" | "pricing">("idle");
-  const [reason, setReason] = useState("");
-  const [priceInput, setPriceInput] = useState("");
-  const [error, setError] = useState("");
-  const [pending, startTransition] = useTransition();
-
-  const isBooked = slot.status === "booked";
-  const isBlocked = slot.status === "blocked";
-
-  function run(params: { status?: "available" | "blocked"; priceCents?: number; blockReason?: string }) {
-    setError("");
-    startTransition(async () => {
-      const res = await updateCourtSlotAction(courtId, slot.slot_start, params);
-      if (!res.ok || !res.slot) {
-        setError(res.error ?? "Falha ao atualizar horário.");
-        return;
-      }
-      onUpdated(res.slot);
-      setMode("idle");
-      setReason("");
-      setPriceInput("");
-    });
-  }
-
-  function confirmBlock() {
-    run({ status: "blocked", ...(reason.trim() ? { blockReason: reason.trim() } : {}) });
-  }
-
-  function confirmPrice() {
-    const cents = reaisToCents(priceInput);
-    if (cents === null) {
-      setError("Preço inválido. Use ex: 250 ou 250,50.");
-      return;
-    }
-    run({ priceCents: cents });
-  }
-
-  return (
-    <li className="px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="tabular-nums text-[12.5px] font-500 text-[var(--text-primary)]">
-            {hhmm(slot.slot_start)}–{hhmm(slot.slot_end)}
-          </span>
-          <span className="tabular-nums text-[12px] text-[var(--text-secondary)]">
-            {priceLabel(slot.price_cents)}
-          </span>
-          <Badge variant={STATUS_VARIANT[slot.status] ?? "muted"}>
-            {STATUS_LABEL[slot.status] ?? slot.status}
-          </Badge>
-        </div>
-
-        {!isBooked && mode === "idle" && (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setPriceInput(reaisFromCents(slot.price_cents));
-                setMode("pricing");
-              }}
-              disabled={pending}
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1 text-[11px] font-500 text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] disabled:opacity-50"
-            >
-              <Pencil size={11} strokeWidth={2} />
-              Preço
-            </button>
-            {isBlocked ? (
-              <button
-                type="button"
-                onClick={() => run({ status: "available", blockReason: "" })}
-                disabled={pending}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--color-success)]/40 px-2.5 py-1 text-[11px] font-500 text-[var(--color-success)] transition-colors hover:bg-[var(--color-success-bg)] disabled:opacity-50"
-              >
-                <LockOpen size={11} strokeWidth={2} />
-                {pending ? "…" : "Desbloquear"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setMode("blocking")}
-                disabled={pending}
-                className="inline-flex items-center gap-1 rounded-md border border-[var(--color-clay)]/40 px-2.5 py-1 text-[11px] font-500 text-[var(--color-clay)] transition-colors hover:bg-[var(--color-warning-bg)] disabled:opacity-50"
-              >
-                <Lock size={11} strokeWidth={2} />
-                Bloquear
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {slot.block_reason && mode === "idle" && (
-        <p className="mt-1.5 text-[11px] leading-snug text-[var(--text-tertiary)]">
-          Motivo: {slot.block_reason}
-        </p>
-      )}
-
-      {mode === "blocking" && (
-        <div className="mt-2.5 space-y-2">
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Motivo (opcional) — ex: manutenção do piso"
-            className={fieldClass}
-          />
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={confirmBlock}
-              disabled={pending}
-              className="rounded-full bg-[var(--color-clay)] px-4 py-1.5 text-[11.5px] font-600 text-white transition-opacity disabled:opacity-50"
-            >
-              {pending ? "Bloqueando…" : "Bloquear"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("idle");
-                setReason("");
-                setError("");
-              }}
-              className="text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {mode === "pricing" && (
-        <div className="mt-2.5 space-y-2">
-          <input
-            inputMode="decimal"
-            value={priceInput}
-            onChange={(e) => setPriceInput(e.target.value)}
-            placeholder="Novo preço (R$) — ex: 250"
-            className={fieldClass}
-          />
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={confirmPrice}
-              disabled={pending}
-              className="rounded-full bg-[var(--primary)] px-4 py-1.5 text-[11.5px] font-600 text-[var(--primary-fg)] transition-opacity disabled:opacity-50"
-            >
-              {pending ? "Salvando…" : "Salvar preço"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("idle");
-                setPriceInput("");
-                setError("");
-              }}
-              className="text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {error && <p className="mt-2 text-[11px] text-[var(--color-error)]">{error}</p>}
-    </li>
-  );
-}
-
-function SlotEditorSection({
-  courtId,
-  slots,
-  from,
-  to,
-  setFrom,
-  setTo,
-  onApply,
-  pending,
-  error,
-  onSlotUpdated,
-}: {
-  courtId: string;
-  slots: CourtSlotItem[];
-  from: string;
-  to: string;
-  setFrom: (v: string) => void;
-  setTo: (v: string) => void;
-  onApply: () => void;
-  pending: boolean;
-  error: string;
-  onSlotUpdated: (s: CourtSlotItem) => void;
-}) {
-  // Preserve the backend's oldest-first order while bucketing by local day.
-  const groups: { key: string; label: string; items: CourtSlotItem[] }[] = [];
-  for (const s of slots) {
-    const key = dayKeyOf(s.slot_start);
-    let g = groups.find((x) => x.key === key);
-    if (!g) {
-      g = { key, label: dayLabelOf(s.slot_start), items: [] };
-      groups.push(g);
-    }
-    g.items.push(s);
-  }
-
-  return (
-    <SectionCard
-      title="Horários"
-      description="Horários reservados são somente leitura. Disponíveis e bloqueados podem ter o preço editado, ser bloqueados ou desbloqueados."
-    >
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label htmlFor="slots_from" className={labelClass}>
-              De
-            </label>
-            <input
-              id="slots_from"
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className={fieldClass}
-            />
-          </div>
-          <div>
-            <label htmlFor="slots_to" className={labelClass}>
-              Até
-            </label>
-            <input
-              id="slots_to"
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className={fieldClass}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={onApply}
-            disabled={pending}
-            className="rounded-full bg-[var(--surface-raised)] px-4 py-2 text-[12.5px] font-600 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
-          >
-            {pending ? "Carregando…" : "Aplicar"}
-          </button>
-        </div>
-
-        {error && <ErrorBanner message={error} />}
-
-        {!error && groups.length === 0 ? (
-          <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-6 text-center text-[12.5px] text-[var(--text-tertiary)]">
-            Nenhum horário neste intervalo.
-          </p>
-        ) : (
-          <div className="space-y-5">
-            {groups.map((g) => (
-              <div key={g.key}>
-                <p className="label-colus mb-2 text-[8.5px] text-[var(--text-tertiary)]">{g.label}</p>
-                <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                  {g.items.map((s) => (
-                    <SlotRow
-                      key={s.slot_start}
-                      courtId={courtId}
-                      slot={s}
-                      onUpdated={onSlotUpdated}
-                    />
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </SectionCard>
-  );
-}
-
 /* ══ wipe slots ═══════════════════════════════════════════════════════════ */
 
 function DeleteSlotsSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
@@ -1942,21 +1616,17 @@ function AddSlotsSection({ courtId, onDone }: { courtId: string; onDone: () => v
 export function EditCourt({
   court,
   initialSlots,
-  initialSlotsError,
   initialFrom,
-  initialTo,
 }: {
   court: CourtListItem;
+  /** Grade já carregada no servidor — usada só para descobrir o preço vigente
+      desta quadra; o calendário abaixo busca a própria janela. */
   initialSlots: CourtSlotItem[];
-  initialSlotsError?: string;
   initialFrom: string;
-  initialTo: string;
 }) {
-  const [slots, setSlots] = useState<CourtSlotItem[]>(initialSlots);
-  const [from, setFrom] = useState(initialFrom);
-  const [to, setTo] = useState(initialTo);
-  const [slotsError, setSlotsError] = useState(initialSlotsError ?? "");
-  const [pending, startTransition] = useTransition();
+  // Remonta o calendário depois de toda reescrita de grade — ele busca a
+  // própria janela, então trocar a key é o jeito honesto de forçar o refetch.
+  const [calendarEpoch, setCalendarEpoch] = useState(0);
 
   // O preço "atual" DESTA quadra, não o padrão da academia: primeiro o
   // default_price_cents da própria quadra (o reprice grava lá — chega com o
@@ -1983,19 +1653,7 @@ export function EditCourt({
   })();
 
   function reloadSlots() {
-    startTransition(async () => {
-      setSlotsError("");
-      const res = await listCourtSlotsAction(court.id, dayStartISO(from), dayEndISO(to));
-      if (!res.ok) {
-        setSlotsError(res.error ?? "Falha ao carregar horários.");
-        return;
-      }
-      setSlots(res.slots ?? []);
-    });
-  }
-
-  function handleSlotUpdated(updated: CourtSlotItem) {
-    setSlots((prev) => prev.map((s) => (s.slot_start === updated.slot_start ? updated : s)));
+    setCalendarEpoch((v) => v + 1);
   }
 
   return (
@@ -2020,17 +1678,22 @@ export function EditCourt({
       <RegenerateSection courtId={court.id} onDone={reloadSlots} />
       <AddSlotsSection courtId={court.id} onDone={reloadSlots} />
       <ImportPrintSection courtId={court.id} courtName={court.name} onDone={reloadSlots} />
-      <SlotEditorSection
-        courtId={court.id}
-        slots={slots}
-        from={from}
-        to={to}
-        setFrom={setFrom}
-        setTo={setTo}
-        onApply={reloadSlots}
-        pending={pending}
-        error={slotsError}
-        onSlotUpdated={handleSlotUpdated}
+      {/* O MESMO calendário da academia, só que com uma coluna: o operador que
+          aprendeu a grade lá não reaprende nada aqui. A lista vertical antiga
+          mostrava um dia de cada vez em linhas soltas e não deixava comparar
+          horas na mesma tela. */}
+      <AcademiaCalendar
+        key={calendarEpoch}
+        courts={[court]}
+        windows={initialWindows(court)}
+        title="Calendário desta quadra"
+        description={
+          <>
+            A grade desta quadra, hora a hora, um dia por vez. Clique numa célula para alternar{" "}
+            <strong>disponível ↔ bloqueado</strong>; célula vazia vira disponível. Horários com
+            reserva real ficam travados.
+          </>
+        }
       />
       <DeleteSlotsSection courtId={court.id} onDone={reloadSlots} />
     </div>

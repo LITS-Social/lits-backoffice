@@ -32,10 +32,22 @@ export async function getAcademiaMatches(courtIds: string[]): Promise<AcademiaMa
   if (courtIds.length === 0) return empty;
 
   const api = await getApi();
-  const { data, error } = await api.GET("/v1/ops/finished-matches", {
-    params: { query: { limit: SCAN_LIMIT, offset: 0 } },
-  });
-  if (error) return { ...empty, failed: true };
+  // try/catch e não só `error`: openapi-fetch devolve `error` para resposta HTTP
+  // ruim, mas LANÇA quando o fetch em si morre (timeout, conexão derrubada).
+  // Logo depois de reescrever a grade inteira o BFF fica lento, e sem isto uma
+  // busca de partidas que estourou levava a PÁGINA junto — o operador via
+  // "não deu para ler este painel" e perdia o que tinha acabado de salvar de
+  // vista. Regra da casa: um endpoint quebrado apaga um bloco, não a tela.
+  let data;
+  try {
+    const res = await api.GET("/v1/ops/finished-matches", {
+      params: { query: { limit: SCAN_LIMIT, offset: 0 } },
+    });
+    if (res.error) return { ...empty, failed: true };
+    data = res.data;
+  } catch {
+    return { ...empty, failed: true };
+  }
 
   const all = data.matches ?? [];
   if (all.length > 0 && all.every((m) => !m.court_id)) {

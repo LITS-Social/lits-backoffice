@@ -88,7 +88,9 @@ export type HourWindows = {
   sunStart: number; sunEnd: number;
 };
 
-function initialWindows(c: CourtListItem): HourWindows {
+/** As janelas de funcionamento da academia dona da quadra. Exportado porque o
+    editor de UMA quadra reusa o mesmo calendário da academia. */
+export function initialWindows(c: CourtListItem): HourWindows {
   return {
     weekStart: c.franchise_hours_week_start ?? 6,
     weekEnd:   c.franchise_hours_week_end ?? 22,

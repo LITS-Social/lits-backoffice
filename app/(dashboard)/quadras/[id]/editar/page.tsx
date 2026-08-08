@@ -50,9 +50,7 @@ export default async function EditarQuadraPage({ params }: { params: Promise<{ i
         <EditCourt
           court={court}
           initialSlots={slotsRes.slots ?? []}
-          initialSlotsError={slotsRes.ok ? undefined : slotsRes.error}
           initialFrom={ymd(now)}
-          initialTo={ymd(to)}
         />
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { AlertCircle, Ban, Check, ChevronLeft, ChevronRight, GripVertical, Lock, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CourtListItem } from "../../quadras/actions";
@@ -60,9 +60,16 @@ type CellState = { slot: CourtSlotItem | null };
 export function AcademiaCalendar({
   courts,
   windows,
+  title = "Calendário das quadras",
+  description,
 }: {
   courts: CourtListItem[];
   windows: HourWindows;
+  /** O editor de uma quadra usa a MESMA grade com um cabeçalho próprio — falar
+      em "todas as quadras lado a lado" e em reordenar colunas não faz sentido
+      quando existe uma coluna só. */
+  title?: string;
+  description?: ReactNode;
 }) {
   const [date, setDate] = useState(spToday);
   // Reload handle: bumping the tick invalidates the loaded snapshot below.
@@ -299,11 +306,16 @@ export function AcademiaCalendar({
     <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="eyebrow">Calendário das quadras</h2>
+          <h2 className="eyebrow">{title}</h2>
           <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-            Todas as quadras lado a lado, como numa planilha. Clique numa célula para alternar{" "}
-            <strong>disponível ↔ bloqueado</strong>; célula vazia vira disponível. Arraste o nome
-            de uma quadra para reordenar as colunas. Horários com reserva real ficam travados.
+            {description ?? (
+              <>
+                Todas as quadras lado a lado, como numa planilha. Clique numa célula para alternar{" "}
+                <strong>disponível ↔ bloqueado</strong>; célula vazia vira disponível. Arraste o
+                nome de uma quadra para reordenar as colunas. Horários com reserva real ficam
+                travados.
+              </>
+            )}
           </p>
         </div>
         <div className="flex w-full flex-wrap items-end gap-x-2 gap-y-3">
