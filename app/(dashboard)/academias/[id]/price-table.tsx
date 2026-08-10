@@ -634,14 +634,29 @@ export function PriceTableSection({
     totals.courts = okCourts.size;
     if (hitRateLimit) {
       setError(
-        "O limite de requisições do servidor foi atingido (600 por minuto, e vale para o painel inteiro). O que já foi gravado valeu — espere um minuto e aplique de novo: os horários que já estão no preço certo são pulados, então a segunda passada é bem mais curta."
+        "O limite de requisições do servidor foi atingido (600 por minuto, e vale para o painel inteiro). A grade ficou nivelada no preço base e as faixas NÃO entraram — elas continuam aqui no formulário. Espere um minuto e aplique de novo: os horários que já estão no preço certo são pulados, então a segunda passada é bem mais curta."
       );
     }
 
     setResult(totals);
+
+    // Corrida incompleta NÃO relê da grade. O preço base é aplicado de uma vez
+    // em todos os horários, e as faixas vêm por cima, um horário por vez: se a
+    // corrida morre no meio, a grade fica NIVELADA NO BASE — sem as faixas.
+    // Reler dali apagaria do formulário justamente o que o operador acabou de
+    // digitar e ainda não conseguiu gravar, e ele teria que redigitar tudo.
+    // O que ele escreveu fica na tela, marcado como não aplicado.
+    const incomplete =
+      hitRateLimit || totals.brokenCourts.length > 0 || totals.failed > 0;
+    if (incomplete) {
+      setDirty(true);
+      onDone();
+      return;
+    }
+
     setDirty(false);
-    // Relê da grade em vez de confiar no que estava no formulário: se alguma
-    // quadra falhou, o que aparece na tela tem que ser o que valeu de fato.
+    // Relê da grade em vez de confiar no que estava no formulário: o que
+    // aparece na tela tem que ser o que valeu de fato.
     if (sample) await loadTable(sample.id, sample.name);
     onDone();
   }
@@ -918,6 +933,14 @@ export function PriceTableSection({
                 }`
           }
         />
+
+        {baseCents !== null && bands.length > 0 && (
+          <p className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            O preço base entra de uma vez em todos os horários e as faixas vêm por cima, um
+            horário por vez — então, enquanto isto roda, a grade passa por um momento nivelada
+            no base. Deixe a aba aberta até o fim.
+          </p>
+        )}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-4">
           <button type="button" onClick={applySafely} disabled={running} className={primaryBtn}>
