@@ -15,7 +15,12 @@ import "server-only";
  *    sempre que o corpo não trouxer nada melhor.
  *
  * 4xx não volta a funcionar por repetição — o pedido é que está errado, ou a
- * sessão caiu. Só 429 e 5xx ganham outra chance.
+ * sessão caiu. Só 5xx ganha outra chance.
+ *
+ * 429 NÃO se repete, por mais tentador que pareça. O BFF conta 600 requisições
+ * por minuto por pessoa numa janela fixa, e o contador sobe A CADA requisição,
+ * inclusive nas que ele mesmo rejeita: insistir cava o buraco mais fundo e
+ * ainda atrasa a hora em que a janela abre. O certo é dizer quanto falta.
  *
  * A pegadinha: o Next MEMOIZA fetches GET idênticos dentro do mesmo render.
  * Repetir a mesma chamada devolvia a resposta 502 guardada em memória, sem
@@ -48,11 +53,18 @@ export async function getWithRetry<T>(
       const { data, error, response } = await call(attempt);
       if (!error && data !== undefined) return { ok: true, data };
 
+      if (response.status === 429) {
+        const after = Number(response.headers.get("Retry-After") || 60);
+        return {
+          ok: false,
+          error: `Limite de requisições do servidor ${what} atingido. Espere ${after}s e recarregue — nada foi perdido.`,
+        };
+      }
+
       const detail = error?.detail || error?.title || "";
       lastError = detail || `O servidor ${what} respondeu ${response.status}.`;
 
-      const worthRetry = response.status === 429 || response.status >= 500;
-      if (!worthRetry || attempt === attempts) break;
+      if (response.status < 500 || attempt === attempts) break;
     } catch {
       // openapi-fetch devolve `error` para resposta HTTP ruim, mas LANÇA
       // quando o fetch em si morre (timeout, conexão derrubada).

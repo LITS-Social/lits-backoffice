@@ -275,13 +275,45 @@ type Progress = {
   /** Quadras que já falharam — mostradas durante a corrida, não só no fim:
       esperar o resumo final para descobrir que a primeira quebrou é tarde. */
   broken: string[];
+  /** Quando o governador está segurando o ritmo, até quando. Parado sem
+      explicação parece travado; "aguardando o limite" é informação. */
+  waitingUntil: number;
 };
 
-/** Quantos pedaços de trabalho em voo. Cada um é uma invocação de server action
-    independente — e o limite de seis conexões simultâneas do Cloudflare Workers
-    é POR INVOCAÇÃO. Seis pedaços de uma vez são seis Workers com seis conexões
-    cada; é assim que se passa do teto de seis sem enganar a fila. */
-const WORK_CONCURRENCY = 6;
+/** Quantos pedaços de trabalho em voo.
+    O teto de seis conexões simultâneas do Cloudflare Workers é por invocação,
+    então mais pedaços de uma vez seriam mais Workers trabalhando. Mas o gargalo
+    não é esse: é o BFF, que conta 600 requisições por minuto POR PESSOA — e o
+    contador é do serviço inteiro, não desta tela. Disparar seis pedaços de ~86
+    requisições cada estoura o minuto em segundos e derruba o painel todo,
+    inclusive o carregamento das páginas. Dois, com o governador abaixo. */
+const WORK_CONCURRENCY = 2;
+
+/** Requisições por minuto que esta tela pode gastar. O BFF concede 600 por
+    pessoa; os outros 200 ficam para navegar o painel enquanto isto roda —
+    aplicar preços não pode custar a tela de quem está aplicando. */
+const BUDGET_PER_MINUTE = 400;
+
+/** Orçamento em janela deslizante de 60s. Antes de mandar um pedaço, espera
+    até caber; sem isto o painel se auto-derruba com 429. */
+function makeGovernor(budget: number) {
+  const spent: { at: number; n: number }[] = [];
+  const used = (now: number) => {
+    while (spent.length > 0 && now - spent[0].at > 60_000) spent.shift();
+    return spent.reduce((t, e) => t + e.n, 0);
+  };
+  return {
+    /** Segundos de espera até caber `cost`; 0 se cabe agora. */
+    waitFor(cost: number, now: number) {
+      if (used(now) + cost <= budget) return 0;
+      const oldest = spent[0]?.at ?? now;
+      return Math.max(0, 60_000 - (now - oldest));
+    },
+    record(n: number, now: number) {
+      spent.push({ at: now, n });
+    },
+  };
+}
 
 /** Em quantos dias cada pedaço mexe. O trabalho é fatiado para a barra andar:
     uma quadra inteira numa chamada só deixava a tela parada por um minuto sem
@@ -308,6 +340,20 @@ function ProgressLine({ progress }: { progress: Progress }) {
     return () => clearInterval(t);
   }, []);
   const secs = Math.max(0, Math.round((now - progress.startedAt) / 1000));
+  const holding = progress.waitingUntil > now;
+  if (holding) {
+    // Segurando o ritmo de propósito. Sem dizer isso, uma pausa de vinte
+    // segundos é indistinguível de um travamento.
+    const left = Math.ceil((progress.waitingUntil - now) / 1000);
+    return (
+      <span className="text-[11px] font-300 text-[var(--text-tertiary)]">
+        Segurando o ritmo para não estourar o limite do servidor ·{" "}
+        <span className="numeral">{left}s</span> ·{" "}
+        <span className="numeral">{progress.written.toLocaleString("pt-BR")}</span> horários
+        gravados
+      </span>
+    );
+  }
   return (
     <span className="text-[11px] font-300 text-[var(--text-tertiary)]">
       <span className="numeral">{progress.written.toLocaleString("pt-BR")}</span> horários
@@ -498,11 +544,14 @@ export function PriceTableSection({
       }
     }
 
+    const gov = makeGovernor(BUDGET_PER_MINUTE);
     const inFlight = new Set<string>();
     const okCourts = new Set<string>();
     const startedAt = Date.now();
     let done = 0;
     let written = 0;
+    let waitingUntil = 0;
+    let hitRateLimit = false;
     const tick = () =>
       setProgress({
         done,
@@ -511,6 +560,7 @@ export function PriceTableSection({
         written,
         startedAt,
         broken: [...totals.brokenCourts],
+        waitingUntil,
       });
     tick();
 
@@ -521,6 +571,19 @@ export function PriceTableSection({
           const i = next++;
           if (i >= units.length) return;
           const u = units[i];
+
+          // Espera caber no orçamento antes de mandar. Um pedaço de cinco dias
+          // custa no máximo uma leitura + uma gravação por horário.
+          const cost = CHUNK_DAYS * 24 + 1;
+          for (;;) {
+            const ms = gov.waitFor(cost, Date.now());
+            if (ms <= 0) break;
+            waitingUntil = Date.now() + ms;
+            tick();
+            await new Promise((r) => setTimeout(r, Math.min(ms, 1000)));
+          }
+          waitingUntil = 0;
+
           inFlight.add(u.court.name);
           tick();
           let res;
@@ -539,8 +602,23 @@ export function PriceTableSection({
             // chegava a rodar.
             res = { ok: false as const };
           }
+          gov.record(res.requests ?? cost, Date.now());
           inFlight.delete(u.court.name);
           done++;
+          totals.repriced += res.repriced ?? 0;
+          totals.updated += res.updated ?? 0;
+          totals.skippedBooked += res.skippedBooked ?? 0;
+          totals.failed += res.failed ?? 0;
+          written = totals.repriced + totals.updated;
+          // Limite estourado: parar TUDO. Seguir mandando só empurra a
+          // reabertura da janela para frente, e é o painel inteiro que fica
+          // fora do ar enquanto isso — não só esta tela.
+          if (res.rateLimited) {
+            hitRateLimit = true;
+            next = units.length;
+            tick();
+            return;
+          }
           if (!res.ok) {
             if (!totals.brokenCourts.includes(u.court.name)) {
               totals.brokenCourts.push(u.court.name);
@@ -549,16 +627,16 @@ export function PriceTableSection({
             continue;
           }
           okCourts.add(u.court.name);
-          totals.repriced += res.repriced ?? 0;
-          totals.updated += res.updated ?? 0;
-          totals.skippedBooked += res.skippedBooked ?? 0;
-          totals.failed += res.failed ?? 0;
-          written = totals.repriced + totals.updated;
           tick();
         }
       })
     );
     totals.courts = okCourts.size;
+    if (hitRateLimit) {
+      setError(
+        "O limite de requisições do servidor foi atingido (600 por minuto, e vale para o painel inteiro). O que já foi gravado valeu — espere um minuto e aplique de novo: os horários que já estão no preço certo são pulados, então a segunda passada é bem mais curta."
+      );
+    }
 
     setResult(totals);
     setDirty(false);

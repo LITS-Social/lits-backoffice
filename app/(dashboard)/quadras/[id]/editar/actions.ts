@@ -742,6 +742,12 @@ export type PriceBand = {
 
 export type PriceTableState = {
   ok: boolean;
+  /** Quantas requisições este pedaço gastou do orçamento do BFF. O painel
+      soma isto para não estourar o limite por minuto — ver o governador em
+      price-table.tsx. */
+  requests?: number;
+  /** O limite estourou no meio: o que faltou não foi tentado. */
+  rateLimited?: boolean;
   /** Slots que o preço base tocou; null quando o plano não trouxe base. */
   repriced?: number | null;
   /** Quantos horários as faixas trocaram por cima do base. */
@@ -755,6 +761,11 @@ export type PriceTableState = {
 
 /** Quantos dias à frente a tabela alcança. Mesma janela da grade padrão. */
 const PRICE_RANGE_DAYS = 30;
+
+const RATE_LIMIT_MSG =
+  "O limite de requisições do servidor foi atingido. O que já foi gravado valeu; espere um minuto e aplique de novo para pegar o resto.";
+
+
 
 /** O GET de slots devolve no máximo 500 linhas e não tem paginação — só
     `from`/`to`. Uma academia aberta das 6h às 22h faz 17 slots/dia, então 30
@@ -851,16 +862,23 @@ export async function applyPriceTableAction(
   }
 
   const api = await getApi();
+  // Cada ida ao BFF conta no orçamento de 600/min por pessoa — inclusive as
+  // que ele rejeita. O chamador precisa do número para se conter.
+  let requests = 0;
 
   // 1. O base primeiro: assim o GET seguinte já enxerga o preço novo e as
   //    faixas só tocam o que realmente difere.
   let repriced: number | null = null;
   if (baseCents != null) {
     try {
-      const { data, error } = await api.POST("/v1/ops/courts/{id}/reprice", {
+      requests++;
+      const { data, error, response } = await api.POST("/v1/ops/courts/{id}/reprice", {
         params: { path: { id: courtId } },
         body: { price_cents: baseCents },
       });
+      if (response.status === 429) {
+        return { ok: false, requests, rateLimited: true, error: RATE_LIMIT_MSG };
+      }
       if (error) {
         return { ok: false, error: error.detail || error.title || "Falha ao aplicar o preço base." };
       }
@@ -876,7 +894,7 @@ export async function applyPriceTableAction(
 
   if (bands.length === 0) {
     revalidatePath("/quadras");
-    return { ok: true, repriced, updated: 0, skippedBooked: 0, failed: 0 };
+    return { ok: true, repriced, updated: 0, skippedBooked: 0, failed: 0, requests };
   }
 
   // 2. A grade dos próximos 30 dias, em janelas que cabem no teto de 500.
@@ -905,12 +923,16 @@ export async function applyPriceTableAction(
       )
     );
   } catch {
-    return { ok: false, repriced, error: "O servidor não respondeu ao ler a grade." };
+    return { ok: false, repriced, requests, error: "O servidor não respondeu ao ler a grade." };
   }
+  requests += windows.length;
   const slots: { slot_start: string; status?: string; price_cents?: number | null }[] = [];
-  for (const { data, error } of pages) {
+  for (const { data, error, response } of pages) {
+    if (response?.status === 429) {
+      return { ok: false, repriced, requests, rateLimited: true, error: RATE_LIMIT_MSG };
+    }
     if (error) {
-      return { ok: false, repriced, error: error.detail || error.title || "Falha ao ler a grade." };
+      return { ok: false, repriced, requests, error: error.detail || error.title || "Falha ao ler a grade." };
     }
     slots.push(...(data.slots ?? []));
   }
@@ -933,15 +955,24 @@ export async function applyPriceTableAction(
 
   let updated = 0;
   let failed = 0;
+  let rateLimited = false;
   await pool(targets, PATCH_CONCURRENCY, async (t) => {
+    // Parar de vez em vez de seguir batendo: com a janela fechada, cada
+    // requisição a mais só empurra a reabertura para frente.
+    if (rateLimited) return;
     // Um horário que estoura conta como falha e o resto segue. Antes, uma
     // exceção aqui subia pelo Promise.all e derrubava a chamada inteira —
     // 400 horários já gravados viravam "nada aconteceu" na tela.
     try {
+      requests++;
       const res = await api.PATCH("/v1/ops/courts/{id}/slots/{slot_start}", {
         params: { path: { id: courtId, slot_start: t.slotStart } },
         body: { price_cents: t.priceCents },
       });
+      if (res.response?.status === 429) {
+        rateLimited = true;
+        return;
+      }
       if (res.error) failed++;
       else updated++;
     } catch {
@@ -950,7 +981,10 @@ export async function applyPriceTableAction(
   });
 
   revalidatePath("/quadras");
-  return { ok: true, repriced, updated, skippedBooked, failed };
+  if (rateLimited) {
+    return { ok: false, repriced, updated, skippedBooked, failed, requests, rateLimited: true, error: RATE_LIMIT_MSG };
+  }
+  return { ok: true, repriced, updated, skippedBooked, failed, requests };
 }
 
 /* ══ ler a tabela de preços de volta da grade ═════════════════════════════ */
