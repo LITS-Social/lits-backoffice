@@ -304,9 +304,29 @@ const BUDGET_PER_MINUTE = 350;
  * servidor, e o segundo clique tomava 429 na cara. O limite é do servidor e da
  * pessoa — a contabilidade tem que sobreviver ao botão.
  */
-const spent: { at: number; n: number }[] = [];
+const LEDGER_KEY = "lits-bff-budget";
+
+/** O gasto vive no sessionStorage, não só na memória do módulo. O limite é do
+    SERVIDOR e dura 60s: recarregar a página zerava a minha contabilidade sem
+    zerar a dele, e a primeira tentativa depois do F5 tomava 429 na cara. */
+function loadLedger(): { at: number; n: number }[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(LEDGER_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+let spent: { at: number; n: number }[] = [];
+let ledgerLoaded = false;
 
 function budgetUsed(now: number) {
+  if (!ledgerLoaded) {
+    spent = loadLedger();
+    ledgerLoaded = true;
+  }
   while (spent.length > 0 && now - spent[0].at > 60_000) spent.shift();
   return spent.reduce((t, e) => t + e.n, 0);
 }
@@ -319,7 +339,13 @@ function waitForBudget(cost: number, now: number) {
 }
 
 function recordSpend(n: number, now: number) {
+  budgetUsed(now); // garante o ledger carregado e podado
   spent.push({ at: now, n });
+  try {
+    sessionStorage.setItem(LEDGER_KEY, JSON.stringify(spent));
+  } catch {
+    /* sem sessionStorage o governador ainda funciona dentro da aba */
+  }
 }
 
 /** Quanto uma tabela vai custar de requisições, para dizer ao operador ANTES
