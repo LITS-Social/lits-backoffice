@@ -752,8 +752,6 @@ export type PriceTableState = {
   repriced?: number | null;
   /** Quantos horários as faixas trocaram por cima do base. */
   updated?: number;
-  /** Reservas reais encontradas — puladas, nunca repreçadas. */
-  skippedBooked?: number;
   /** Falharam no PATCH; o resto foi aplicado mesmo assim. */
   failed?: number;
   error?: string;
@@ -765,38 +763,9 @@ const PRICE_RANGE_DAYS = 30;
 const RATE_LIMIT_MSG =
   "O limite de requisições do servidor foi atingido. O que já foi gravado valeu; espere um minuto e aplique de novo para pegar o resto.";
 
-
-
-/** O GET de slots devolve no máximo 500 linhas e não tem paginação — só
-    `from`/`to`. Uma academia aberta das 6h às 22h faz 17 slots/dia, então 30
-    dias passam de 500 e a resposta vinha truncada em silêncio: os últimos dias
-    simplesmente não eram repreçados. Varremos em janelas de 10 dias (≈170
-    linhas) para caber com folga. */
-const SCAN_WINDOW_DAYS = 10;
-
-/** PATCHes em paralelo. Cada slot é uma requisição, e uma faixa de 5 horas em
-    30 dias são 150 — em série isso é meio minuto de espera por quadra.
-    SEIS e não mais: "each Worker invocation can have up to six connections
-    simultaneously waiting for response headers" (limites do Cloudflare
-    Workers). Pedir 12 não abria 12 conexões; abria 6 e punha 6 na fila,
-    escondendo o custo real de cada pedaço de trabalho. */
-const PATCH_CONCURRENCY = 6;
-
-/** Roda `worker` sobre os itens com no máximo `limit` em voo. */
-async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
-  let next = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    for (;;) {
-      const i = next++;
-      if (i >= items.length) return;
-      await worker(items[i]);
-    }
-  });
-  await Promise.all(runners);
-}
-
 // Hora e dia da semana lidos em São Paulo — o worker roda em UTC, e sem isto a
-// faixa da noite cairia na hora errada.
+// faixa da noite cairia na hora errada. Usados pela LEITURA da tabela; a
+// escrita é do SQL do BFF, que faz a mesma conversão do lado dele.
 const spHourFmt = new Intl.DateTimeFormat("en-GB", {
   timeZone: "America/Sao_Paulo",
   hour: "2-digit",
@@ -810,51 +779,35 @@ const DOW_INDEX: Record<string, number> = {
   Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
 };
 
-/** O preço que a tabela manda naquele instante, ou null se nenhuma faixa pega.
-    Faixa mais abaixo na lista vence — é como o operador lê a tabela. */
-function bandPriceAt(bands: PriceBand[], startMs: number): number | null {
-  const hour = Number(spHourFmt.format(new Date(startMs)));
-  const dow = DOW_INDEX[spDowFmt.format(new Date(startMs))];
-  let price: number | null = null;
-  for (const b of bands) {
-    if (hour < b.startHour || hour > b.endHour) continue;
-    if (b.weekdays && b.weekdays.length > 0 && !b.weekdays.includes(dow)) continue;
-    price = b.priceCents;
-  }
-  return price;
-}
-
 /**
  * Aplica a TABELA DE PREÇOS a uma quadra: um preço base para o dia inteiro e,
  * por cima dele, as faixas de horário ("das 18h às 22h custa R$ 400").
  *
- * O base vai pelo endpoint de reprice — uma requisição só, e ele também grava o
- * `default_price_cents` da quadra, então a grade gerada daqui pra frente já
- * nasce no preço certo. As faixas vêm depois, slot a slot, só onde o preço
- * difere do que já está lá.
+ * UMA REQUISIÇÃO POR FAIXA. O BFF ganhou filtro de hora, dia da semana e
+ * janela no endpoint de reprice, então cada faixa é um UPDATE em massa lá
+ * dentro. Antes disto era um PATCH por horário: seis quadras com uma faixa de
+ * cinco horas custavam ~942 requisições contra um teto de 600 por minuto por
+ * pessoa — a tela estourava o próprio orçamento e derrubava o painel inteiro
+ * junto, inclusive o carregamento das páginas.
  *
- * Reserva real nunca é tocada: o preço de um slot vendido é o que o jogador
- * combinou, e mudá-lo por baixo reescreveria o que ele deve. São contadas e
- * reportadas, não repreçadas — o operador precisa saber que existiram.
+ * A ordem importa e não é estilo. O base vai primeiro porque ele reescreve a
+ * quadra INTEIRA: mandado depois, apagaria as faixas. E as faixas vão na ordem
+ * em que o operador as lê, de cima para baixo, porque a de baixo vence quando
+ * duas pegam a mesma hora — a última a escrever é a que fica.
+ *
+ * Reserva real nunca é tocada, no base ou na faixa: o preço de um slot vendido
+ * é o que o jogador combinou.
  */
 export async function applyPriceTableAction(
   courtId: string,
   plan: {
     /** Preço do resto do dia. null/undefined = não mexe no que já está lá.
-        O reprice é da quadra INTEIRA, então só o primeiro pedaço o manda. */
+        Só ele grava o `default_price_cents` da quadra; faixa nunca grava. */
     baseCents?: number | null;
     bands: PriceBand[];
-    /** Pedaço da janela, em dias a partir de hoje. Sem isto, os 30 dias
-        inteiros. Fatiar existe para o painel poder mostrar progresso: uma
-        quadra inteira numa chamada só deixava a barra parada por um minuto
-        sem nenhum sinal de vida. */
-    dayFrom?: number;
-    dayTo?: number;
   }
 ): Promise<PriceTableState> {
   const { baseCents = null, bands } = plan;
-  const dayFrom = plan.dayFrom ?? 0;
-  const dayTo = plan.dayTo ?? PRICE_RANGE_DAYS;
   for (const b of bands) {
     if (b.startHour > b.endHour) {
       return { ok: false, error: "Em toda faixa, a hora inicial precisa ser menor ou igual à final." };
@@ -862,129 +815,73 @@ export async function applyPriceTableAction(
   }
 
   const api = await getApi();
-  // Cada ida ao BFF conta no orçamento de 600/min por pessoa — inclusive as
-  // que ele rejeita. O chamador precisa do número para se conter.
   let requests = 0;
 
-  // 1. O base primeiro: assim o GET seguinte já enxerga o preço novo e as
-  //    faixas só tocam o que realmente difere.
+  const reprice = async (body: {
+    price_cents: number;
+    start_hour?: number;
+    end_hour?: number;
+    weekdays?: number[];
+    days?: number;
+  }) => {
+    requests++;
+    return api.POST("/v1/ops/courts/{id}/reprice", {
+      params: { path: { id: courtId } },
+      body,
+    });
+  };
+
   let repriced: number | null = null;
-  if (baseCents != null) {
-    try {
-      requests++;
-      const { data, error, response } = await api.POST("/v1/ops/courts/{id}/reprice", {
-        params: { path: { id: courtId } },
-        body: { price_cents: baseCents },
-      });
+  try {
+    if (baseCents != null) {
+      const { data, error, response } = await reprice({ price_cents: baseCents });
       if (response.status === 429) {
         return { ok: false, requests, rateLimited: true, error: RATE_LIMIT_MSG };
       }
       if (error) {
-        return { ok: false, error: error.detail || error.title || "Falha ao aplicar o preço base." };
+        return { ok: false, requests, error: error.detail || error.title || "Falha ao aplicar o preço base." };
       }
       repriced = data.slots_updated;
-    } catch {
-      // openapi-fetch devolve `error` para resposta HTTP ruim, mas LANÇA
-      // quando o fetch em si morre. Sem este catch a exceção sobe até o
-      // cliente, a promessa da server action rejeita, e o painel fica
-      // "Aplicando…" para sempre — sem barra andando e sem erro na tela.
-      return { ok: false, error: "O servidor não respondeu ao preço base. Tente de novo." };
     }
-  }
 
-  if (bands.length === 0) {
-    revalidatePath("/quadras");
-    return { ok: true, repriced, updated: 0, skippedBooked: 0, failed: 0, requests };
-  }
-
-  // 2. A grade dos próximos 30 dias, em janelas que cabem no teto de 500.
-  const now = new Date();
-  const nowMs = now.getTime();
-  const DAY = 24 * 3_600_000;
-  // As janelas vão juntas: são leituras independentes, e em série cada uma
-  // custava uma ida e volta inteira antes de qualquer preço ser escrito.
-  const windows = [];
-  for (let d = dayFrom; d < dayTo; d += SCAN_WINDOW_DAYS) {
-    windows.push([
-      new Date(nowMs + d * DAY),
-      new Date(nowMs + Math.min(d + SCAN_WINDOW_DAYS, dayTo) * DAY),
-    ] as const);
-  }
-  let pages;
-  try {
-    pages = await Promise.all(
-      windows.map(([from, to]) =>
-        api.GET("/v1/ops/courts/{id}/slots", {
-          params: {
-            path: { id: courtId },
-            query: { from: from.toISOString(), to: to.toISOString() },
-          },
-        })
-      )
-    );
-  } catch {
-    return { ok: false, repriced, requests, error: "O servidor não respondeu ao ler a grade." };
-  }
-  requests += windows.length;
-  const slots: { slot_start: string; status?: string; price_cents?: number | null }[] = [];
-  for (const { data, error, response } of pages) {
-    if (response?.status === 429) {
-      return { ok: false, repriced, requests, rateLimited: true, error: RATE_LIMIT_MSG };
-    }
-    if (error) {
-      return { ok: false, repriced, requests, error: error.detail || error.title || "Falha ao ler a grade." };
-    }
-    slots.push(...(data.slots ?? []));
-  }
-
-  // 3. Quem muda de preço.
-  let skippedBooked = 0;
-  const targets: { slotStart: string; priceCents: number }[] = [];
-  for (const s of slots) {
-    const startMs = new Date(s.slot_start).getTime();
-    if (startMs <= nowMs) continue; // passado não se repreça
-    const want = bandPriceAt(bands, startMs);
-    if (want === null) continue;
-    if (s.status === "booked") {
-      skippedBooked++;
-      continue;
-    }
-    if (s.price_cents === want) continue; // já está no preço
-    targets.push({ slotStart: s.slot_start, priceCents: want });
-  }
-
-  let updated = 0;
-  let failed = 0;
-  let rateLimited = false;
-  await pool(targets, PATCH_CONCURRENCY, async (t) => {
-    // Parar de vez em vez de seguir batendo: com a janela fechada, cada
-    // requisição a mais só empurra a reabertura para frente.
-    if (rateLimited) return;
-    // Um horário que estoura conta como falha e o resto segue. Antes, uma
-    // exceção aqui subia pelo Promise.all e derrubava a chamada inteira —
-    // 400 horários já gravados viravam "nada aconteceu" na tela.
-    try {
-      requests++;
-      const res = await api.PATCH("/v1/ops/courts/{id}/slots/{slot_start}", {
-        params: { path: { id: courtId, slot_start: t.slotStart } },
-        body: { price_cents: t.priceCents },
+    let updated = 0;
+    for (const b of bands) {
+      const { data, error, response } = await reprice({
+        price_cents: b.priceCents,
+        start_hour: b.startHour,
+        end_hour: b.endHour,
+        // Vazio = todos os dias; mandar [] filtraria tudo fora.
+        ...(b.weekdays && b.weekdays.length > 0 ? { weekdays: b.weekdays } : {}),
+        days: PRICE_RANGE_DAYS,
       });
-      if (res.response?.status === 429) {
-        rateLimited = true;
-        return;
+      if (response.status === 429) {
+        revalidatePath("/quadras");
+        return { ok: false, repriced, updated, requests, rateLimited: true, error: RATE_LIMIT_MSG };
       }
-      if (res.error) failed++;
-      else updated++;
-    } catch {
-      failed++;
+      if (error) {
+        revalidatePath("/quadras");
+        return {
+          ok: false,
+          repriced,
+          updated,
+          requests,
+          error: error.detail || error.title || "Falha ao aplicar a faixa.",
+        };
+      }
+      updated += data.slots_updated;
     }
-  });
 
-  revalidatePath("/quadras");
-  if (rateLimited) {
-    return { ok: false, repriced, updated, skippedBooked, failed, requests, rateLimited: true, error: RATE_LIMIT_MSG };
+    revalidatePath("/quadras");
+    // `skippedBooked` some do relatório: quem pula reserva agora é o SQL do
+    // BFF, e ele não conta separado. Dizer "0 reservas puladas" seria pior do
+    // que não dizer nada — soaria como "não havia nenhuma".
+    return { ok: true, repriced, updated, failed: 0, requests };
+  } catch {
+    // openapi-fetch devolve `error` para resposta HTTP ruim, mas LANÇA quando o
+    // fetch em si morre. Sem este catch a exceção sobe até o cliente e a tela
+    // fica "Aplicando…" para sempre.
+    return { ok: false, repriced, requests, error: "O servidor não respondeu. Tente de novo." };
   }
-  return { ok: true, repriced, updated, skippedBooked, failed, requests };
 }
 
 /* ══ ler a tabela de preços de volta da grade ═════════════════════════════ */

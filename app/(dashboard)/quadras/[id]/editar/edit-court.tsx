@@ -446,7 +446,6 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
   const [error, setError] = useState("");
   const [result, setResult] = useState<{
     updated: number;
-    skippedBooked: number;
     failed: number;
   } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -476,7 +475,6 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
       }
       setResult({
         updated: res.updated ?? 0,
-        skippedBooked: res.skippedBooked ?? 0,
         failed: res.failed ?? 0,
       });
       onDone();
@@ -589,10 +587,6 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
           <SuccessNote>
             Preço aplicado em {result.updated.toLocaleString("pt-BR")} horário
             {result.updated === 1 ? "" : "s"}.
-            {result.skippedBooked > 0 &&
-              ` ${result.skippedBooked} com reserva ${
-                result.skippedBooked === 1 ? "ficou" : "ficaram"
-              } com o preço combinado.`}
             {result.failed > 0 && ` ${result.failed} não responderam — tente de novo nessa faixa.`}
           </SuccessNote>
         )}

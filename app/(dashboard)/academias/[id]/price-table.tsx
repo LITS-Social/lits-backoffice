@@ -280,30 +280,17 @@ type Progress = {
   waitingUntil: number;
 };
 
-/** Quantos pedaços de trabalho em voo.
-    O teto de seis conexões simultâneas do Cloudflare Workers é por invocação,
-    então mais pedaços de uma vez seriam mais Workers trabalhando. Mas o gargalo
-    não é esse: é o BFF, que conta 600 requisições por minuto POR PESSOA — e o
-    contador é do serviço inteiro, não desta tela. Disparar seis pedaços de ~86
-    requisições cada estoura o minuto em segundos e derruba o painel todo,
-    inclusive o carregamento das páginas. Dois, com o governador abaixo. */
-const WORK_CONCURRENCY = 2;
+/** Quantas quadras em voo. O trabalho por quadra virou punhado de requisições
+    (uma para o base, uma por faixa), então três de uma vez terminam num
+    piscar sem chegar perto do orçamento do servidor. */
+const WORK_CONCURRENCY = 3;
 
 /** Requisições por minuto que esta tela pode gastar. O BFF concede 600 por
-    pessoa; as outras 250 ficam para navegar o painel enquanto isto roda —
-    aplicar preços não pode custar a tela de quem está aplicando. */
+    pessoa, no serviço inteiro; as outras 250 ficam para quem estiver
+    navegando o painel. Com o reprice por faixa isto virou um freio de
+    segurança que quase nunca atua — antes era o que segurava a tela de pé. */
 const BUDGET_PER_MINUTE = 350;
 
-/**
- * Orçamento em janela deslizante de 60s. Antes de mandar um pedaço, espera até
- * caber; sem isto o painel se auto-derruba com 429.
- *
- * MORA NO MÓDULO, não no componente. Um governador por corrida achava o
- * orçamento vazio a cada clique em "Aplicar": tentativa que falhava e era
- * repetida em seguida somava dois orçamentos cheios contra a MESMA janela do
- * servidor, e o segundo clique tomava 429 na cara. O limite é do servidor e da
- * pessoa — a contabilidade tem que sobreviver ao botão.
- */
 const LEDGER_KEY = "lits-bff-budget";
 
 /** O gasto vive no sessionStorage, não só na memória do módulo. O limite é do
@@ -339,7 +326,7 @@ function waitForBudget(cost: number, now: number) {
 }
 
 function recordSpend(n: number, now: number) {
-  budgetUsed(now); // garante o ledger carregado e podado
+  budgetUsed(now);
   spent.push({ at: now, n });
   try {
     sessionStorage.setItem(LEDGER_KEY, JSON.stringify(spent));
@@ -348,25 +335,11 @@ function recordSpend(n: number, now: number) {
   }
 }
 
-/** Quanto uma tabela vai custar de requisições, para dizer ao operador ANTES
-    de ele esperar. Uma leitura por pedaço, mais uma gravação por horário que
-    alguma faixa pega — o base vai numa requisição só, por quadra. */
-function estimateRequests(courtCount: number, bands: BandDraft[], hasBase: boolean) {
-  const chunks = Math.ceil(PLAN_DAYS / CHUNK_DAYS);
-  let perCourt = chunks + (hasBase ? 1 : 0);
-  for (const b of bands) {
-    const hours = Math.max(0, b.endHour - b.startHour + 1);
-    const days = b.weekdays.length === 0 ? 7 : b.weekdays.length;
-    perCourt += Math.round((PLAN_DAYS / 7) * days * hours);
-  }
-  return perCourt * courtCount;
+/** Quanto a tabela vai custar de requisições: uma para o preço base e uma por
+    faixa, vezes o número de quadras. O BFF resolve cada uma num UPDATE só. */
+function estimateRequests(courtCount: number, bandCount: number, hasBase: boolean) {
+  return courtCount * (bandCount + (hasBase ? 1 : 0));
 }
-
-/** Em quantos dias cada pedaço mexe. O trabalho é fatiado para a barra andar:
-    uma quadra inteira numa chamada só deixava a tela parada por um minuto sem
-    dizer nada, e o operador não tinha como saber se estava indo ou travado. */
-const CHUNK_DAYS = 5;
-const PLAN_DAYS = 30;
 type Result = {
   courts: number;
   repriced: number;
@@ -593,38 +566,15 @@ export function PriceTableSection({
     // Várias quadras ao mesmo tempo. Em série, nove quadras eram nove esperas
     // somadas — e a espera de uma quadra é dominada por ida e volta de rede,
     // não por CPU, então esperar uma de cada vez era só desperdício.
-    // DUAS FASES, e a ordem entre elas não é estilo: é correção.
+    // Uma unidade de trabalho por QUADRA — não mais por janela de dias. Cada
+    // uma custa uma requisição para o base e uma por faixa, e o BFF resolve
+    // cada requisição num UPDATE em massa. O fatiamento em pedaços de cinco
+    // dias existia porque eram ~157 requisições por quadra e a barra precisava
+    // andar; agora são poucas e terminam num piscar.
     //
-    // O preço base vai pelo endpoint de reprice, que reescreve a QUADRA
-    // INTEIRA — todos os horários futuros, não só a janela do pedaço. Enquanto
-    // ele era só "o primeiro pedaço de cada quadra", corria em paralelo com as
-    // faixas dos pedaços seguintes e APAGAVA o que elas tinham acabado de
-    // gravar. A grade saía esfarrapada: numa reprodução com seis quadras, a
-    // Quadra 1 ficou com segunda 19–22, terça sem as 19h, sábado só as 18h e
-    // domingo sem nada — de uma faixa 18–22 em todos os dias.
-    //
-    // Fase 1: todos os bases. São seis requisições, terminam num segundo.
-    // Fase 2: as faixas, em pedaços, com a certeza de que nada mais vai
-    // nivelar a grade por baixo delas.
-    const units: { court: CourtListItem; dayFrom: number; dayTo: number; first: boolean }[] = [];
-    if (baseCents !== null) {
-      for (const court of targets) {
-        units.push({ court, dayFrom: 0, dayTo: 0, first: true });
-      }
-    }
-    for (const court of targets) {
-      for (let d = 0; d < PLAN_DAYS; d += CHUNK_DAYS) {
-        units.push({
-          court,
-          dayFrom: d,
-          dayTo: Math.min(d + CHUNK_DAYS, PLAN_DAYS),
-          first: false,
-        });
-      }
-    }
-    /** Onde a fase 1 acaba. Nenhuma faixa começa antes disso. */
-    const bandsStartAt = baseCents !== null ? targets.length : 0;
-
+    // A ordem dentro da quadra continua importando, e é a ação que garante:
+    // base primeiro (reescreve a quadra inteira), faixas depois, de cima para
+    // baixo (a de baixo vence quando duas pegam a mesma hora).
     const inFlight = new Set<string>();
     const okCourts = new Set<string>();
     const startedAt = Date.now();
@@ -635,7 +585,7 @@ export function PriceTableSection({
     const tick = () =>
       setProgress({
         done,
-        total: units.length,
+        total: targets.length,
         running: [...inFlight],
         written,
         startedAt,
@@ -645,21 +595,17 @@ export function PriceTableSection({
     tick();
 
     let next = 0;
-    const runFrom = async (from: number, to: number, lanes: number) => {
-      next = from;
-      await Promise.all(
-        Array.from({ length: Math.min(lanes, to - from) }, () => lane(to))
-      );
-    };
-    const lane = async (to: number) => {
-      for (;;) {
+    await Promise.all(
+      Array.from({ length: Math.min(WORK_CONCURRENCY, targets.length) }, async () => {
+        for (;;) {
+          if (hitRateLimit) return;
           const i = next++;
-          if (i >= to) return;
-          const u = units[i];
+          if (i >= targets.length) return;
+          const court = targets[i];
 
-          // Espera caber no orçamento antes de mandar. Um pedaço de cinco dias
-          // custa no máximo uma leitura + uma gravação por horário.
-          const cost = CHUNK_DAYS * 24 + 1;
+          // Freio de segurança: com o reprice por faixa isto quase nunca atua,
+          // mas o orçamento é do painel inteiro e não só desta tela.
+          const cost = payload.length + (baseCents !== null ? 1 : 0);
           for (;;) {
             const ms = waitForBudget(cost, Date.now());
             if (ms <= 0) break;
@@ -669,59 +615,41 @@ export function PriceTableSection({
           }
           waitingUntil = 0;
 
-          inFlight.add(u.court.name);
+          inFlight.add(court.name);
           tick();
           let res;
           try {
-            res = u.first
-              ? // Fase 1: só o preço base, uma requisição, quadra inteira.
-                await applyPriceTableAction(u.court.id, { baseCents, bands: [] })
-              : // Fase 2: só as faixas, na janela deste pedaço.
-                await applyPriceTableAction(u.court.id, {
-                  baseCents: null,
-                  bands: payload,
-                  dayFrom: u.dayFrom,
-                  dayTo: u.dayTo,
-                });
+            res = await applyPriceTableAction(court.id, { baseCents, bands: payload });
           } catch {
-            // Server action que rejeita (rede caída, Worker derrubado) não
-            // pode matar a corrida: sem este catch a tela ficava em
-            // "Aplicando…" para sempre, porque o `finally` lá embaixo nunca
-            // chegava a rodar.
+            // Server action que rejeita (rede caída, Worker derrubado) não pode
+            // matar a corrida: sem este catch a tela ficava em "Aplicando…"
+            // para sempre, porque o `finally` lá embaixo nunca rodava.
             res = { ok: false as const };
           }
           recordSpend(res.requests ?? cost, Date.now());
-          inFlight.delete(u.court.name);
+          inFlight.delete(court.name);
           done++;
           totals.repriced += res.repriced ?? 0;
           totals.updated += res.updated ?? 0;
-          totals.skippedBooked += res.skippedBooked ?? 0;
           totals.failed += res.failed ?? 0;
           written = totals.repriced + totals.updated;
-          // Limite estourado: parar TUDO. Seguir mandando só empurra a
-          // reabertura da janela para frente, e é o painel inteiro que fica
-          // fora do ar enquanto isso — não só esta tela.
           if (res.rateLimited) {
             hitRateLimit = true;
-            next = to;
             tick();
             return;
           }
           if (!res.ok) {
-            if (!totals.brokenCourts.includes(u.court.name)) {
-              totals.brokenCourts.push(u.court.name);
+            if (!totals.brokenCourts.includes(court.name)) {
+              totals.brokenCourts.push(court.name);
             }
             tick();
             continue;
           }
-          okCourts.add(u.court.name);
+          okCourts.add(court.name);
           tick();
-      }
-    };
-
-    // A barreira: as faixas só começam com TODOS os bases já gravados.
-    if (bandsStartAt > 0) await runFrom(0, bandsStartAt, WORK_CONCURRENCY);
-    if (!hitRateLimit) await runFrom(bandsStartAt, units.length, WORK_CONCURRENCY);
+        }
+      })
+    );
     totals.courts = okCourts.size;
     if (hitRateLimit) {
       setError(
@@ -1023,32 +951,20 @@ export function PriceTableSection({
         {(baseCents !== null || bands.length > 0) && targets.length > 0 && (
           <p className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
             {(() => {
-              const reqs = estimateRequests(targets.length, bands, baseCents !== null);
-              const mins = Math.ceil(reqs / BUDGET_PER_MINUTE);
+              const reqs = estimateRequests(targets.length, bands.length, baseCents !== null);
               return (
                 <>
-                  Vai custar cerca de{" "}
-                  <span className="numeral">{reqs.toLocaleString("pt-BR")}</span> requisições ao
-                  servidor
-                  {reqs > BUDGET_PER_MINUTE && (
-                    <>
-                      {" "}
-                      — mais do que cabe num minuto, então o ritmo é segurado e isto leva uns{" "}
-                      <span className="numeral">{mins}</span> min
-                    </>
-                  )}
-                  .{" "}
+                  <span className="numeral">{reqs}</span> requisições ao servidor — uma para o
+                  preço base e uma por faixa, em cada quadra.{" "}
                 </>
               );
             })()}
             {baseCents !== null && bands.length > 0 && (
               <>
-                O preço base entra de uma vez em todos os horários e as faixas vêm por cima, um
-                horário por vez — então, enquanto isto roda, a grade passa por um momento
-                nivelada no base.{" "}
+                O base entra primeiro, em todos os horários, e as faixas logo em seguida por
+                cima — cada uma numa requisição só.{" "}
               </>
             )}
-            Deixe a aba aberta até o fim.
           </p>
         )}
 

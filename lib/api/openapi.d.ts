@@ -316,7 +316,7 @@ export interface paths {
         put?: never;
         /**
          * Reprice a court going forward and set the court's default
-         * @description Sets price_cents on every future slot of THIS court that is not booked (slot_start > now AND status <> 'booked') — available and blocked alike, so a slot unblocked later resurfaces at the new price. Past slots and real bookings are never touched. The value also becomes this court's default_price_cents (not the academy's), inherited by future grid generation for this court only; sibling courts are unaffected. Returns the number of slots repriced. 404 if the court does not exist.
+         * @description Sets price_cents on the future slots of THIS court that are not booked (slot_start > now AND status <> 'booked') — available and blocked alike, so a slot unblocked later resurfaces at the new price. Past slots and real bookings are never touched. Optional start_hour/end_hour (inclusive), weekdays (0=Sunday…6=Saturday) and days narrow it to an HOUR BAND — hour and weekday are read in America/Sao_Paulo, by the hour the slot STARTS. Without any of those it is a whole-grid reprice and the value also becomes this court's default_price_cents (not the academy's), inherited by future grid generation for this court only; a band never touches the default, and default_set in the response says which happened. Sibling courts are unaffected. Returns the number of slots repriced. 400 if start_hour > end_hour or a weekday is out of range. 404 if the court does not exist.
          */
         post: operations["ops-reprice-court"];
         delete?: never;
@@ -3400,9 +3400,26 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: int64
-             * @description New price in cents applied to all future non-booked slots of this court; also becomes the court's default_price_cents
+             * @description How far ahead the band reaches, in days from now. Unset = every future slot
+             */
+            days?: number;
+            /**
+             * Format: int64
+             * @description Last hour of the band, inclusive, in America/Sao_Paulo. Unset = no upper bound
+             */
+            end_hour?: number;
+            /**
+             * Format: int64
+             * @description New price in cents applied to the matching future non-booked slots
              */
             price_cents: number;
+            /**
+             * Format: int64
+             * @description First hour of the band, inclusive, in America/Sao_Paulo — a slot matches by the hour it STARTS. Unset = no lower bound
+             */
+            start_hour?: number;
+            /** @description Days the band applies to, in America/Sao_Paulo: 0=Sunday … 6=Saturday. Empty or unset = every day */
+            weekdays?: number[] | null;
         };
         RepriceCourtResultBody: {
             /**
@@ -3411,9 +3428,11 @@ export interface components {
              * @example https://example.com/schemas/RepriceCourtResultBody.json
              */
             readonly $schema?: string;
+            /** @description Whether this call also became the court's default_price_cents — true only for a whole-grid reprice, never for an hour band */
+            default_set: boolean;
             /**
              * Format: int64
-             * @description Number of future available slots repriced
+             * @description Number of future non-booked slots repriced
              */
             slots_updated: number;
         };
