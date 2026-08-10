@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getApi } from "@/lib/api";
+import { getWithRetry } from "@/lib/api/retry";
 import type { components } from "@/lib/api/openapi";
 
 export type CourtListItem = components["schemas"]["CourtListItem"];
@@ -13,16 +14,13 @@ export type DeleteCourtState = {
 
 export async function listCourtsAction(): Promise<{ courts: CourtListItem[]; error?: string }> {
   const api = await getApi();
-  // O fetch pode LANÇAR (timeout, conexão derrubada), não só devolver `error`.
-  // Toda página de gestão depende desta lista: sem o catch, um BFF lento vira
-  // tela de erro em vez do aviso que a própria página já sabe mostrar.
-  try {
-    const { data, error } = await api.GET("/v1/ops/courts");
-    if (error) return { courts: [], error: error.detail || error.title || "Falha ao listar quadras." };
-    return { courts: data.courts ?? [] };
-  } catch {
-    return { courts: [], error: "O servidor de quadras não respondeu. Tente de novo." };
-  }
+  const res = await getWithRetry(
+    (attempt) =>
+      api.GET("/v1/ops/courts", { headers: { "x-lits-retry": String(attempt) } }),
+    "de quadras"
+  );
+  if (!res.ok) return { courts: [], error: res.error };
+  return { courts: res.data.courts ?? [] };
 }
 
 export async function deleteCourtAction(id: string): Promise<DeleteCourtState> {

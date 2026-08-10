@@ -1,6 +1,7 @@
 "use server";
 
 import { getApi } from "@/lib/api";
+import { getWithRetry } from "@/lib/api/retry";
 import type { components } from "@/lib/api/openapi";
 
 export type FranchiseItem = components["schemas"]["FranchiseItem"];
@@ -20,9 +21,16 @@ export type CreateCourtState = {
 
 export async function listFranchisesAction(): Promise<{ franchises: FranchiseItem[]; error?: string }> {
   const api = await getApi();
-  const { data, error } = await api.GET("/v1/ops/franchises");
-  if (error) return { franchises: [], error: error.detail || error.title || "Falha ao listar franquias." };
-  return { franchises: data.franchises ?? [] };
+  // Sem o guarda, um fetch que MORRE aqui derrubava a página da academia
+  // inteira: ela pede quadras e academias no mesmo Promise.all, e uma
+  // promessa rejeitada leva a outra junto.
+  const res = await getWithRetry(
+    (attempt) =>
+      api.GET("/v1/ops/franchises", { headers: { "x-lits-retry": String(attempt) } }),
+    "de academias"
+  );
+  if (!res.ok) return { franchises: [], error: res.error };
+  return { franchises: res.data.franchises ?? [] };
 }
 
 export type FranchiseExtras = {
