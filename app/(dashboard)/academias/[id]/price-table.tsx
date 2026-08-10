@@ -468,6 +468,24 @@ export function PriceTableSection({
     setDirty(true);
     setBands((cur) => cur.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   };
+
+  /** Altera uma faixa a partir do estado ATUAL dela, não do que o render
+      capturou. É a diferença entre marcar sete dias e marcar um: clicar em
+      Seg, Ter, Qua… mais rápido do que o React re-renderiza fazia cada
+      handler ler a mesma lista velha (`[]`) e sobrescrever o clique anterior
+      — no fim sobrava um dia só. Medido: sete cliques em rajada davam [Dom]. */
+  const updateBand = (id: number, fn: (b: BandDraft) => BandDraft) => {
+    setDirty(true);
+    setBands((cur) => cur.map((b) => (b.id === id ? fn(b) : b)));
+  };
+
+  const toggleDay = (id: number, dow: number) =>
+    updateBand(id, (b) => ({
+      ...b,
+      weekdays: b.weekdays.includes(dow)
+        ? b.weekdays.filter((v) => v !== dow)
+        : [...b.weekdays, dow],
+    }));
   const removeBand = (id: number) => {
     setDirty(true);
     setBands((cur) => cur.filter((b) => b.id !== id));
@@ -854,13 +872,7 @@ export function PriceTableSection({
                               key={d.v}
                               type="button"
                               aria-pressed={on}
-                              onClick={() =>
-                                patchBand(b.id, {
-                                  weekdays: on
-                                    ? b.weekdays.filter((v) => v !== d.v)
-                                    : [...b.weekdays, d.v],
-                                })
-                              }
+                              onClick={() => toggleDay(b.id, d.v)}
                               className={cn(
                                 "rounded-full border px-2.5 py-1 text-[10.5px] font-500 transition-colors",
                                 on
@@ -875,9 +887,10 @@ export function PriceTableSection({
                         <button
                           type="button"
                           onClick={() =>
-                            patchBand(b.id, {
-                              weekdays: b.weekdays.length === 7 ? [] : [...ALL_DAYS],
-                            })
+                            updateBand(b.id, (cur) => ({
+                              ...cur,
+                              weekdays: cur.weekdays.length === 7 ? [] : [...ALL_DAYS],
+                            }))
                           }
                           className="ml-1 text-[10px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
                         >

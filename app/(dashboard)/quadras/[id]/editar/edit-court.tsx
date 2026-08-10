@@ -558,7 +558,9 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
             })}
             <button
               type="button"
-              onClick={() => setDays(days.length === 7 ? [] : DOW_OPTIONS.map((d) => d.v))}
+              onClick={() =>
+                setDays((cur) => (cur.length === 7 ? [] : DOW_OPTIONS.map((d) => d.v)))
+              }
               className="ml-1 text-[10.5px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
             >
               {days.length === 7 ? "Limpar" : "Todos"}

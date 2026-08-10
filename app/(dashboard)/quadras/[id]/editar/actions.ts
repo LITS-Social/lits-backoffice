@@ -1092,7 +1092,7 @@ export async function readPriceTableAction(courtId: string): Promise<ReadPriceTa
   }
 
   const bands = [...merged.values()]
-    .map((b) => ({ ...b, weekdays: b.weekdays!.length === 7 ? [] : b.weekdays!.sort() }))
+    .map((b) => ({ ...b, weekdays: b.weekdays!.length === 7 ? [] : b.weekdays!.sort((x, y) => x - y) }))
     .sort((a, b) => a.startHour - b.startHour || a.priceCents - b.priceCents);
 
   return { ok: true, baseCents, bands };
