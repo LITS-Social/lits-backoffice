@@ -7,7 +7,6 @@ import type { CourtListItem } from "../../quadras/actions";
 import {
   applyPriceTableAction,
   readPriceTableAction,
-  updateFranchiseAction,
 } from "../../quadras/[id]/editar/actions";
 import type { PriceBand } from "../../quadras/[id]/editar/actions";
 import type { HourWindows } from "./academia";
@@ -61,10 +60,16 @@ const PRESETS: { label: string; band: Omit<BandDraft, "id" | "price"> }[] = [
 /** Onde a tabela cai. Coberta e descoberta quase nunca custam o mesmo — a
     coberta chove e continua jogando —, então o operador precisa poder mandar
     uma tabela numa metade sem tocar na outra. */
-const SCOPE_LABEL: Record<Scope, string> = {
-  all: "Todas",
-  indoor: "Só cobertas",
-  outdoor: "Só descobertas",
+/** Os dois recortes que a tela oferece. "Todas" saiu: coberta e descoberta
+    nunca custam o mesmo — a coberta chove e continua jogando —, então o
+    recorte único só servia para o operador aplicar sem querer o preço de um
+    tipo no outro. O tipo `Scope` ainda conhece "all" porque tabelas salvas
+    antes disto vivem no navegador de quem já usou a tela. */
+const SCOPES = ["indoor", "outdoor"] as const;
+
+const SCOPE_LABEL: Record<(typeof SCOPES)[number], string> = {
+  indoor: "Cobertas",
+  outdoor: "Descobertas",
 };
 
 /** Centavos → o texto que vai no campo: "25000" vira "250", "40050" vira
@@ -404,7 +409,12 @@ export function PriceTableSection({
   // Nasce vazio: o valor certo vem da grade, logo abaixo, e semear com o
   // padrão da franquia mostraria um número que pode não estar mais valendo.
   const [basePrice, setBasePrice] = useState("");
-  const [scope, setScope] = useState<Scope>("all");
+  // Abre no tipo mais numeroso: é o que o operador quase sempre quer mexer.
+  const [scope, setScope] = useState<Scope>(
+    courts.filter((c) => c.indoor).length > courts.filter((c) => !c.indoor).length
+      ? "indoor"
+      : "outdoor"
+  );
   const [bands, setBands] = useState<BandDraft[]>([]);
   const [nextId, setNextId] = useState(1);
   // `dirty` protege o que o operador digitou: a tabela em vigor é recarregada
@@ -428,7 +438,6 @@ export function PriceTableSection({
   const baseCents = reaisToCents(basePrice);
   const running = progress !== null;
   const counts = {
-    all: courts.length,
     indoor: courts.filter((c) => c.indoor).length,
     outdoor: courts.filter((c) => !c.indoor).length,
   };
@@ -575,13 +584,11 @@ export function PriceTableSection({
       brokenCourts: [],
     };
 
-    // O padrão da academia acompanha o base — sem isto, quadra criada amanhã
-    // nasceria no preço velho e ninguém entenderia por quê. Só quando o recorte
-    // é a academia inteira: um preço pensado para as cobertas não é o padrão da
-    // casa, e gravá-lo como tal faria a próxima descoberta nascer errada.
-    if (baseCents !== null && scope === "all") {
-      await updateFranchiseAction(base.franchise_id, { defaultPriceCents: baseCents });
-    }
+    // O padrão da ACADEMIA não é escrito daqui. Sem o recorte "todas", todo
+    // preço aplicado é de um tipo só, e eleger o das cobertas (ou o das
+    // descobertas) como padrão da casa faria a próxima quadra do outro tipo
+    // nascer errada. Cada QUADRA ganha o seu padrão pelo reprice, que é o que
+    // a regeneração da grade dela consulta.
 
     // Várias quadras ao mesmo tempo. Em série, nove quadras eram nove esperas
     // somadas — e a espera de uma quadra é dominada por ida e volta de rede,
@@ -734,8 +741,9 @@ export function PriceTableSection({
       <div className="mb-5">
         <h2 className="eyebrow">Tabela de preços</h2>
         <p className="mt-2 max-w-3xl text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Um preço base para o dia inteiro e, por cima dele, as faixas de horário. Aplica nas
-          quadras escolhidas de uma vez e <strong>fica valendo como padrão</strong>: toda vez que
+          Um preço base para o dia inteiro e, por cima dele, as faixas de horário. Uma tabela
+          para as cobertas e outra para as descobertas — elas nunca custam o mesmo. Aplica nas
+          quadras daquele tipo de uma vez e <strong>fica valendo como padrão</strong>: toda vez que
           o painel criar horários — regenerar a grade, acrescentar horários, importar print — a
           tabela do tipo daquela quadra volta por cima, e o horário novo já nasce nela. O base
           pega todo horário futuro; as faixas alcançam os próximos 30 dias. Quando duas faixas
@@ -748,7 +756,7 @@ export function PriceTableSection({
         <div>
           <span className={labelClass}>Onde aplicar</span>
           <div className="flex flex-wrap gap-1.5">
-            {(["all", "indoor", "outdoor"] as const).map((sc) => {
+            {SCOPES.map((sc) => {
               const n = counts[sc];
               const on = scope === sc;
               return (
@@ -772,13 +780,11 @@ export function PriceTableSection({
             })}
           </div>
           <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            {scope === "all"
-              ? "Coberta e descoberta vão pelo mesmo preço, e o base também vira o padrão da academia — quadra criada depois já nasce nele."
-              : `A tabela cai só ${
-                  scope === "indoor" ? "nas cobertas" : "nas descobertas"
-                }; ${
-                  scope === "indoor" ? "as descobertas" : "as cobertas"
-                } ficam como estão. Recorte parcial não mexe no padrão da academia.`}
+            {`Cada tipo tem a sua tabela: esta cai ${
+              scope === "indoor" ? "nas cobertas" : "nas descobertas"
+            } e ${
+              scope === "indoor" ? "as descobertas" : "as cobertas"
+            } ficam como estão. Troque o tipo acima para editar a outra.`}
           </p>
         </div>
 
@@ -995,9 +1001,7 @@ export function PriceTableSection({
           scopeNote={
             targets.length === 1
               ? `na ${targets[0].name}`
-              : `nas ${targets.length} quadras${
-                  scope === "indoor" ? " cobertas" : scope === "outdoor" ? " descobertas" : ""
-                }`
+              : `nas ${targets.length} ${scope === "indoor" ? "cobertas" : "descobertas"}`
           }
         />
 
@@ -1027,8 +1031,8 @@ export function PriceTableSection({
               ? "Aplicando…"
               : targets.length === 1
                 ? "Aplicar na quadra"
-                : `Aplicar nas ${targets.length} quadras${
-                    scope === "indoor" ? " cobertas" : scope === "outdoor" ? " descobertas" : ""
+                : `Aplicar nas ${targets.length} ${
+                    scope === "indoor" ? "cobertas" : "descobertas"
                   }`}
             {!running && <Check size={11} strokeWidth={2.5} />}
           </button>
