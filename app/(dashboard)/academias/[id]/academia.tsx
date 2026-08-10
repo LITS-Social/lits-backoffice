@@ -18,6 +18,7 @@ import { DangerZone } from "./danger-zone";
 import { ImportPrintAcademia } from "./import-print-academia";
 import { MatchesSection } from "./matches-section";
 import { PriceTableSection } from "./price-table";
+import { reapplySavedTable } from "./price-table-store";
 import type { AcademiaMatches } from "./matches";
 
 /**
@@ -188,9 +189,18 @@ function OperatingHoursSection({
       }
       if (failures.length > 0) setError(failures.join(" · "));
       if (failures.length < courts.length) {
+        // A grade nova nasce toda no preço padrão da quadra; as FAIXAS não
+        // existem para o gerador, que só conhece um preço. Reaplicar a tabela
+        // guardada é o que faz "horário novo já sai no padrão" ser verdade —
+        // e cada quadra segue a tabela do SEU tipo, coberta ou descoberta.
+        const done = courts.filter((c) => !failures.some((f) => f.startsWith(`${c.name}:`)));
+        const priced = await reapplySavedTable(franchiseId, done);
         setApplyNote(
           `Grade aplicada em ${courts.length - failures.length} de ${courts.length} quadras — ` +
-            `${created} horários criados (bloqueados), ${deleted} antigos removidos (reservas reais preservadas).`
+            `${created} horários criados (bloqueados), ${deleted} antigos removidos (reservas reais preservadas).` +
+            (priced
+              ? ` A tabela de preços foi reaplicada: ${priced.slots.toLocaleString("pt-BR")} horários já saíram no padrão.`
+              : "")
         );
         onApplied();
       }
@@ -462,7 +472,15 @@ export function AcademiaPage({
 
         <AcademiaCalendar key={calendarEpoch} courts={courts} windows={windows} />
 
-        <ImportPrintAcademia courts={courts} windows={windows} onDone={refresh} />
+        {/* Import de print também CRIA horários — a tabela volta por cima. */}
+        <ImportPrintAcademia
+          courts={courts}
+          windows={windows}
+          onDone={async () => {
+            await reapplySavedTable(base.franchise_id, courts);
+            refresh();
+          }}
+        />
 
         <DangerZone
           franchiseId={base.franchise_id}

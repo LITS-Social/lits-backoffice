@@ -28,6 +28,7 @@ import {
 import { ImportPrintSection } from "./import-print";
 import { AcademiaCalendar } from "../../../academias/[id]/calendar";
 import { initialWindows } from "../../../academias/[id]/academia";
+import { reapplySavedTable } from "../../../academias/[id]/price-table-store";
 
 type Surface = "clay" | "hard" | "grass" | "beach" | "carpet";
 
@@ -1648,6 +1649,22 @@ export function EditCourt({
     setCalendarEpoch((v) => v + 1);
   }
 
+  /** Depois de CRIAR horários, a tabela da academia volta por cima deles.
+      A grade nova nasce toda no preço padrão da quadra — as faixas não existem
+      para o gerador, que só conhece um preço. Sem isto, todo dia novo entrava
+      chapado e o horário nobre tinha que ser remarcado à mão. A quadra segue a
+      tabela do SEU tipo: coberta ou descoberta. */
+  const [repriceNote, setRepriceNote] = useState("");
+  async function slotsCreated() {
+    const res = await reapplySavedTable(court.franchise_id, [court]);
+    setRepriceNote(
+      res && res.slots > 0
+        ? `A tabela de preços da academia foi reaplicada — ${res.slots.toLocaleString("pt-BR")} horários já saíram no padrão.`
+        : ""
+    );
+    reloadSlots();
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       {/* Directory listings serve the kind-based synthesized free grid in-app,
@@ -1667,9 +1684,15 @@ export function EditCourt({
         onDone={reloadSlots}
       />
       <PriceRangeSection courtId={court.id} onDone={reloadSlots} />
-      <RegenerateSection courtId={court.id} onDone={reloadSlots} />
-      <AddSlotsSection courtId={court.id} onDone={reloadSlots} />
-      <ImportPrintSection courtId={court.id} courtName={court.name} onDone={reloadSlots} />
+      <RegenerateSection courtId={court.id} onDone={slotsCreated} />
+      <AddSlotsSection courtId={court.id} onDone={slotsCreated} />
+      <ImportPrintSection courtId={court.id} courtName={court.name} onDone={slotsCreated} />
+      {repriceNote && (
+        <p className="flex items-center gap-2 rounded-lg border border-[var(--color-success)]/25 bg-[var(--color-success-bg)] px-3 py-2.5 text-[12px] leading-snug text-[var(--color-success)]">
+          <Check size={13} strokeWidth={2.5} className="shrink-0" />
+          {repriceNote}
+        </p>
+      )}
       {/* O MESMO calendário da academia, só que com uma coluna: o operador que
           aprendeu a grade lá não reaprende nada aqui. A lista vertical antiga
           mostrava um dia de cada vez em linhas soltas e não deixava comparar

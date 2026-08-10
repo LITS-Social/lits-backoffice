@@ -11,6 +11,7 @@ import {
 } from "../../quadras/[id]/editar/actions";
 import type { PriceBand } from "../../quadras/[id]/editar/actions";
 import type { HourWindows } from "./academia";
+import { loadSavedTable, saveTable, type SavedTable, type Scope } from "./price-table-store";
 
 /**
  * A tabela de preços da academia: um preço base para o dia inteiro e, por cima
@@ -60,8 +61,6 @@ const PRESETS: { label: string; band: Omit<BandDraft, "id" | "price"> }[] = [
 /** Onde a tabela cai. Coberta e descoberta quase nunca custam o mesmo — a
     coberta chove e continua jogando —, então o operador precisa poder mandar
     uma tabela numa metade sem tocar na outra. */
-type Scope = "all" | "indoor" | "outdoor";
-
 const SCOPE_LABEL: Record<Scope, string> = {
   all: "Todas",
   indoor: "Só cobertas",
@@ -401,6 +400,7 @@ export function PriceTableSection({
   onDone: () => void;
 }) {
   const base = courts[0];
+  const franchiseId = base.franchise_id;
   // Nasce vazio: o valor certo vem da grade, logo abaixo, e semear com o
   // padrão da franquia mostraria um número que pode não estar mais valendo.
   const [basePrice, setBasePrice] = useState("");
@@ -416,7 +416,10 @@ export function PriceTableSection({
     setDirtyState(v);
   }, []);
   const [loading, setLoading] = useState(true);
-  const [loadedFrom, setLoadedFrom] = useState("");
+  /** De onde veio o que está na tela: a última aplicação, ou a grade. */
+  const [source, setSource] = useState<
+    { kind: "saved"; at: number } | { kind: "grid"; courtName: string } | null
+  >(null);
   const idSeed = useRef(1000);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -432,14 +435,14 @@ export function PriceTableSection({
   const targets = courts.filter((c) => inScope(c, scope));
   const sample = targets[0];
 
-  /** Puxa a tabela que está valendo naquelas quadras e joga no formulário. */
-  const loadTable = useCallback(
+  /** Lê a tabela DA GRADE — o plano B, quando não há uma aplicada guardada. */
+  const loadFromGrid = useCallback(
     async (courtId: string, courtName: string) => {
       setLoading(true);
       const res = await readPriceTableAction(courtId);
       setLoading(false);
       if (!res.ok) {
-        setLoadedFrom("");
+        setSource(null);
         return;
       }
       setBasePrice(res.baseCents != null ? centsToInput(res.baseCents) : "");
@@ -452,10 +455,27 @@ export function PriceTableSection({
           weekdays: b.weekdays ?? [],
         }))
       );
-      setLoadedFrom(courtName);
+      setSource({ kind: "grid", courtName });
       setDirty(false);
     },
     [setDirty]
+  );
+
+  /** Abre com a última tabela aplicada neste recorte; sem ela, lê da grade. */
+  const loadTable = useCallback(
+    async (courtId: string, courtName: string, scopeKey: Scope) => {
+      const saved = loadSavedTable(franchiseId, scopeKey);
+      if (!saved) {
+        await loadFromGrid(courtId, courtName);
+        return;
+      }
+      setLoading(false);
+      setBasePrice(saved.basePrice);
+      setBands(saved.bands.map((b) => ({ ...b, id: idSeed.current++ })));
+      setSource({ kind: "saved", at: saved.at });
+      setDirty(false);
+    },
+    [franchiseId, loadFromGrid, setDirty]
   );
 
   // Ao abrir, e a cada troca de recorte, a tela mostra a tabela em vigor —
@@ -471,10 +491,10 @@ export function PriceTableSection({
     // recurso que o calendário já usa aqui do lado.
     const raf = requestAnimationFrame(() => {
       if (dirtyRef.current) return;
-      void loadTable(sampleId, sampleName);
+      void loadTable(sampleId, sampleName, scope);
     });
     return () => cancelAnimationFrame(raf);
-  }, [sampleId, sampleName, loadTable]);
+  }, [sampleId, sampleName, scope, loadTable]);
 
   const addBand = (b?: Omit<BandDraft, "id" | "price">) => {
     setDirty(true);
@@ -674,9 +694,23 @@ export function PriceTableSection({
     }
 
     setDirty(false);
-    // Relê da grade em vez de confiar no que estava no formulário: o que
-    // aparece na tela tem que ser o que valeu de fato.
-    if (sample) await loadTable(sample.id, sample.name);
+    // Guarda o que ACABOU de ser aplicado e deixa na tela. Antes a tela relia
+    // a grade aqui, e a releitura devolvia uma versão empobrecida do que o
+    // operador tinha mandado — a faixa das 18h às 22h voltava como "22–22 na
+    // segunda", porque a inferência não enxerga hora sem slot. Quem sabe o que
+    // foi aplicado é quem aplicou.
+    const applied: SavedTable = {
+      basePrice,
+      bands: bands.map((b) => ({
+        startHour: b.startHour,
+        endHour: b.endHour,
+        price: b.price,
+        weekdays: b.weekdays,
+      })),
+      at: Date.now(),
+    };
+    saveTable(franchiseId, scope, applied);
+    setSource({ kind: "saved", at: applied.at });
     onDone();
   }
 
@@ -701,9 +735,11 @@ export function PriceTableSection({
         <h2 className="eyebrow">Tabela de preços</h2>
         <p className="mt-2 max-w-3xl text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
           Um preço base para o dia inteiro e, por cima dele, as faixas de horário. Aplica nas
-          quadras escolhidas de uma vez. O base pega todo horário futuro; as faixas alcançam os
-          próximos 30 dias. Quando duas faixas pegam a mesma hora, vale a de baixo. Reservas já
-          vendidas mantêm o preço combinado.
+          quadras escolhidas de uma vez e <strong>fica valendo como padrão</strong>: toda vez que
+          o painel criar horários — regenerar a grade, acrescentar horários, importar print — a
+          tabela do tipo daquela quadra volta por cima, e o horário novo já nasce nela. O base
+          pega todo horário futuro; as faixas alcançam os próximos 30 dias. Quando duas faixas
+          pegam a mesma hora, vale a de baixo. Reservas já vendidas mantêm o preço combinado.
         </p>
       </div>
 
@@ -750,25 +786,42 @@ export function PriceTableSection({
             rascunho em branco quando na verdade mostra a tabela em vigor. */}
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-300 text-[var(--text-tertiary)]">
           {loading ? (
-            "Lendo a tabela em vigor…"
+            "Lendo a tabela…"
           ) : dirty ? (
             <>
               <span className="text-[var(--primary)]">Alterações não aplicadas.</span>
               <button
                 type="button"
-                onClick={() => sample && loadTable(sample.id, sample.name)}
+                onClick={() => sample && loadTable(sample.id, sample.name, scope)}
                 className="font-500 text-[var(--primary)] underline-offset-2 transition-opacity hover:opacity-70"
               >
-                Voltar à tabela em vigor
+                Descartar
               </button>
             </>
-          ) : loadedFrom ? (
+          ) : source?.kind === "saved" ? (
             <>
-              Esta é a tabela em vigor, lida da grade da {loadedFrom}. Mude o que precisar e
-              aplique de novo.
+              Última tabela aplicada aqui, em{" "}
+              {new Date(source.at).toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+              .{" "}
+              {/* A grade continua sendo a verdade final; o botão existe para
+                  quando alguém repreçar uma quadra por fora daqui. */}
+              <button
+                type="button"
+                onClick={() => sample && loadFromGrid(sample.id, sample.name)}
+                className="font-500 text-[var(--primary)] underline-offset-2 transition-opacity hover:opacity-70"
+              >
+                Ler da grade
+              </button>
             </>
+          ) : source?.kind === "grid" ? (
+            <>Lida da grade da {source.courtName}. Mude o que precisar e aplique.</>
           ) : (
-            "Não deu para ler a tabela em vigor — o que você preencher aqui vai valer mesmo assim."
+            "Não deu para ler a tabela — o que você preencher aqui vai valer mesmo assim."
           )}
         </p>
 
