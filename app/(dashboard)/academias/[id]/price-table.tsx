@@ -264,12 +264,30 @@ function PricePreview({
 
 /* ── a seção ──────────────────────────────────────────────────────────────── */
 
-type Progress = { done: number; total: number; running: string[] };
+type Progress = {
+  done: number;
+  total: number;
+  running: string[];
+  /** Horários já gravados — o número que prova que a coisa anda mesmo quando
+      um bloco demora. */
+  written: number;
+  startedAt: number;
+  /** Quadras que já falharam — mostradas durante a corrida, não só no fim:
+      esperar o resumo final para descobrir que a primeira quebrou é tarde. */
+  broken: string[];
+};
 
-/** Quantas quadras em voo ao mesmo tempo. Cada uma é uma invocação de server
-    action independente, então três de uma vez são três Workers trabalhando —
-    e não três esperas somadas. Acima disso o gargalo deixa de ser o painel. */
-const COURT_CONCURRENCY = 3;
+/** Quantos pedaços de trabalho em voo. Cada um é uma invocação de server action
+    independente — e o limite de seis conexões simultâneas do Cloudflare Workers
+    é POR INVOCAÇÃO. Seis pedaços de uma vez são seis Workers com seis conexões
+    cada; é assim que se passa do teto de seis sem enganar a fila. */
+const WORK_CONCURRENCY = 6;
+
+/** Em quantos dias cada pedaço mexe. O trabalho é fatiado para a barra andar:
+    uma quadra inteira numa chamada só deixava a tela parada por um minuto sem
+    dizer nada, e o operador não tinha como saber se estava indo ou travado. */
+const CHUNK_DAYS = 5;
+const PLAN_DAYS = 30;
 type Result = {
   courts: number;
   repriced: number;
@@ -279,6 +297,33 @@ type Result = {
   /** Quadras que não responderam — nomeadas, para o operador repetir só nelas. */
   brokenCourts: string[];
 };
+
+/** A linha de vida do "aplicar": o que já foi gravado, onde está e há quanto
+    tempo. Um contador que anda é o que separa "está indo" de "travou" — a
+    barra sozinha pode ficar parada um bom tempo num bloco lento. */
+function ProgressLine({ progress }: { progress: Progress }) {
+  const [now, setNow] = useState(progress.startedAt);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secs = Math.max(0, Math.round((now - progress.startedAt) / 1000));
+  return (
+    <span className="text-[11px] font-300 text-[var(--text-tertiary)]">
+      <span className="numeral">{progress.written.toLocaleString("pt-BR")}</span> horários
+      gravados · bloco <span className="numeral">{progress.done}</span>/
+      <span className="numeral">{progress.total}</span> ·{" "}
+      <span className="numeral">{secs}s</span>
+      {progress.running.length > 0 && ` · ${[...new Set(progress.running)].join(", ")}`}
+      {progress.broken.length > 0 && (
+        <span className="text-[var(--color-error)]">
+          {" "}
+          · falhou em {progress.broken.join(", ")}
+        </span>
+      )}
+    </span>
+  );
+}
 
 export function PriceTableSection({
   courts,
@@ -437,45 +482,105 @@ export function PriceTableSection({
     // Várias quadras ao mesmo tempo. Em série, nove quadras eram nove esperas
     // somadas — e a espera de uma quadra é dominada por ida e volta de rede,
     // não por CPU, então esperar uma de cada vez era só desperdício.
+    // A lista de pedaços: cada quadra fatiada em janelas de poucos dias. O
+    // primeiro pedaço de cada quadra carrega o preço base (o reprice é da
+    // quadra inteira, não da janela — mandá-lo em todos seria repetir
+    // trabalho e sobrescrever as faixas já gravadas nos pedaços anteriores).
+    const units: { court: CourtListItem; dayFrom: number; dayTo: number; first: boolean }[] = [];
+    for (const court of targets) {
+      for (let d = 0; d < PLAN_DAYS; d += CHUNK_DAYS) {
+        units.push({
+          court,
+          dayFrom: d,
+          dayTo: Math.min(d + CHUNK_DAYS, PLAN_DAYS),
+          first: d === 0,
+        });
+      }
+    }
+
     const inFlight = new Set<string>();
+    const okCourts = new Set<string>();
+    const startedAt = Date.now();
     let done = 0;
+    let written = 0;
     const tick = () =>
-      setProgress({ done, total: targets.length, running: [...inFlight] });
+      setProgress({
+        done,
+        total: units.length,
+        running: [...inFlight],
+        written,
+        startedAt,
+        broken: [...totals.brokenCourts],
+      });
     tick();
 
     let next = 0;
     await Promise.all(
-      Array.from({ length: Math.min(COURT_CONCURRENCY, targets.length) }, async () => {
+      Array.from({ length: Math.min(WORK_CONCURRENCY, units.length) }, async () => {
         for (;;) {
           const i = next++;
-          if (i >= targets.length) return;
-          const court = targets[i];
-          inFlight.add(court.name);
+          if (i >= units.length) return;
+          const u = units[i];
+          inFlight.add(u.court.name);
           tick();
-          const res = await applyPriceTableAction(court.id, { baseCents, bands: payload });
-          inFlight.delete(court.name);
+          let res;
+          try {
+            res = await applyPriceTableAction(u.court.id, {
+              // Só o primeiro pedaço manda o base.
+              baseCents: u.first ? baseCents : null,
+              bands: payload,
+              dayFrom: u.dayFrom,
+              dayTo: u.dayTo,
+            });
+          } catch {
+            // Server action que rejeita (rede caída, Worker derrubado) não
+            // pode matar a corrida: sem este catch a tela ficava em
+            // "Aplicando…" para sempre, porque o `finally` lá embaixo nunca
+            // chegava a rodar.
+            res = { ok: false as const };
+          }
+          inFlight.delete(u.court.name);
           done++;
-          tick();
           if (!res.ok) {
-            totals.brokenCourts.push(court.name);
+            if (!totals.brokenCourts.includes(u.court.name)) {
+              totals.brokenCourts.push(u.court.name);
+            }
+            tick();
             continue;
           }
-          totals.courts++;
+          okCourts.add(u.court.name);
           totals.repriced += res.repriced ?? 0;
           totals.updated += res.updated ?? 0;
           totals.skippedBooked += res.skippedBooked ?? 0;
           totals.failed += res.failed ?? 0;
+          written = totals.repriced + totals.updated;
+          tick();
         }
       })
     );
+    totals.courts = okCourts.size;
 
-    setProgress(null);
     setResult(totals);
     setDirty(false);
     // Relê da grade em vez de confiar no que estava no formulário: se alguma
     // quadra falhou, o que aparece na tela tem que ser o que valeu de fato.
     if (sample) await loadTable(sample.id, sample.name);
     onDone();
+  }
+
+  /** O que o botão chama. `finally` é o ponto: qualquer coisa que estoure
+      dentro de `apply` tem que destravar a tela — um painel preso em
+      "Aplicando…" por cinco minutos não diz se está indo ou se morreu. */
+  async function applySafely() {
+    try {
+      await apply();
+    } catch {
+      setError(
+        "Alguma coisa quebrou no meio da aplicação. O que já foi gravado valeu — confira a prévia e aplique de novo para pegar o resto."
+      );
+    } finally {
+      setProgress(null);
+    }
   }
 
   return (
@@ -737,7 +842,7 @@ export function PriceTableSection({
         />
 
         <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-4">
-          <button type="button" onClick={apply} disabled={running} className={primaryBtn}>
+          <button type="button" onClick={applySafely} disabled={running} className={primaryBtn}>
             {running
               ? "Aplicando…"
               : targets.length === 1
@@ -747,12 +852,7 @@ export function PriceTableSection({
                   }`}
             {!running && <Check size={11} strokeWidth={2.5} />}
           </button>
-          {progress && (
-            <span className="text-[11px] font-300 text-[var(--text-tertiary)]">
-              {progress.done} de {progress.total} prontas
-              {progress.running.length > 0 && ` · ${progress.running.join(", ")}`}
-            </span>
-          )}
+          {progress && <ProgressLine progress={progress} />}
         </div>
 
         {progress && (

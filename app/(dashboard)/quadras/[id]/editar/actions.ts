@@ -764,10 +764,12 @@ const PRICE_RANGE_DAYS = 30;
 const SCAN_WINDOW_DAYS = 10;
 
 /** PATCHes em paralelo. Cada slot é uma requisição, e uma faixa de 5 horas em
-    30 dias são 150 — em série isso é meio minuto de espera por quadra. 12 foi
-    onde o ganho parou de compensar: acima disso a fila sai do painel e vira
-    fila no BFF. */
-const PATCH_CONCURRENCY = 12;
+    30 dias são 150 — em série isso é meio minuto de espera por quadra.
+    SEIS e não mais: "each Worker invocation can have up to six connections
+    simultaneously waiting for response headers" (limites do Cloudflare
+    Workers). Pedir 12 não abria 12 conexões; abria 6 e punha 6 na fila,
+    escondendo o custo real de cada pedaço de trabalho. */
+const PATCH_CONCURRENCY = 6;
 
 /** Roda `worker` sobre os itens com no máximo `limit` em voo. */
 async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
@@ -827,12 +829,21 @@ function bandPriceAt(bands: PriceBand[], startMs: number): number | null {
 export async function applyPriceTableAction(
   courtId: string,
   plan: {
-    /** Preço do resto do dia. null/undefined = não mexe no que já está lá. */
+    /** Preço do resto do dia. null/undefined = não mexe no que já está lá.
+        O reprice é da quadra INTEIRA, então só o primeiro pedaço o manda. */
     baseCents?: number | null;
     bands: PriceBand[];
+    /** Pedaço da janela, em dias a partir de hoje. Sem isto, os 30 dias
+        inteiros. Fatiar existe para o painel poder mostrar progresso: uma
+        quadra inteira numa chamada só deixava a barra parada por um minuto
+        sem nenhum sinal de vida. */
+    dayFrom?: number;
+    dayTo?: number;
   }
 ): Promise<PriceTableState> {
   const { baseCents = null, bands } = plan;
+  const dayFrom = plan.dayFrom ?? 0;
+  const dayTo = plan.dayTo ?? PRICE_RANGE_DAYS;
   for (const b of bands) {
     if (b.startHour > b.endHour) {
       return { ok: false, error: "Em toda faixa, a hora inicial precisa ser menor ou igual à final." };
@@ -845,14 +856,22 @@ export async function applyPriceTableAction(
   //    faixas só tocam o que realmente difere.
   let repriced: number | null = null;
   if (baseCents != null) {
-    const { data, error } = await api.POST("/v1/ops/courts/{id}/reprice", {
-      params: { path: { id: courtId } },
-      body: { price_cents: baseCents },
-    });
-    if (error) {
-      return { ok: false, error: error.detail || error.title || "Falha ao aplicar o preço base." };
+    try {
+      const { data, error } = await api.POST("/v1/ops/courts/{id}/reprice", {
+        params: { path: { id: courtId } },
+        body: { price_cents: baseCents },
+      });
+      if (error) {
+        return { ok: false, error: error.detail || error.title || "Falha ao aplicar o preço base." };
+      }
+      repriced = data.slots_updated;
+    } catch {
+      // openapi-fetch devolve `error` para resposta HTTP ruim, mas LANÇA
+      // quando o fetch em si morre. Sem este catch a exceção sobe até o
+      // cliente, a promessa da server action rejeita, e o painel fica
+      // "Aplicando…" para sempre — sem barra andando e sem erro na tela.
+      return { ok: false, error: "O servidor não respondeu ao preço base. Tente de novo." };
     }
-    repriced = data.slots_updated;
   }
 
   if (bands.length === 0) {
@@ -867,26 +886,31 @@ export async function applyPriceTableAction(
   // As janelas vão juntas: são leituras independentes, e em série cada uma
   // custava uma ida e volta inteira antes de qualquer preço ser escrito.
   const windows = [];
-  for (let d = 0; d < PRICE_RANGE_DAYS; d += SCAN_WINDOW_DAYS) {
+  for (let d = dayFrom; d < dayTo; d += SCAN_WINDOW_DAYS) {
     windows.push([
       new Date(nowMs + d * DAY),
-      new Date(nowMs + Math.min(d + SCAN_WINDOW_DAYS, PRICE_RANGE_DAYS) * DAY),
+      new Date(nowMs + Math.min(d + SCAN_WINDOW_DAYS, dayTo) * DAY),
     ] as const);
   }
-  const pages = await Promise.all(
-    windows.map(([from, to]) =>
-      api.GET("/v1/ops/courts/{id}/slots", {
-        params: {
-          path: { id: courtId },
-          query: { from: from.toISOString(), to: to.toISOString() },
-        },
-      })
-    )
-  );
+  let pages;
+  try {
+    pages = await Promise.all(
+      windows.map(([from, to]) =>
+        api.GET("/v1/ops/courts/{id}/slots", {
+          params: {
+            path: { id: courtId },
+            query: { from: from.toISOString(), to: to.toISOString() },
+          },
+        })
+      )
+    );
+  } catch {
+    return { ok: false, repriced, error: "O servidor não respondeu ao ler a grade." };
+  }
   const slots: { slot_start: string; status?: string; price_cents?: number | null }[] = [];
   for (const { data, error } of pages) {
     if (error) {
-      return { ok: false, error: error.detail || error.title || "Falha ao ler a grade." };
+      return { ok: false, repriced, error: error.detail || error.title || "Falha ao ler a grade." };
     }
     slots.push(...(data.slots ?? []));
   }
@@ -910,12 +934,19 @@ export async function applyPriceTableAction(
   let updated = 0;
   let failed = 0;
   await pool(targets, PATCH_CONCURRENCY, async (t) => {
-    const res = await api.PATCH("/v1/ops/courts/{id}/slots/{slot_start}", {
-      params: { path: { id: courtId, slot_start: t.slotStart } },
-      body: { price_cents: t.priceCents },
-    });
-    if (res.error) failed++;
-    else updated++;
+    // Um horário que estoura conta como falha e o resto segue. Antes, uma
+    // exceção aqui subia pelo Promise.all e derrubava a chamada inteira —
+    // 400 horários já gravados viravam "nada aconteceu" na tela.
+    try {
+      const res = await api.PATCH("/v1/ops/courts/{id}/slots/{slot_start}", {
+        params: { path: { id: courtId, slot_start: t.slotStart } },
+        body: { price_cents: t.priceCents },
+      });
+      if (res.error) failed++;
+      else updated++;
+    } catch {
+      failed++;
+    }
   });
 
   revalidatePath("/quadras");
