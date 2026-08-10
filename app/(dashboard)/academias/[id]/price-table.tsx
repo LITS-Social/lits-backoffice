@@ -290,29 +290,50 @@ type Progress = {
 const WORK_CONCURRENCY = 2;
 
 /** Requisições por minuto que esta tela pode gastar. O BFF concede 600 por
-    pessoa; os outros 200 ficam para navegar o painel enquanto isto roda —
+    pessoa; as outras 250 ficam para navegar o painel enquanto isto roda —
     aplicar preços não pode custar a tela de quem está aplicando. */
-const BUDGET_PER_MINUTE = 400;
+const BUDGET_PER_MINUTE = 350;
 
-/** Orçamento em janela deslizante de 60s. Antes de mandar um pedaço, espera
-    até caber; sem isto o painel se auto-derruba com 429. */
-function makeGovernor(budget: number) {
-  const spent: { at: number; n: number }[] = [];
-  const used = (now: number) => {
-    while (spent.length > 0 && now - spent[0].at > 60_000) spent.shift();
-    return spent.reduce((t, e) => t + e.n, 0);
-  };
-  return {
-    /** Segundos de espera até caber `cost`; 0 se cabe agora. */
-    waitFor(cost: number, now: number) {
-      if (used(now) + cost <= budget) return 0;
-      const oldest = spent[0]?.at ?? now;
-      return Math.max(0, 60_000 - (now - oldest));
-    },
-    record(n: number, now: number) {
-      spent.push({ at: now, n });
-    },
-  };
+/**
+ * Orçamento em janela deslizante de 60s. Antes de mandar um pedaço, espera até
+ * caber; sem isto o painel se auto-derruba com 429.
+ *
+ * MORA NO MÓDULO, não no componente. Um governador por corrida achava o
+ * orçamento vazio a cada clique em "Aplicar": tentativa que falhava e era
+ * repetida em seguida somava dois orçamentos cheios contra a MESMA janela do
+ * servidor, e o segundo clique tomava 429 na cara. O limite é do servidor e da
+ * pessoa — a contabilidade tem que sobreviver ao botão.
+ */
+const spent: { at: number; n: number }[] = [];
+
+function budgetUsed(now: number) {
+  while (spent.length > 0 && now - spent[0].at > 60_000) spent.shift();
+  return spent.reduce((t, e) => t + e.n, 0);
+}
+
+/** Milissegundos de espera até caber `cost`; 0 se cabe agora. */
+function waitForBudget(cost: number, now: number) {
+  if (budgetUsed(now) + cost <= BUDGET_PER_MINUTE) return 0;
+  const oldest = spent[0]?.at ?? now;
+  return Math.max(0, 60_000 - (now - oldest));
+}
+
+function recordSpend(n: number, now: number) {
+  spent.push({ at: now, n });
+}
+
+/** Quanto uma tabela vai custar de requisições, para dizer ao operador ANTES
+    de ele esperar. Uma leitura por pedaço, mais uma gravação por horário que
+    alguma faixa pega — o base vai numa requisição só, por quadra. */
+function estimateRequests(courtCount: number, bands: BandDraft[], hasBase: boolean) {
+  const chunks = Math.ceil(PLAN_DAYS / CHUNK_DAYS);
+  let perCourt = chunks + (hasBase ? 1 : 0);
+  for (const b of bands) {
+    const hours = Math.max(0, b.endHour - b.startHour + 1);
+    const days = b.weekdays.length === 0 ? 7 : b.weekdays.length;
+    perCourt += Math.round((PLAN_DAYS / 7) * days * hours);
+  }
+  return perCourt * courtCount;
 }
 
 /** Em quantos dias cada pedaço mexe. O trabalho é fatiado para a barra andar:
@@ -562,7 +583,6 @@ export function PriceTableSection({
       }
     }
 
-    const gov = makeGovernor(BUDGET_PER_MINUTE);
     const inFlight = new Set<string>();
     const okCourts = new Set<string>();
     const startedAt = Date.now();
@@ -594,7 +614,7 @@ export function PriceTableSection({
           // custa no máximo uma leitura + uma gravação por horário.
           const cost = CHUNK_DAYS * 24 + 1;
           for (;;) {
-            const ms = gov.waitFor(cost, Date.now());
+            const ms = waitForBudget(cost, Date.now());
             if (ms <= 0) break;
             waitingUntil = Date.now() + ms;
             tick();
@@ -620,7 +640,7 @@ export function PriceTableSection({
             // chegava a rodar.
             res = { ok: false as const };
           }
-          gov.record(res.requests ?? cost, Date.now());
+          recordSpend(res.requests ?? cost, Date.now());
           inFlight.delete(u.court.name);
           done++;
           totals.repriced += res.repriced ?? 0;
@@ -947,11 +967,35 @@ export function PriceTableSection({
           }
         />
 
-        {baseCents !== null && bands.length > 0 && (
+        {(baseCents !== null || bands.length > 0) && targets.length > 0 && (
           <p className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            O preço base entra de uma vez em todos os horários e as faixas vêm por cima, um
-            horário por vez — então, enquanto isto roda, a grade passa por um momento nivelada
-            no base. Deixe a aba aberta até o fim.
+            {(() => {
+              const reqs = estimateRequests(targets.length, bands, baseCents !== null);
+              const mins = Math.ceil(reqs / BUDGET_PER_MINUTE);
+              return (
+                <>
+                  Vai custar cerca de{" "}
+                  <span className="numeral">{reqs.toLocaleString("pt-BR")}</span> requisições ao
+                  servidor
+                  {reqs > BUDGET_PER_MINUTE && (
+                    <>
+                      {" "}
+                      — mais do que cabe num minuto, então o ritmo é segurado e isto leva uns{" "}
+                      <span className="numeral">{mins}</span> min
+                    </>
+                  )}
+                  .{" "}
+                </>
+              );
+            })()}
+            {baseCents !== null && bands.length > 0 && (
+              <>
+                O preço base entra de uma vez em todos os horários e as faixas vêm por cima, um
+                horário por vez — então, enquanto isto roda, a grade passa por um momento
+                nivelada no base.{" "}
+              </>
+            )}
+            Deixe a aba aberta até o fim.
           </p>
         )}
 

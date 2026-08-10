@@ -1091,8 +1091,49 @@ export async function readPriceTableAction(courtId: string): Promise<ReadPriceTa
     }
   }
 
-  const bands = [...merged.values()]
-    .map((b) => ({ ...b, weekdays: b.weekdays!.length === 7 ? [] : b.weekdays!.sort((x, y) => x - y) }))
+  // Uma hora VENDIDA no meio não pode partir a faixa em duas.
+  //
+  // A faixa das 19h às 22h com as 19h de terça reservadas era lida como duas:
+  // "19–22 em seis dias" e "20–22 na terça". O operador nunca montou isso, e
+  // ele acabaria consertando à mão uma faixa que já está certa.
+  //
+  // Se uma faixa estreita cabe dentro de uma larga do MESMO preço, e nos dias
+  // dela as horas que faltam não têm slot nenhum — vendido, ou fora do
+  // funcionamento —, então é a mesma faixa vista através de um buraco. Hora
+  // com slot em OUTRO preço não é buraco: aí a faixa é estreita mesmo.
+  const wideFirst = [...merged.values()].sort(
+    (a, b) => b.endHour - b.startHour - (a.endHour - a.startHour)
+  );
+  const kept: PriceBand[] = [];
+  for (const band of wideFirst) {
+    const host = kept.find(
+      (h) =>
+        h.priceCents === band.priceCents &&
+        h.startHour <= band.startHour &&
+        h.endHour >= band.endHour &&
+        (h.startHour !== band.startHour || h.endHour !== band.endHour)
+    );
+    const gapHours: number[] = [];
+    if (host) {
+      for (let h = host.startHour; h <= host.endHour; h++) {
+        if (h < band.startHour || h > band.endHour) gapHours.push(h);
+      }
+    }
+    const absorbable =
+      host &&
+      band.weekdays!.every((d) => gapHours.every((h) => !seen.has(`${d}:${h}`)));
+    if (absorbable) {
+      host.weekdays!.push(...band.weekdays!);
+      continue;
+    }
+    kept.push(band);
+  }
+
+  const bands = kept
+    .map((b) => ({
+      ...b,
+      weekdays: b.weekdays!.length === 7 ? [] : b.weekdays!.sort((x, y) => x - y),
+    }))
     .sort((a, b) => a.startHour - b.startHour || a.priceCents - b.priceCents);
 
   return { ok: true, baseCents, bands };
