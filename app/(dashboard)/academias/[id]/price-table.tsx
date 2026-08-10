@@ -567,21 +567,37 @@ export function PriceTableSection({
     // Várias quadras ao mesmo tempo. Em série, nove quadras eram nove esperas
     // somadas — e a espera de uma quadra é dominada por ida e volta de rede,
     // não por CPU, então esperar uma de cada vez era só desperdício.
-    // A lista de pedaços: cada quadra fatiada em janelas de poucos dias. O
-    // primeiro pedaço de cada quadra carrega o preço base (o reprice é da
-    // quadra inteira, não da janela — mandá-lo em todos seria repetir
-    // trabalho e sobrescrever as faixas já gravadas nos pedaços anteriores).
+    // DUAS FASES, e a ordem entre elas não é estilo: é correção.
+    //
+    // O preço base vai pelo endpoint de reprice, que reescreve a QUADRA
+    // INTEIRA — todos os horários futuros, não só a janela do pedaço. Enquanto
+    // ele era só "o primeiro pedaço de cada quadra", corria em paralelo com as
+    // faixas dos pedaços seguintes e APAGAVA o que elas tinham acabado de
+    // gravar. A grade saía esfarrapada: numa reprodução com seis quadras, a
+    // Quadra 1 ficou com segunda 19–22, terça sem as 19h, sábado só as 18h e
+    // domingo sem nada — de uma faixa 18–22 em todos os dias.
+    //
+    // Fase 1: todos os bases. São seis requisições, terminam num segundo.
+    // Fase 2: as faixas, em pedaços, com a certeza de que nada mais vai
+    // nivelar a grade por baixo delas.
     const units: { court: CourtListItem; dayFrom: number; dayTo: number; first: boolean }[] = [];
+    if (baseCents !== null) {
+      for (const court of targets) {
+        units.push({ court, dayFrom: 0, dayTo: 0, first: true });
+      }
+    }
     for (const court of targets) {
       for (let d = 0; d < PLAN_DAYS; d += CHUNK_DAYS) {
         units.push({
           court,
           dayFrom: d,
           dayTo: Math.min(d + CHUNK_DAYS, PLAN_DAYS),
-          first: d === 0,
+          first: false,
         });
       }
     }
+    /** Onde a fase 1 acaba. Nenhuma faixa começa antes disso. */
+    const bandsStartAt = baseCents !== null ? targets.length : 0;
 
     const inFlight = new Set<string>();
     const okCourts = new Set<string>();
@@ -603,11 +619,16 @@ export function PriceTableSection({
     tick();
 
     let next = 0;
-    await Promise.all(
-      Array.from({ length: Math.min(WORK_CONCURRENCY, units.length) }, async () => {
-        for (;;) {
+    const runFrom = async (from: number, to: number, lanes: number) => {
+      next = from;
+      await Promise.all(
+        Array.from({ length: Math.min(lanes, to - from) }, () => lane(to))
+      );
+    };
+    const lane = async (to: number) => {
+      for (;;) {
           const i = next++;
-          if (i >= units.length) return;
+          if (i >= to) return;
           const u = units[i];
 
           // Espera caber no orçamento antes de mandar. Um pedaço de cinco dias
@@ -626,13 +647,16 @@ export function PriceTableSection({
           tick();
           let res;
           try {
-            res = await applyPriceTableAction(u.court.id, {
-              // Só o primeiro pedaço manda o base.
-              baseCents: u.first ? baseCents : null,
-              bands: payload,
-              dayFrom: u.dayFrom,
-              dayTo: u.dayTo,
-            });
+            res = u.first
+              ? // Fase 1: só o preço base, uma requisição, quadra inteira.
+                await applyPriceTableAction(u.court.id, { baseCents, bands: [] })
+              : // Fase 2: só as faixas, na janela deste pedaço.
+                await applyPriceTableAction(u.court.id, {
+                  baseCents: null,
+                  bands: payload,
+                  dayFrom: u.dayFrom,
+                  dayTo: u.dayTo,
+                });
           } catch {
             // Server action que rejeita (rede caída, Worker derrubado) não
             // pode matar a corrida: sem este catch a tela ficava em
@@ -653,7 +677,7 @@ export function PriceTableSection({
           // fora do ar enquanto isso — não só esta tela.
           if (res.rateLimited) {
             hitRateLimit = true;
-            next = units.length;
+            next = to;
             tick();
             return;
           }
@@ -666,9 +690,12 @@ export function PriceTableSection({
           }
           okCourts.add(u.court.name);
           tick();
-        }
-      })
-    );
+      }
+    };
+
+    // A barreira: as faixas só começam com TODOS os bases já gravados.
+    if (bandsStartAt > 0) await runFrom(0, bandsStartAt, WORK_CONCURRENCY);
+    if (!hitRateLimit) await runFrom(bandsStartAt, units.length, WORK_CONCURRENCY);
     totals.courts = okCourts.size;
     if (hitRateLimit) {
       setError(
