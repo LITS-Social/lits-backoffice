@@ -52,6 +52,22 @@ const PRESETS: { label: string; band: Omit<BandDraft, "id" | "price"> }[] = [
   { label: "Fim de semana", band: { startHour: 6, endHour: 22, weekdays: [0, 6] } },
 ];
 
+/** Onde a tabela cai. Coberta e descoberta quase nunca custam o mesmo — a
+    coberta chove e continua jogando —, então o operador precisa poder mandar
+    uma tabela numa metade sem tocar na outra. */
+type Scope = "all" | "indoor" | "outdoor";
+
+const SCOPE_LABEL: Record<Scope, string> = {
+  all: "Todas",
+  indoor: "Só cobertas",
+  outdoor: "Só descobertas",
+};
+
+function inScope(c: CourtListItem, scope: Scope) {
+  if (scope === "all") return true;
+  return scope === "indoor" ? c.indoor : !c.indoor;
+}
+
 const fieldClass =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:bg-[var(--surface)] focus:outline-none";
 const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
@@ -84,10 +100,14 @@ function PricePreview({
   bands,
   baseCents,
   windows,
+  scopeNote,
 }: {
   bands: BandDraft[];
   baseCents: number | null;
   windows: HourWindows;
+  /** Em quantas — e quais — quadras esta grade vai cair. Sem isto a prévia
+      parece valer para a academia inteira mesmo com um recorte ativo. */
+  scopeNote: string;
 }) {
   // Todas as horas que a academia abre em algum dia da semana — a régua.
   const hours = useMemo(() => {
@@ -154,7 +174,7 @@ function PricePreview({
 
   return (
     <div>
-      <span className={labelClass}>Prévia — o que cada hora vai custar</span>
+      <span className={labelClass}>Prévia — o que cada hora vai custar {scopeNote}</span>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[520px] border-separate border-spacing-[2px] text-center">
           <thead>
@@ -259,6 +279,7 @@ export function PriceTableSection({
       ? String(base.franchise_default_price_cents / 100).replace(".", ",")
       : ""
   );
+  const [scope, setScope] = useState<Scope>("all");
   const [bands, setBands] = useState<BandDraft[]>([]);
   const [nextId, setNextId] = useState(1);
   const [error, setError] = useState("");
@@ -267,6 +288,12 @@ export function PriceTableSection({
 
   const baseCents = reaisToCents(basePrice);
   const running = progress !== null;
+  const counts = {
+    all: courts.length,
+    indoor: courts.filter((c) => c.indoor).length,
+    outdoor: courts.filter((c) => !c.indoor).length,
+  };
+  const targets = courts.filter((c) => inScope(c, scope));
 
   const addBand = (b?: Omit<BandDraft, "id" | "price">) => {
     setBands((cur) => [
@@ -309,6 +336,10 @@ export function PriceTableSection({
       setError("Preencha o preço base ou pelo menos uma faixa.");
       return;
     }
+    if (targets.length === 0) {
+      setError("Nenhuma quadra neste recorte.");
+      return;
+    }
 
     const totals: Result = {
       courts: 0,
@@ -319,17 +350,19 @@ export function PriceTableSection({
       brokenCourts: [],
     };
 
-    // O padrão da academia acompanha o base: sem isto, quadra criada amanhã
-    // nasceria no preço velho e ninguém entenderia por quê.
-    if (baseCents !== null) {
+    // O padrão da academia acompanha o base — sem isto, quadra criada amanhã
+    // nasceria no preço velho e ninguém entenderia por quê. Só quando o recorte
+    // é a academia inteira: um preço pensado para as cobertas não é o padrão da
+    // casa, e gravá-lo como tal faria a próxima descoberta nascer errada.
+    if (baseCents !== null && scope === "all") {
       await updateFranchiseAction(base.franchise_id, { defaultPriceCents: baseCents });
     }
 
     // Quadra a quadra, em série de propósito: o navegador vê o progresso andar
     // e o BFF não leva nove rajadas de PATCH ao mesmo tempo (dentro de cada
     // quadra os PATCHes já vão em paralelo).
-    for (const [i, court] of courts.entries()) {
-      setProgress({ done: i, total: courts.length, court: court.name });
+    for (const [i, court] of targets.entries()) {
+      setProgress({ done: i, total: targets.length, court: court.name });
       const res = await applyPriceTableAction(court.id, {
         baseCents,
         bands: payload,
@@ -355,15 +388,52 @@ export function PriceTableSection({
       <div className="mb-5">
         <h2 className="eyebrow">Tabela de preços</h2>
         <p className="mt-2 max-w-3xl text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Um preço base para o dia inteiro e, por cima dele, as faixas de horário. Aplica nas{" "}
-          {courts.length} quadra{courts.length === 1 ? "" : "s"} de uma vez. O base pega todo
-          horário futuro e ainda vira o padrão da academia, então a grade gerada daqui pra frente
-          já nasce no preço certo; as faixas alcançam os próximos 30 dias. Quando duas faixas
-          pegam a mesma hora, vale a de baixo. Reservas já vendidas mantêm o preço combinado.
+          Um preço base para o dia inteiro e, por cima dele, as faixas de horário. Aplica nas
+          quadras escolhidas de uma vez. O base pega todo horário futuro; as faixas alcançam os
+          próximos 30 dias. Quando duas faixas pegam a mesma hora, vale a de baixo. Reservas já
+          vendidas mantêm o preço combinado.
         </p>
       </div>
 
       <div className="space-y-5">
+        {/* ── recorte ─────────────────────────────────────────────────────── */}
+        <div>
+          <span className={labelClass}>Onde aplicar</span>
+          <div className="flex flex-wrap gap-1.5">
+            {(["all", "indoor", "outdoor"] as const).map((sc) => {
+              const n = counts[sc];
+              const on = scope === sc;
+              return (
+                <button
+                  key={sc}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={n === 0}
+                  onClick={() => setScope(sc)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-[11.5px] font-500 transition-colors disabled:opacity-40",
+                    on
+                      ? "border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary)]"
+                      : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]"
+                  )}
+                >
+                  {SCOPE_LABEL[sc]}{" "}
+                  <span className="numeral text-[10.5px] opacity-70">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {scope === "all"
+              ? "Coberta e descoberta vão pelo mesmo preço, e o base também vira o padrão da academia — quadra criada depois já nasce nele."
+              : `A tabela cai só ${
+                  scope === "indoor" ? "nas cobertas" : "nas descobertas"
+                }; ${
+                  scope === "indoor" ? "as descobertas" : "as cobertas"
+                } ficam como estão. Recorte parcial não mexe no padrão da academia.`}
+          </p>
+        </div>
+
         <div className="sm:max-w-[220px]">
           <label htmlFor="pt_base" className={labelClass}>
             Preço base da hora (R$)
@@ -528,11 +598,28 @@ export function PriceTableSection({
           </div>
         </div>
 
-        <PricePreview bands={bands} baseCents={baseCents} windows={windows} />
+        <PricePreview
+          bands={bands}
+          baseCents={baseCents}
+          windows={windows}
+          scopeNote={
+            targets.length === 1
+              ? `na ${targets[0].name}`
+              : `nas ${targets.length} quadras${
+                  scope === "indoor" ? " cobertas" : scope === "outdoor" ? " descobertas" : ""
+                }`
+          }
+        />
 
         <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-4">
           <button type="button" onClick={apply} disabled={running} className={primaryBtn}>
-            {running ? "Aplicando…" : `Aplicar nas ${courts.length} quadras`}
+            {running
+              ? "Aplicando…"
+              : targets.length === 1
+                ? "Aplicar na quadra"
+                : `Aplicar nas ${targets.length} quadras${
+                    scope === "indoor" ? " cobertas" : scope === "outdoor" ? " descobertas" : ""
+                  }`}
             {!running && <Check size={11} strokeWidth={2.5} />}
           </button>
           {progress && (
