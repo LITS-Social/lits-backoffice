@@ -728,106 +728,183 @@ export async function geocodeAction(q: string): Promise<GeocodeState> {
 // o servidor entende como PRÉVIA, e responde 200 sem escrever nada. Uma ação de
 // apagar que não olha `deleted` no corpo é uma ação que nunca apaga.
 
-/* ══ preço por faixa de horário ═══════════════════════════════════════════ */
+/* ══ tabela de preços por faixa de horário ════════════════════════════════ */
 
-export type PriceRangeState = {
+export type PriceBand = {
+  /** Horas inclusivas nas duas pontas, lidas no fuso de São Paulo: 18–22 pega
+      os slots que COMEÇAM às 18, 19, 20, 21 e 22. */
+  startHour: number;
+  endHour: number;
+  priceCents: number;
+  /** 0=domingo … 6=sábado. Vazio = todos os dias. */
+  weekdays?: number[];
+};
+
+export type PriceTableState = {
   ok: boolean;
-  /** Quantos horários tiveram o preço trocado. */
+  /** Slots que o preço base tocou; null quando o plano não trouxe base. */
+  repriced?: number | null;
+  /** Quantos horários as faixas trocaram por cima do base. */
   updated?: number;
-  /** Reservas reais encontradas na faixa — puladas, nunca repreçadas. */
+  /** Reservas reais encontradas — puladas, nunca repreçadas. */
   skippedBooked?: number;
   /** Falharam no PATCH; o resto foi aplicado mesmo assim. */
   failed?: number;
   error?: string;
 };
 
-/** Quantos dias à frente a faixa alcança. Mesma janela da grade padrão. */
+/** Quantos dias à frente a tabela alcança. Mesma janela da grade padrão. */
 const PRICE_RANGE_DAYS = 30;
 
+/** O GET de slots devolve no máximo 500 linhas e não tem paginação — só
+    `from`/`to`. Uma academia aberta das 6h às 22h faz 17 slots/dia, então 30
+    dias passam de 500 e a resposta vinha truncada em silêncio: os últimos dias
+    simplesmente não eram repreçados. Varremos em janelas de 10 dias (≈170
+    linhas) para caber com folga. */
+const SCAN_WINDOW_DAYS = 10;
+
+/** PATCHes em paralelo. Cada slot é uma requisição, e uma faixa de 5 horas em
+    30 dias são 150 — em série isso é meio minuto de espera por quadra. */
+const PATCH_CONCURRENCY = 8;
+
+/** Roda `worker` sobre os itens com no máximo `limit` em voo. */
+async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      await worker(items[i]);
+    }
+  });
+  await Promise.all(runners);
+}
+
+// Hora e dia da semana lidos em São Paulo — o worker roda em UTC, e sem isto a
+// faixa da noite cairia na hora errada.
+const spHourFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "America/Sao_Paulo",
+  hour: "2-digit",
+  hour12: false,
+});
+const spDowFmt = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Sao_Paulo",
+  weekday: "short",
+});
+const DOW_INDEX: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+/** O preço que a tabela manda naquele instante, ou null se nenhuma faixa pega.
+    Faixa mais abaixo na lista vence — é como o operador lê a tabela. */
+function bandPriceAt(bands: PriceBand[], startMs: number): number | null {
+  const hour = Number(spHourFmt.format(new Date(startMs)));
+  const dow = DOW_INDEX[spDowFmt.format(new Date(startMs))];
+  let price: number | null = null;
+  for (const b of bands) {
+    if (hour < b.startHour || hour > b.endHour) continue;
+    if (b.weekdays && b.weekdays.length > 0 && !b.weekdays.includes(dow)) continue;
+    price = b.priceCents;
+  }
+  return price;
+}
+
 /**
- * Aplica um preço a uma FAIXA DE HORÁRIO desta quadra — "das 18h às 22h custa
- * R$ 400" — em vez de um preço só para a quadra inteira.
+ * Aplica a TABELA DE PREÇOS a uma quadra: um preço base para o dia inteiro e,
+ * por cima dele, as faixas de horário ("das 18h às 22h custa R$ 400").
  *
- * `startHour`/`endHour` são inclusivos e lidos no fuso de São Paulo: a faixa
- * 18–22 pega os slots que COMEÇAM às 18, 19, 20, 21 e 22. `weekdays` (0=dom)
- * vazio significa todos os dias.
+ * O base vai pelo endpoint de reprice — uma requisição só, e ele também grava o
+ * `default_price_cents` da quadra, então a grade gerada daqui pra frente já
+ * nasce no preço certo. As faixas vêm depois, slot a slot, só onde o preço
+ * difere do que já está lá.
  *
  * Reserva real nunca é tocada: o preço de um slot vendido é o que o jogador
- * combinou, e mudá-lo por baixo reescreveria o que ele deve. Elas são contadas
- * e reportadas, não repreçadas — o operador precisa saber que existiram.
+ * combinou, e mudá-lo por baixo reescreveria o que ele deve. São contadas e
+ * reportadas, não repreçadas — o operador precisa saber que existiram.
  */
-export async function priceSlotRangeAction(
+export async function applyPriceTableAction(
   courtId: string,
-  params: {
-    startHour: number;
-    endHour: number;
-    priceCents: number;
-    /** 0=domingo … 6=sábado. Vazio = todos os dias. */
-    weekdays?: number[];
+  plan: {
+    /** Preço do resto do dia. null/undefined = não mexe no que já está lá. */
+    baseCents?: number | null;
+    bands: PriceBand[];
   }
-): Promise<PriceRangeState> {
-  const { startHour, endHour, priceCents, weekdays = [] } = params;
-  if (startHour > endHour) {
-    return { ok: false, error: "A hora inicial precisa ser menor ou igual à final." };
+): Promise<PriceTableState> {
+  const { baseCents = null, bands } = plan;
+  for (const b of bands) {
+    if (b.startHour > b.endHour) {
+      return { ok: false, error: "Em toda faixa, a hora inicial precisa ser menor ou igual à final." };
+    }
   }
 
   const api = await getApi();
-  const now = new Date();
-  const to = new Date(now.getTime() + PRICE_RANGE_DAYS * 24 * 3_600_000);
-  const { data, error } = await api.GET("/v1/ops/courts/{id}/slots", {
-    params: {
-      path: { id: courtId },
-      query: { from: now.toISOString(), to: to.toISOString() },
-    },
-  });
-  if (error) {
-    return { ok: false, error: error.detail || error.title || "Falha ao ler a grade." };
+
+  // 1. O base primeiro: assim o GET seguinte já enxerga o preço novo e as
+  //    faixas só tocam o que realmente difere.
+  let repriced: number | null = null;
+  if (baseCents != null) {
+    const { data, error } = await api.POST("/v1/ops/courts/{id}/reprice", {
+      params: { path: { id: courtId } },
+      body: { price_cents: baseCents },
+    });
+    if (error) {
+      return { ok: false, error: error.detail || error.title || "Falha ao aplicar o preço base." };
+    }
+    repriced = data.slots_updated;
   }
 
-  // Hora e dia da semana lidos em São Paulo — o worker roda em UTC, e sem isto
-  // a faixa da noite cairia na hora errada.
-  const hourFmt = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "America/Sao_Paulo",
-    hour: "2-digit",
-    hour12: false,
-  });
-  const dowFmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Sao_Paulo",
-    weekday: "short",
-  });
-  const DOW: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  if (bands.length === 0) {
+    revalidatePath("/quadras");
+    return { ok: true, repriced, updated: 0, skippedBooked: 0, failed: 0 };
+  }
 
+  // 2. A grade dos próximos 30 dias, em janelas que cabem no teto de 500.
+  const now = new Date();
   const nowMs = now.getTime();
+  const DAY = 24 * 3_600_000;
+  const slots: { slot_start: string; status?: string; price_cents?: number | null }[] = [];
+  for (let d = 0; d < PRICE_RANGE_DAYS; d += SCAN_WINDOW_DAYS) {
+    const from = new Date(nowMs + d * DAY);
+    const to = new Date(nowMs + Math.min(d + SCAN_WINDOW_DAYS, PRICE_RANGE_DAYS) * DAY);
+    const { data, error } = await api.GET("/v1/ops/courts/{id}/slots", {
+      params: {
+        path: { id: courtId },
+        query: { from: from.toISOString(), to: to.toISOString() },
+      },
+    });
+    if (error) {
+      return { ok: false, error: error.detail || error.title || "Falha ao ler a grade." };
+    }
+    slots.push(...(data.slots ?? []));
+  }
+
+  // 3. Quem muda de preço.
   let skippedBooked = 0;
-  const targets: string[] = [];
-  for (const s of data.slots ?? []) {
+  const targets: { slotStart: string; priceCents: number }[] = [];
+  for (const s of slots) {
     const startMs = new Date(s.slot_start).getTime();
     if (startMs <= nowMs) continue; // passado não se repreça
-    const hour = Number(hourFmt.format(new Date(startMs)));
-    if (hour < startHour || hour > endHour) continue;
-    if (weekdays.length > 0) {
-      const dow = DOW[dowFmt.format(new Date(startMs))];
-      if (dow === undefined || !weekdays.includes(dow)) continue;
-    }
+    const want = bandPriceAt(bands, startMs);
+    if (want === null) continue;
     if (s.status === "booked") {
       skippedBooked++;
       continue;
     }
-    if (s.price_cents === priceCents) continue; // já está no preço
-    targets.push(s.slot_start);
+    if (s.price_cents === want) continue; // já está no preço
+    targets.push({ slotStart: s.slot_start, priceCents: want });
   }
 
   let updated = 0;
   let failed = 0;
-  for (const slotStart of targets) {
+  await pool(targets, PATCH_CONCURRENCY, async (t) => {
     const res = await api.PATCH("/v1/ops/courts/{id}/slots/{slot_start}", {
-      params: { path: { id: courtId, slot_start: slotStart } },
-      body: { price_cents: priceCents },
+      params: { path: { id: courtId, slot_start: t.slotStart } },
+      body: { price_cents: t.priceCents },
     });
     if (res.error) failed++;
     else updated++;
-  }
+  });
 
   revalidatePath("/quadras");
-  return { ok: true, updated, skippedBooked, failed };
+  return { ok: true, repriced, updated, skippedBooked, failed };
 }

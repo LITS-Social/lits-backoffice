@@ -17,6 +17,7 @@ import { AcademiaCalendar } from "./calendar";
 import { DangerZone } from "./danger-zone";
 import { ImportPrintAcademia } from "./import-print-academia";
 import { MatchesSection } from "./matches-section";
+import { PriceTableSection } from "./price-table";
 import type { AcademiaMatches } from "./matches";
 
 /**
@@ -430,6 +431,10 @@ export function AcademiaPage({
           courts={courts}
           onApplied={refresh}
         />
+
+        {/* A tabela vem logo depois do horário de funcionamento porque é a mesma
+            pergunta em sequência: quando abre, e quanto custa cada hora. */}
+        <PriceTableSection courts={courts} windows={windows} onDone={refresh} />
 
         <SectionCard
           eyebrow="Quadras"

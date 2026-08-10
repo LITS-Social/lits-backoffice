@@ -18,7 +18,7 @@ import {
   geocodeAction,
   regenerateAvailabilityAction,
   repriceCourtAction,
-  priceSlotRangeAction,
+  applyPriceTableAction,
   updateCourtAction,
   updateFranchiseAction,
   type AddSlotInput,
@@ -467,11 +467,8 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
       return;
     }
     startTransition(async () => {
-      const res = await priceSlotRangeAction(courtId, {
-        startHour,
-        endHour,
-        priceCents: cents,
-        weekdays: days,
+      const res = await applyPriceTableAction(courtId, {
+        bands: [{ startHour, endHour, priceCents: cents, weekdays: days }],
       });
       if (!res.ok) {
         setError(res.error ?? "Falha ao aplicar o preço da faixa.");
@@ -489,7 +486,7 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
   return (
     <SectionCard
       title="Preço por faixa de horário"
-      description="Cobre diferente por hora do dia nesta quadra — por exemplo, o horário nobre mais caro que a manhã. Vale para os horários futuros dos próximos 30 dias; reservas já vendidas mantêm o preço combinado."
+      description="Cobre diferente por hora do dia NESTA quadra — uma exceção ao que a tabela da academia manda. Vale para os horários futuros dos próximos 30 dias; reservas já vendidas mantêm o preço combinado."
     >
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_1fr_1.4fr]">
