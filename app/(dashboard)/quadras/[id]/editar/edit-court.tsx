@@ -534,17 +534,9 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
         </div>
 
         <div>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className={labelClass}>Dias da semana</span>
-            <button
-              type="button"
-              onClick={() => setDays(days.length === 7 ? [] : DOW_OPTIONS.map((d) => d.v))}
-              className="text-[10.5px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
-            >
-              {days.length === 7 ? "Limpar seleção" : "Selecionar todos"}
-            </button>
-          </div>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <span className={labelClass}>Dias da semana</span>
+          {/* O atalho anda junto dos chips, não encostado na borda do card. */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {DOW_OPTIONS.map((d) => {
               const on = days.includes(d.v);
               return (
@@ -564,6 +556,13 @@ function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () =>
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setDays(days.length === 7 ? [] : DOW_OPTIONS.map((d) => d.v))}
+              className="ml-1 text-[10.5px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
+            >
+              {days.length === 7 ? "Limpar" : "Todos"}
+            </button>
           </div>
           <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
             {days.length === 0 || days.length === 7

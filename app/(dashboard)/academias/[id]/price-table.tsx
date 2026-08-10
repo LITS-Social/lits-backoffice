@@ -1,10 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Check, Plus, Trash2 } from "lucide-react";
 import { cn, formatCurrency, reaisToCents } from "@/lib/utils";
 import type { CourtListItem } from "../../quadras/actions";
-import { applyPriceTableAction, updateFranchiseAction } from "../../quadras/[id]/editar/actions";
+import {
+  applyPriceTableAction,
+  readPriceTableAction,
+  updateFranchiseAction,
+} from "../../quadras/[id]/editar/actions";
+import type { PriceBand } from "../../quadras/[id]/editar/actions";
 import type { HourWindows } from "./academia";
 
 /**
@@ -62,6 +67,12 @@ const SCOPE_LABEL: Record<Scope, string> = {
   indoor: "Só cobertas",
   outdoor: "Só descobertas",
 };
+
+/** Centavos → o texto que vai no campo: "25000" vira "250", "40050" vira
+    "400,50". Sem os zeros à direita que ninguém digita. */
+function centsToInput(cents: number) {
+  return cents % 100 === 0 ? String(cents / 100) : String(cents / 100).replace(".", ",");
+}
 
 function inScope(c: CourtListItem, scope: Scope) {
   if (scope === "all") return true;
@@ -253,7 +264,12 @@ function PricePreview({
 
 /* ── a seção ──────────────────────────────────────────────────────────────── */
 
-type Progress = { done: number; total: number; court: string };
+type Progress = { done: number; total: number; running: string[] };
+
+/** Quantas quadras em voo ao mesmo tempo. Cada uma é uma invocação de server
+    action independente, então três de uma vez são três Workers trabalhando —
+    e não três esperas somadas. Acima disso o gargalo deixa de ser o painel. */
+const COURT_CONCURRENCY = 3;
 type Result = {
   courts: number;
   repriced: number;
@@ -274,14 +290,23 @@ export function PriceTableSection({
   onDone: () => void;
 }) {
   const base = courts[0];
-  const [basePrice, setBasePrice] = useState(
-    base.franchise_default_price_cents != null
-      ? String(base.franchise_default_price_cents / 100).replace(".", ",")
-      : ""
-  );
+  // Nasce vazio: o valor certo vem da grade, logo abaixo, e semear com o
+  // padrão da franquia mostraria um número que pode não estar mais valendo.
+  const [basePrice, setBasePrice] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const [bands, setBands] = useState<BandDraft[]>([]);
   const [nextId, setNextId] = useState(1);
+  // `dirty` protege o que o operador digitou: a tabela em vigor é recarregada
+  // quando ele troca de recorte, mas nunca por cima de uma edição em curso.
+  const [dirty, setDirtyState] = useState(false);
+  const dirtyRef = useRef(false);
+  const setDirty = useCallback((v: boolean) => {
+    dirtyRef.current = v;
+    setDirtyState(v);
+  }, []);
+  const [loading, setLoading] = useState(true);
+  const [loadedFrom, setLoadedFrom] = useState("");
+  const idSeed = useRef(1000);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState<Progress | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -294,17 +319,68 @@ export function PriceTableSection({
     outdoor: courts.filter((c) => !c.indoor).length,
   };
   const targets = courts.filter((c) => inScope(c, scope));
+  const sample = targets[0];
+
+  /** Puxa a tabela que está valendo naquelas quadras e joga no formulário. */
+  const loadTable = useCallback(
+    async (courtId: string, courtName: string) => {
+      setLoading(true);
+      const res = await readPriceTableAction(courtId);
+      setLoading(false);
+      if (!res.ok) {
+        setLoadedFrom("");
+        return;
+      }
+      setBasePrice(res.baseCents != null ? centsToInput(res.baseCents) : "");
+      setBands(
+        (res.bands ?? []).map((b) => ({
+          id: idSeed.current++,
+          startHour: b.startHour,
+          endHour: b.endHour,
+          price: centsToInput(b.priceCents),
+          weekdays: b.weekdays ?? [],
+        }))
+      );
+      setLoadedFrom(courtName);
+      setDirty(false);
+    },
+    [setDirty]
+  );
+
+  // Ao abrir, e a cada troca de recorte, a tela mostra a tabela em vigor —
+  // menos quando há edição em curso, que seria apagada sem aviso. O estado
+  // "sujo" mora num ref porque é uma CONDIÇÃO para recarregar, não um gatilho:
+  // como dependência, marcar o formulário como editado dispararia a recarga
+  // que este guarda existe para impedir.
+  const sampleId = sample?.id;
+  const sampleName = sample?.name;
+  useEffect(() => {
+    if (!sampleId || !sampleName) return;
+    // rAF tira o setState do corpo do efeito (regra do lint) e é o mesmo
+    // recurso que o calendário já usa aqui do lado.
+    const raf = requestAnimationFrame(() => {
+      if (dirtyRef.current) return;
+      void loadTable(sampleId, sampleName);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [sampleId, sampleName, loadTable]);
 
   const addBand = (b?: Omit<BandDraft, "id" | "price">) => {
+    setDirty(true);
     setBands((cur) => [
       ...cur,
       { id: nextId, price: "", startHour: 18, endHour: 22, weekdays: [], ...b },
     ]);
     setNextId((v) => v + 1);
   };
-  const patchBand = (id: number, patch: Partial<BandDraft>) =>
+  const patchBand = (id: number, patch: Partial<BandDraft>) => {
+    setDirty(true);
     setBands((cur) => cur.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-  const removeBand = (id: number) => setBands((cur) => cur.filter((b) => b.id !== id));
+  };
+  const removeBand = (id: number) => {
+    setDirty(true);
+    setBands((cur) => cur.filter((b) => b.id !== id));
+  };
 
   async function apply() {
     setError("");
@@ -314,7 +390,7 @@ export function PriceTableSection({
       setError("Preço base inválido. Use ex: 400 ou 400,50.");
       return;
     }
-    const payload = [];
+    const payload: PriceBand[] = [];
     for (const b of bands) {
       const cents = reaisToCents(b.price);
       if (cents === null) {
@@ -358,28 +434,47 @@ export function PriceTableSection({
       await updateFranchiseAction(base.franchise_id, { defaultPriceCents: baseCents });
     }
 
-    // Quadra a quadra, em série de propósito: o navegador vê o progresso andar
-    // e o BFF não leva nove rajadas de PATCH ao mesmo tempo (dentro de cada
-    // quadra os PATCHes já vão em paralelo).
-    for (const [i, court] of targets.entries()) {
-      setProgress({ done: i, total: targets.length, court: court.name });
-      const res = await applyPriceTableAction(court.id, {
-        baseCents,
-        bands: payload,
-      });
-      if (!res.ok) {
-        totals.brokenCourts.push(court.name);
-        continue;
-      }
-      totals.courts++;
-      totals.repriced += res.repriced ?? 0;
-      totals.updated += res.updated ?? 0;
-      totals.skippedBooked += res.skippedBooked ?? 0;
-      totals.failed += res.failed ?? 0;
-    }
+    // Várias quadras ao mesmo tempo. Em série, nove quadras eram nove esperas
+    // somadas — e a espera de uma quadra é dominada por ida e volta de rede,
+    // não por CPU, então esperar uma de cada vez era só desperdício.
+    const inFlight = new Set<string>();
+    let done = 0;
+    const tick = () =>
+      setProgress({ done, total: targets.length, running: [...inFlight] });
+    tick();
+
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(COURT_CONCURRENCY, targets.length) }, async () => {
+        for (;;) {
+          const i = next++;
+          if (i >= targets.length) return;
+          const court = targets[i];
+          inFlight.add(court.name);
+          tick();
+          const res = await applyPriceTableAction(court.id, { baseCents, bands: payload });
+          inFlight.delete(court.name);
+          done++;
+          tick();
+          if (!res.ok) {
+            totals.brokenCourts.push(court.name);
+            continue;
+          }
+          totals.courts++;
+          totals.repriced += res.repriced ?? 0;
+          totals.updated += res.updated ?? 0;
+          totals.skippedBooked += res.skippedBooked ?? 0;
+          totals.failed += res.failed ?? 0;
+        }
+      })
+    );
 
     setProgress(null);
     setResult(totals);
+    setDirty(false);
+    // Relê da grade em vez de confiar no que estava no formulário: se alguma
+    // quadra falhou, o que aparece na tela tem que ser o que valeu de fato.
+    if (sample) await loadTable(sample.id, sample.name);
     onDone();
   }
 
@@ -434,6 +529,32 @@ export function PriceTableSection({
           </p>
         </div>
 
+        {/* De onde veio o que está na tela. Sem isto o formulário parece um
+            rascunho em branco quando na verdade mostra a tabela em vigor. */}
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-300 text-[var(--text-tertiary)]">
+          {loading ? (
+            "Lendo a tabela em vigor…"
+          ) : dirty ? (
+            <>
+              <span className="text-[var(--primary)]">Alterações não aplicadas.</span>
+              <button
+                type="button"
+                onClick={() => sample && loadTable(sample.id, sample.name)}
+                className="font-500 text-[var(--primary)] underline-offset-2 transition-opacity hover:opacity-70"
+              >
+                Voltar à tabela em vigor
+              </button>
+            </>
+          ) : loadedFrom ? (
+            <>
+              Esta é a tabela em vigor, lida da grade da {loadedFrom}. Mude o que precisar e
+              aplique de novo.
+            </>
+          ) : (
+            "Não deu para ler a tabela em vigor — o que você preencher aqui vai valer mesmo assim."
+          )}
+        </p>
+
         <div className="sm:max-w-[220px]">
           <label htmlFor="pt_base" className={labelClass}>
             Preço base da hora (R$)
@@ -442,7 +563,10 @@ export function PriceTableSection({
             id="pt_base"
             inputMode="decimal"
             value={basePrice}
-            onChange={(e) => setBasePrice(e.target.value)}
+            onChange={(e) => {
+              setDirty(true);
+              setBasePrice(e.target.value);
+            }}
             placeholder="ex: 250"
             className={fieldClass}
           />
@@ -520,21 +644,11 @@ export function PriceTableSection({
                     </div>
 
                     <div className="min-w-[240px] flex-1">
-                      <div className="flex items-baseline justify-between gap-3">
-                        <span className={labelClass}>Dias</span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            patchBand(b.id, {
-                              weekdays: b.weekdays.length === 7 ? [] : [...ALL_DAYS],
-                            })
-                          }
-                          className="text-[10px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
-                        >
-                          {b.weekdays.length === 7 ? "Limpar" : "Todos"}
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
+                      <span className={labelClass}>Dias</span>
+                      {/* O atalho anda junto dos chips, na mesma linha que
+                          quebra: encostado na borda direita do card ele ficava
+                          longe demais do que comanda. */}
+                      <div className="flex flex-wrap items-center gap-1">
                         {DOW_OPTIONS.map((d) => {
                           const on = b.weekdays.includes(d.v);
                           return (
@@ -560,6 +674,17 @@ export function PriceTableSection({
                             </button>
                           );
                         })}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            patchBand(b.id, {
+                              weekdays: b.weekdays.length === 7 ? [] : [...ALL_DAYS],
+                            })
+                          }
+                          className="ml-1 text-[10px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
+                        >
+                          {b.weekdays.length === 7 ? "Limpar" : "Todos"}
+                        </button>
                       </div>
                     </div>
 
@@ -624,7 +749,8 @@ export function PriceTableSection({
           </button>
           {progress && (
             <span className="text-[11px] font-300 text-[var(--text-tertiary)]">
-              {progress.done + 1} de {progress.total} · {progress.court}
+              {progress.done} de {progress.total} prontas
+              {progress.running.length > 0 && ` · ${progress.running.join(", ")}`}
             </span>
           )}
         </div>
@@ -633,7 +759,7 @@ export function PriceTableSection({
           <div className="h-[3px] w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
             <div
               className="h-full rounded-full bg-[var(--primary)] transition-[width] duration-300"
-              style={{ width: `${((progress.done + 1) / progress.total) * 100}%` }}
+              style={{ width: `${Math.max(4, (progress.done / progress.total) * 100)}%` }}
             />
           </div>
         )}

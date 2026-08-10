@@ -764,8 +764,10 @@ const PRICE_RANGE_DAYS = 30;
 const SCAN_WINDOW_DAYS = 10;
 
 /** PATCHes em paralelo. Cada slot é uma requisição, e uma faixa de 5 horas em
-    30 dias são 150 — em série isso é meio minuto de espera por quadra. */
-const PATCH_CONCURRENCY = 8;
+    30 dias são 150 — em série isso é meio minuto de espera por quadra. 12 foi
+    onde o ganho parou de compensar: acima disso a fila sai do painel e vira
+    fila no BFF. */
+const PATCH_CONCURRENCY = 12;
 
 /** Roda `worker` sobre os itens com no máximo `limit` em voo. */
 async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
@@ -862,16 +864,27 @@ export async function applyPriceTableAction(
   const now = new Date();
   const nowMs = now.getTime();
   const DAY = 24 * 3_600_000;
-  const slots: { slot_start: string; status?: string; price_cents?: number | null }[] = [];
+  // As janelas vão juntas: são leituras independentes, e em série cada uma
+  // custava uma ida e volta inteira antes de qualquer preço ser escrito.
+  const windows = [];
   for (let d = 0; d < PRICE_RANGE_DAYS; d += SCAN_WINDOW_DAYS) {
-    const from = new Date(nowMs + d * DAY);
-    const to = new Date(nowMs + Math.min(d + SCAN_WINDOW_DAYS, PRICE_RANGE_DAYS) * DAY);
-    const { data, error } = await api.GET("/v1/ops/courts/{id}/slots", {
-      params: {
-        path: { id: courtId },
-        query: { from: from.toISOString(), to: to.toISOString() },
-      },
-    });
+    windows.push([
+      new Date(nowMs + d * DAY),
+      new Date(nowMs + Math.min(d + SCAN_WINDOW_DAYS, PRICE_RANGE_DAYS) * DAY),
+    ] as const);
+  }
+  const pages = await Promise.all(
+    windows.map(([from, to]) =>
+      api.GET("/v1/ops/courts/{id}/slots", {
+        params: {
+          path: { id: courtId },
+          query: { from: from.toISOString(), to: to.toISOString() },
+        },
+      })
+    )
+  );
+  const slots: { slot_start: string; status?: string; price_cents?: number | null }[] = [];
+  for (const { data, error } of pages) {
     if (error) {
       return { ok: false, error: error.detail || error.title || "Falha ao ler a grade." };
     }
@@ -907,4 +920,115 @@ export async function applyPriceTableAction(
 
   revalidatePath("/quadras");
   return { ok: true, repriced, updated, skippedBooked, failed };
+}
+
+/* ══ ler a tabela de preços de volta da grade ═════════════════════════════ */
+
+export type ReadPriceTableState = {
+  ok: boolean;
+  /** O preço mais frequente da grade — o "resto do dia". */
+  baseCents?: number | null;
+  bands?: PriceBand[];
+  error?: string;
+};
+
+/** Quantos dias ler para enxergar a semana inteira. Sete bastam: a tabela é
+    semanal, e ler mais só repete o mesmo padrão a um custo maior. */
+const READ_TABLE_DAYS = 7;
+
+/**
+ * Reconstrói a tabela de preços a partir dos horários que existem de fato.
+ *
+ * O painel não guarda a tabela em lugar nenhum — e é de propósito. Uma cópia
+ * salva envelhece: alguém repreça uma quadra por fora, importa um print, e a
+ * tela passa a mostrar uma tabela que não é mais a verdade. Lendo a grade de
+ * volta, o que aparece na tela é o que o jogador vai pagar.
+ *
+ * O preço mais frequente vira o base; toda sequência contígua de horas que
+ * foge dele vira faixa, e dias com a mesma sequência se juntam numa faixa só.
+ * Reservas reais ficam de fora: o preço delas é o que foi combinado, não o que
+ * a tabela manda.
+ */
+export async function readPriceTableAction(courtId: string): Promise<ReadPriceTableState> {
+  const api = await getApi();
+  const now = new Date();
+  const to = new Date(now.getTime() + READ_TABLE_DAYS * 24 * 3_600_000);
+  const { data, error } = await api.GET("/v1/ops/courts/{id}/slots", {
+    params: {
+      path: { id: courtId },
+      query: { from: now.toISOString(), to: to.toISOString() },
+    },
+  });
+  if (error) {
+    return { ok: false, error: error.detail || error.title || "Falha ao ler a grade." };
+  }
+
+  // (dia da semana, hora) → preço. Primeira ocorrência vence; a janela é de
+  // sete dias, então cada par aparece uma vez só de qualquer forma.
+  const seen = new Map<string, number>();
+  const tally = new Map<number, number>();
+  for (const s of data.slots ?? []) {
+    if (s.status === "booked" || s.price_cents == null) continue;
+    const d = new Date(s.slot_start);
+    const dow = DOW_INDEX[spDowFmt.format(d)];
+    const hour = Number(spHourFmt.format(d));
+    if (dow === undefined) continue;
+    const key = `${dow}:${hour}`;
+    if (seen.has(key)) continue;
+    seen.set(key, s.price_cents);
+    tally.set(s.price_cents, (tally.get(s.price_cents) ?? 0) + 1);
+  }
+  if (seen.size === 0) return { ok: true, baseCents: null, bands: [] };
+
+  let baseCents = 0;
+  let best = -1;
+  for (const [price, n] of tally) if (n > best) { best = n; baseCents = price; }
+
+  // Sequências contíguas de horas fora do base, por dia da semana.
+  //
+  // Hora SEM slot não quebra a sequência: pode ser uma reserva real no meio da
+  // noite (o preço dela é o combinado, não o da tabela) ou uma hora fora do
+  // funcionamento. Tratar essa lacuna como "voltou ao base" partia a faixa das
+  // 18h–22h em 18–18 e 20–22 só porque as 19h estavam vendidas — e o operador
+  // via uma tabela picotada que ele nunca montou.
+  type Run = { startHour: number; endHour: number; priceCents: number };
+  const runsByDow = new Map<number, Run[]>();
+  for (let dow = 0; dow <= 6; dow++) {
+    const runs: Run[] = [];
+    let cur: Run | null = null;
+    for (let h = 0; h <= 23; h++) {
+      const price = seen.get(`${dow}:${h}`);
+      if (price === undefined) continue; // lacuna: nem fecha nem abre faixa
+      if (price === baseCents) {
+        if (cur) runs.push(cur);
+        cur = null;
+        continue;
+      }
+      if (cur && cur.priceCents === price) {
+        cur.endHour = h;
+        continue;
+      }
+      if (cur) runs.push(cur);
+      cur = { startHour: h, endHour: h, priceCents: price };
+    }
+    if (cur) runs.push(cur);
+    if (runs.length > 0) runsByDow.set(dow, runs);
+  }
+
+  // Dias com a mesma faixa entram numa faixa só, com a lista de dias.
+  const merged = new Map<string, PriceBand>();
+  for (const [dow, runs] of runsByDow) {
+    for (const r of runs) {
+      const key = `${r.startHour}-${r.endHour}-${r.priceCents}`;
+      const band = merged.get(key) ?? { ...r, weekdays: [] as number[] };
+      band.weekdays!.push(dow);
+      merged.set(key, band);
+    }
+  }
+
+  const bands = [...merged.values()]
+    .map((b) => ({ ...b, weekdays: b.weekdays!.length === 7 ? [] : b.weekdays!.sort() }))
+    .sort((a, b) => a.startHour - b.startHour || a.priceCents - b.priceCents);
+
+  return { ok: true, baseCents, bands };
 }
