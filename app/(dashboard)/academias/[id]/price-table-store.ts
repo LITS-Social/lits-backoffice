@@ -44,6 +44,27 @@ export type SavedTable = {
 const tableKey = (franchiseId: string, scope: Scope) =>
   `lits-price-table:${franchiseId}:${scope}`;
 
+/** A tabela de UMA quadra — a exceção ao que o tipo dela manda. */
+const courtKey = (courtId: string) => `lits-price-table:court:${courtId}`;
+
+export function loadCourtTable(courtId: string): SavedTable | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(courtKey(courtId));
+    return raw ? (JSON.parse(raw) as SavedTable) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCourtTable(courtId: string, table: SavedTable) {
+  try {
+    localStorage.setItem(courtKey(courtId), JSON.stringify(table));
+  } catch {
+    /* sem localStorage a tela cai na releitura da grade, que ainda funciona */
+  }
+}
+
 export function loadSavedTable(franchiseId: string, scope: Scope): SavedTable | null {
   if (typeof window === "undefined") return null;
   try {
@@ -62,11 +83,15 @@ export function saveTable(franchiseId: string, scope: Scope, table: SavedTable) 
   }
 }
 
-/** A tabela que manda naquela quadra: o recorte mais específico vence. Uma
-    tabela só das descobertas é uma decisão mais deliberada do que uma geral. */
+/** A tabela que manda naquela quadra, do mais específico ao mais geral: a
+    dela, a do tipo dela, a da academia inteira. Uma tabela feita para UMA
+    quadra é a decisão mais deliberada que existe — ganha de todas. */
 function tableFor(franchiseId: string, court: CourtListItem): SavedTable | null {
-  const specific = loadSavedTable(franchiseId, court.indoor ? "indoor" : "outdoor");
-  return specific ?? loadSavedTable(franchiseId, "all");
+  return (
+    loadCourtTable(court.id) ??
+    loadSavedTable(franchiseId, court.indoor ? "indoor" : "outdoor") ??
+    loadSavedTable(franchiseId, "all")
+  );
 }
 
 export type Reapplied = { courts: number; slots: number; failed: string[] };

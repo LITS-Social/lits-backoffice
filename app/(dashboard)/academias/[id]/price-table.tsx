@@ -10,7 +10,14 @@ import {
 } from "../../quadras/[id]/editar/actions";
 import type { PriceBand } from "../../quadras/[id]/editar/actions";
 import type { HourWindows } from "./academia";
-import { loadSavedTable, saveTable, type SavedTable, type Scope } from "./price-table-store";
+import {
+  loadCourtTable,
+  loadSavedTable,
+  saveCourtTable,
+  saveTable,
+  type SavedTable,
+  type Scope,
+} from "./price-table-store";
 
 /**
  * A tabela de preços da academia: um preço base para o dia inteiro e, por cima
@@ -399,10 +406,14 @@ export function PriceTableSection({
   courts,
   windows,
   onDone,
+  /** Modo QUADRA: sem recorte por tipo (uma quadra não tem tipos a escolher),
+      e a tabela é guardada só dela — a exceção ao que o tipo dela manda. */
+  singleCourt = false,
 }: {
   courts: CourtListItem[];
   windows: HourWindows;
   onDone: () => void;
+  singleCourt?: boolean;
 }) {
   const base = courts[0];
   const franchiseId = base.franchise_id;
@@ -473,7 +484,9 @@ export function PriceTableSection({
   /** Abre com a última tabela aplicada neste recorte; sem ela, lê da grade. */
   const loadTable = useCallback(
     async (courtId: string, courtName: string, scopeKey: Scope) => {
-      const saved = loadSavedTable(franchiseId, scopeKey);
+      const saved = singleCourt
+        ? loadCourtTable(courtId)
+        : loadSavedTable(franchiseId, scopeKey);
       if (!saved) {
         await loadFromGrid(courtId, courtName);
         return;
@@ -484,7 +497,7 @@ export function PriceTableSection({
       setSource({ kind: "saved", at: saved.at });
       setDirty(false);
     },
-    [franchiseId, loadFromGrid, setDirty]
+    [franchiseId, singleCourt, loadFromGrid, setDirty]
   );
 
   // Ao abrir, e a cada troca de recorte, a tela mostra a tabela em vigor —
@@ -716,7 +729,8 @@ export function PriceTableSection({
       })),
       at: Date.now(),
     };
-    saveTable(franchiseId, scope, applied);
+    if (singleCourt) saveCourtTable(courts[0].id, applied);
+    else saveTable(franchiseId, scope, applied);
     setSource({ kind: "saved", at: applied.at });
     onDone();
   }
@@ -739,21 +753,38 @@ export function PriceTableSection({
   return (
     <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
       <div className="mb-5">
-        <h2 className="eyebrow">Tabela de preços</h2>
+        <h2 className="eyebrow">{singleCourt ? "Preço" : "Tabela de preços"}</h2>
         <p className="mt-2 max-w-3xl text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Um preço base para o dia inteiro e, por cima dele, as faixas de horário. Uma tabela
-          para as cobertas e outra para as descobertas — elas nunca custam o mesmo. Aplica nas
-          quadras daquele tipo de uma vez e <strong>fica valendo como padrão</strong>: toda vez que
-          o painel criar horários — regenerar a grade, acrescentar horários, importar print — a
-          tabela do tipo daquela quadra volta por cima, e o horário novo já nasce nela. O base
-          pega todo horário futuro; as faixas alcançam os próximos 30 dias. Quando duas faixas
-          pegam a mesma hora, vale a de baixo. Reservas já vendidas mantêm o preço combinado.
+          {singleCourt ? (
+            <>
+              Um preço base para o dia inteiro e, por cima dele, as faixas de horário — só desta
+              quadra. Ela passa a ter tabela própria, que <strong>ganha da tabela do tipo</strong>{" "}
+              (coberta ou descoberta) e é reaplicada sozinha toda vez que o painel criar horários
+              aqui. O base pega todo horário futuro; as faixas alcançam os próximos 30 dias.
+              Quando duas faixas pegam a mesma hora, vale a de baixo. Reservas já vendidas mantêm
+              o preço combinado.
+            </>
+          ) : (
+            <>
+              Um preço base para o dia inteiro e, por cima dele, as faixas de horário. Uma tabela
+              para as cobertas e outra para as descobertas — elas nunca custam o mesmo. Aplica nas
+              quadras daquele tipo de uma vez e <strong>fica valendo como padrão</strong>: toda vez
+              que o painel criar horários — regenerar a grade, acrescentar horários, importar print
+              — a tabela do tipo daquela quadra volta por cima, e o horário novo já nasce nela. O
+              base pega todo horário futuro; as faixas alcançam os próximos 30 dias. Quando duas
+              faixas pegam a mesma hora, vale a de baixo. Reservas já vendidas mantêm o preço
+              combinado.
+            </>
+          )}
         </p>
       </div>
 
       <div className="space-y-5">
-        {/* ── recorte ─────────────────────────────────────────────────────── */}
-        <div>
+        {/* ── recorte ───────────────────────────────────────────────────────
+            Só existe quando há tipos a escolher: uma quadra é de um tipo só.
+            Escondido por CSS ainda ia no HTML; melhor não existir. */}
+        {!singleCourt && (
+          <div>
           <span className={labelClass}>Onde aplicar</span>
           <div className="flex flex-wrap gap-1.5">
             {SCOPES.map((sc) => {
@@ -787,6 +818,7 @@ export function PriceTableSection({
             } ficam como estão. Troque o tipo acima para editar a outra.`}
           </p>
         </div>
+        )}
 
         {/* De onde veio o que está na tela. Sem isto o formulário parece um
             rascunho em branco quando na verdade mostra a tabela em vigor. */}
@@ -999,8 +1031,8 @@ export function PriceTableSection({
           baseCents={baseCents}
           windows={windows}
           scopeNote={
-            targets.length === 1
-              ? `na ${targets[0].name}`
+            singleCourt
+              ? `na ${targets[0]?.name ?? "quadra"}`
               : `nas ${targets.length} ${scope === "indoor" ? "cobertas" : "descobertas"}`
           }
         />
@@ -1029,8 +1061,8 @@ export function PriceTableSection({
           <button type="button" onClick={applySafely} disabled={running} className={primaryBtn}>
             {running
               ? "Aplicando…"
-              : targets.length === 1
-                ? "Aplicar na quadra"
+              : singleCourt
+                ? "Aplicar nesta quadra"
                 : `Aplicar nas ${targets.length} ${
                     scope === "indoor" ? "cobertas" : "descobertas"
                   }`}

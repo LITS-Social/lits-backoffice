@@ -4,18 +4,9 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PanelError } from "../../../_components/notes";
 import { listCourtsAction } from "../../actions";
-import { listCourtSlotsAction } from "./actions";
 import { EditCourt } from "./edit-court";
 
 export const dynamic = "force-dynamic";
-
-/** Local yyyy-mm-dd for seeding the date-range inputs. */
-function ymd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 export default async function EditarQuadraPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -28,10 +19,9 @@ export default async function EditarQuadraPage({ params }: { params: Promise<{ i
   const court = courts.find((c) => c.id === id);
   if (!court) notFound();
 
-  const now = new Date();
-  const to = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const slotsRes = await listCourtSlotsAction(id, now.toISOString(), to.toISOString());
-
+  // Nada de grade aqui: a tabela de preços e o calendário buscam a própria,
+  // no cliente. Esta busca existia para semear o preço "atual" do editor
+  // antigo, que saiu.
   return (
     <div>
       <div className="px-4 sm:px-8 pt-5">
@@ -47,11 +37,7 @@ export default async function EditarQuadraPage({ params }: { params: Promise<{ i
       <PageHeader eyebrow="Gestão" title={`Editar · ${court.name}`} description={court.franchise_name} />
 
       <div className="px-4 sm:px-8 py-6">
-        <EditCourt
-          court={court}
-          initialSlots={slotsRes.slots ?? []}
-          initialFrom={ymd(now)}
-        />
+        <EditCourt court={court} />
       </div>
     </div>
   );

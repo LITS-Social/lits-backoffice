@@ -7,7 +7,6 @@ import {
   ClipboardPaste,
   MapPin,
   Plus,
-  RefreshCw,
   Search,
 } from "lucide-react";
 import { cn, formatCurrency, reaisToCents } from "@/lib/utils";
@@ -16,18 +15,15 @@ import {
   addCourtSlotsAction,
   deleteCourtSlotsAction,
   geocodeAction,
-  regenerateAvailabilityAction,
-  repriceCourtAction,
-  applyPriceTableAction,
   updateCourtAction,
   updateFranchiseAction,
   type AddSlotInput,
-  type CourtSlotItem,
   type GeocodeCandidate,
 } from "./actions";
 import { ImportPrintSection } from "./import-print";
 import { AcademiaCalendar } from "../../../academias/[id]/calendar";
 import { initialWindows } from "../../../academias/[id]/academia";
+import { PriceTableSection } from "../../../academias/[id]/price-table";
 import { reapplySavedTable } from "../../../academias/[id]/price-table-store";
 
 type Surface = "clay" | "hard" | "grass" | "beach" | "carpet";
@@ -343,92 +339,7 @@ function CourtBasicsSection({ court }: { court: CourtListItem }) {
   );
 }
 
-/* ══ reprice ══════════════════════════════════════════════════════════════ */
-
-function RepriceSection({
-  courtId,
-  defaultPriceCents,
-  onDone,
-}: {
-  courtId: string;
-  defaultPriceCents: number | null | undefined;
-  onDone: () => void;
-}) {
-  // The field IS the price: starts at the franchise default and applying
-  // writes it back — same in-place shape as the operating-hours section.
-  const [price, setPrice] = useState(
-    defaultPriceCents != null ? reaisFromCents(defaultPriceCents) : ""
-  );
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<number | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function submit() {
-    setError("");
-    setResult(null);
-    const cents = reaisToCents(price);
-    if (cents === null) {
-      setError("Preço inválido. Use ex: 250 ou 250,50.");
-      return;
-    }
-    startTransition(async () => {
-      const res = await repriceCourtAction(courtId, cents);
-      if (!res.ok) {
-        setError(res.error ?? "Falha ao repreçar.");
-        return;
-      }
-      setResult(res.slotsUpdated ?? 0);
-      onDone();
-    });
-  }
-
-  return (
-    <SectionCard
-      title="Preço"
-      description="O preço da hora nesta quadra. Mude e aplique: vale para todos os horários futuros — disponíveis e bloqueados — e vira o preço padrão desta quadra (herdado pelas próximas grades; a academia mantém o dela). Horários passados e reservas reais não são tocados."
-    >
-      <div className="space-y-4">
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
-            <label htmlFor="reprice_value" className={labelClass}>
-              Preço da hora (R$)
-            </label>
-            <input
-              id="reprice_value"
-              inputMode="decimal"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="ex: 250"
-              className={fieldClass}
-            />
-          </div>
-          <button type="button" onClick={submit} disabled={pending} className={primaryBtn}>
-            {pending ? "Aplicando…" : "Aplicar preço"}
-          </button>
-        </div>
-
-        {error && <ErrorBanner message={error} />}
-        {result !== null && (
-          <SuccessNote>
-            Preço aplicado em {result.toLocaleString("pt-BR")} horário{result === 1 ? "" : "s"}.
-          </SuccessNote>
-        )}
-      </div>
-    </SectionCard>
-  );
-}
-
 /* ══ preço por faixa de horário ═══════════════════════════════════════════ */
-
-const DOW_OPTIONS = [
-  { v: 1, label: "Seg" },
-  { v: 2, label: "Ter" },
-  { v: 3, label: "Qua" },
-  { v: 4, label: "Qui" },
-  { v: 5, label: "Sex" },
-  { v: 6, label: "Sáb" },
-  { v: 0, label: "Dom" },
-] as const;
 
 /**
  * Preço de uma FAIXA — "o horário nobre custa mais". A seção acima põe um
@@ -439,284 +350,6 @@ const DOW_OPTIONS = [
  * de fora por regra (o preço de um jogo vendido é o que o jogador combinou),
  * e a tela diz quantas foram puladas em vez de omitir.
  */
-function PriceRangeSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
-  const [startHour, setStartHour] = useState(18);
-  const [endHour, setEndHour] = useState(22);
-  const [price, setPrice] = useState("");
-  const [days, setDays] = useState<number[]>([]);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<{
-    updated: number;
-    failed: number;
-  } | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  const toggleDay = (v: number) =>
-    setDays((cur) => (cur.includes(v) ? cur.filter((d) => d !== v) : [...cur, v]));
-
-  function apply() {
-    setError("");
-    setResult(null);
-    const cents = reaisToCents(price);
-    if (cents === null) {
-      setError("Preço inválido. Use ex: 400 ou 400,50.");
-      return;
-    }
-    if (startHour > endHour) {
-      setError("A hora inicial precisa ser menor ou igual à final.");
-      return;
-    }
-    startTransition(async () => {
-      const res = await applyPriceTableAction(courtId, {
-        bands: [{ startHour, endHour, priceCents: cents, weekdays: days }],
-      });
-      if (!res.ok) {
-        setError(res.error ?? "Falha ao aplicar o preço da faixa.");
-        return;
-      }
-      setResult({
-        updated: res.updated ?? 0,
-        failed: res.failed ?? 0,
-      });
-      onDone();
-    });
-  }
-
-  return (
-    <SectionCard
-      title="Preço por faixa de horário"
-      description="Cobre diferente por hora do dia NESTA quadra — uma exceção ao que a tabela da academia manda. Vale para os horários futuros dos próximos 30 dias; reservas já vendidas mantêm o preço combinado."
-    >
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_1fr_1.4fr]">
-          <div>
-            <label htmlFor="range_start" className={labelClass}>
-              Da hora
-            </label>
-            <input
-              id="range_start"
-              type="number"
-              min={0}
-              max={23}
-              value={startHour}
-              onChange={(e) => setStartHour(Number(e.target.value))}
-              className={fieldClass}
-            />
-          </div>
-          <div>
-            <label htmlFor="range_end" className={labelClass}>
-              Até a hora (inclusive)
-            </label>
-            <input
-              id="range_end"
-              type="number"
-              min={0}
-              max={23}
-              value={endHour}
-              onChange={(e) => setEndHour(Number(e.target.value))}
-              className={fieldClass}
-            />
-          </div>
-          <div>
-            <label htmlFor="range_price" className={labelClass}>
-              Preço da hora (R$)
-            </label>
-            <input
-              id="range_price"
-              inputMode="decimal"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="ex: 400"
-              className={fieldClass}
-            />
-          </div>
-        </div>
-
-        <div>
-          <span className={labelClass}>Dias da semana</span>
-          {/* O atalho anda junto dos chips, não encostado na borda do card. */}
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {DOW_OPTIONS.map((d) => {
-              const on = days.includes(d.v);
-              return (
-                <button
-                  key={d.v}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => toggleDay(d.v)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-[11.5px] font-500 transition-colors",
-                    on
-                      ? "border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary)]"
-                      : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]"
-                  )}
-                >
-                  {d.label}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() =>
-                setDays((cur) => (cur.length === 7 ? [] : DOW_OPTIONS.map((d) => d.v)))
-              }
-              className="ml-1 text-[10.5px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
-            >
-              {days.length === 7 ? "Limpar" : "Todos"}
-            </button>
-          </div>
-          <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            {days.length === 0 || days.length === 7
-              ? "A faixa vale para todos os dias da semana."
-              : `A faixa vale só ${days.length === 1 ? "neste dia" : "nestes dias"}.`}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={apply} disabled={pending} className={primaryBtn}>
-            {pending ? "Aplicando…" : "Aplicar na faixa"}
-          </button>
-          <span className="text-[11px] font-300 text-[var(--text-tertiary)]">
-            {startHour === endHour
-              ? `só o horário das ${startHour}h`
-              : `horários que começam entre ${startHour}h e ${endHour}h`}
-          </span>
-        </div>
-
-        {error && <ErrorBanner message={error} />}
-        {result !== null && (
-          <SuccessNote>
-            Preço aplicado em {result.updated.toLocaleString("pt-BR")} horário
-            {result.updated === 1 ? "" : "s"}.
-            {result.failed > 0 && ` ${result.failed} não responderam — tente de novo nessa faixa.`}
-          </SuccessNote>
-        )}
-      </div>
-    </SectionCard>
-  );
-}
-
-/* ══ regenerate availability ══════════════════════════════════════════════ */
-
-function RegenerateSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
-  const [startHour, setStartHour] = useState(6);
-  const [endHour, setEndHour] = useState(22);
-  const [satStart, setSatStart] = useState(6);
-  const [satEnd, setSatEnd] = useState(22);
-  const [sunStart, setSunStart] = useState(6);
-  const [sunEnd, setSunEnd] = useState(22);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<{ deleted: number; created: number } | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  // The grid horizon is not the operator's problem — one month rolling.
-  const DAYS_FORWARD = 30;
-
-  function apply() {
-    setError("");
-    setResult(null);
-    if (startHour >= endHour) {
-      setError("Hora de início deve ser menor que a hora de fim (Seg–Sex).");
-      return;
-    }
-    if (satStart >= satEnd) {
-      setError("Hora de início deve ser menor que a hora de fim (Sábado).");
-      return;
-    }
-    if (sunStart >= sunEnd) {
-      setError("Hora de início deve ser menor que a hora de fim (Domingo).");
-      return;
-    }
-    startTransition(async () => {
-      const res = await regenerateAvailabilityAction(courtId, {
-        startHour,
-        endHour,
-        daysForward: DAYS_FORWARD,
-        saturday: { startHour: satStart, endHour: satEnd },
-        sunday: { startHour: sunStart, endHour: sunEnd },
-      });
-      if (!res.ok) {
-        setError(res.error ?? "Falha ao aplicar o horário.");
-        return;
-      }
-      setResult({ deleted: res.slotsDeleted ?? 0, created: res.slotsCreated ?? 0 });
-      onDone();
-    });
-  }
-
-  return (
-    <SectionCard
-      title="Horário de funcionamento"
-      description="Mude as janelas e aplique: a grade do próximo mês é recriada inteira como BLOQUEADA — um horário só vende depois de um import ou de um desbloqueio no calendário. Reservas reais são preservadas."
-    >
-      <div className="space-y-4">
-        {/* One window per day group — clubs run shorter weekends. */}
-        <div className="space-y-2.5">
-          {(
-            [
-              ["Seg–Sex", "regen_week", startHour, setStartHour, endHour, setEndHour],
-              ["Sábado", "regen_sat", satStart, setSatStart, satEnd, setSatEnd],
-              ["Domingo", "regen_sun", sunStart, setSunStart, sunEnd, setSunEnd],
-            ] as const
-          ).map(([label, idBase, start, setStart, end, setEnd]) => (
-            <div key={idBase} className="grid grid-cols-[88px_1fr_1fr] items-center gap-3">
-              <span className="label-colus text-[8.5px] text-[var(--text-tertiary)]">{label}</span>
-              <div>
-                <label htmlFor={`${idBase}_start`} className="sr-only">
-                  Hora início {label}
-                </label>
-                <input
-                  id={`${idBase}_start`}
-                  type="number"
-                  min={0}
-                  max={22}
-                  value={start}
-                  onChange={(e) => setStart(Number(e.target.value))}
-                  className={fieldClass}
-                />
-              </div>
-              <div>
-                <label htmlFor={`${idBase}_end`} className="sr-only">
-                  Hora fim {label}
-                </label>
-                <input
-                  id={`${idBase}_end`}
-                  type="number"
-                  min={1}
-                  max={23}
-                  value={end}
-                  onChange={(e) => setEnd(Number(e.target.value))}
-                  className={fieldClass}
-                />
-              </div>
-            </div>
-          ))}
-          <p className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            Hora início · hora fim (última hora de começo de jogo) por grupo de dias.
-          </p>
-        </div>
-
-        {error && <ErrorBanner message={error} />}
-        {result !== null && (
-          <SuccessNote>
-            Horário aplicado — {result.created.toLocaleString("pt-BR")} horário
-            {result.created === 1 ? "" : "s"} criado{result.created === 1 ? "" : "s"} (bloqueados),{" "}
-            {result.deleted.toLocaleString("pt-BR")} antigo{result.deleted === 1 ? "" : "s"} removido
-            {result.deleted === 1 ? "" : "s"}.
-          </SuccessNote>
-        )}
-
-        <div className="flex justify-end border-t border-[var(--border)] pt-4">
-          <button type="button" onClick={apply} disabled={pending} className={primaryBtn}>
-            <RefreshCw size={11} strokeWidth={2.5} />
-            {pending ? "Aplicando…" : "Aplicar horário"}
-          </button>
-        </div>
-      </div>
-    </SectionCard>
-  );
-}
-
 /* ══ franchise ════════════════════════════════════════════════════════════ */
 
 type FranchiseKind = "partner" | "public" | "listing";
@@ -1606,44 +1239,10 @@ function AddSlotsSection({ courtId, onDone }: { courtId: string; onDone: () => v
 
 /* ══ root ═════════════════════════════════════════════════════════════════ */
 
-export function EditCourt({
-  court,
-  initialSlots,
-  initialFrom,
-}: {
-  court: CourtListItem;
-  /** Grade já carregada no servidor — usada só para descobrir o preço vigente
-      desta quadra; o calendário abaixo busca a própria janela. */
-  initialSlots: CourtSlotItem[];
-  initialFrom: string;
-}) {
+export function EditCourt({ court }: { court: CourtListItem }) {
   // Remonta o calendário depois de toda reescrita de grade — ele busca a
   // própria janela, então trocar a key é o jeito honesto de forçar o refetch.
   const [calendarEpoch, setCalendarEpoch] = useState(0);
-
-  // O preço "atual" DESTA quadra, não o padrão da academia: primeiro o
-  // default_price_cents da própria quadra (o reprice grava lá — chega com o
-  // deploy do BFF), senão o preço mais frequente dos slots futuros já
-  // carregados (é o que o reprice escreveu de fato), e só então o padrão da
-  // franquia. Antes o campo re-seedava sempre da franquia e o preço aplicado
-  // "sumia" a cada visita.
-  const currentPriceCents = (() => {
-    const own = (court as { default_price_cents?: number | null }).default_price_cents;
-    if (own != null) return own;
-    // Janela a partir do início do período carregado (prop estável — Date.now()
-    // é impuro em render): pega o preço mais frequente do que está na grade.
-    const windowStart = new Date(initialFrom).getTime();
-    const counts = new Map<number, number>();
-    for (const s of initialSlots) {
-      if (s.status === "booked" || s.price_cents == null) continue;
-      if (new Date(s.slot_start).getTime() < windowStart) continue;
-      counts.set(s.price_cents, (counts.get(s.price_cents) ?? 0) + 1);
-    }
-    let best: number | null = null;
-    let bestN = 0;
-    for (const [p, n] of counts) if (n > bestN) { best = p; bestN = n; }
-    return best ?? court.franchise_default_price_cents;
-  })();
 
   function reloadSlots() {
     setCalendarEpoch((v) => v + 1);
@@ -1678,13 +1277,17 @@ export function EditCourt({
         </p>
       )}
       <CourtBasicsSection court={court} />
-      <RepriceSection
-        courtId={court.id}
-        defaultPriceCents={currentPriceCents}
-        onDone={reloadSlots}
+      {/* A MESMA tabela da academia, com uma quadra só: base, faixas, prévia e
+          um botão. Antes eram duas seções — "Preço" e "Preço por faixa" — que
+          não conversavam entre si e não mostravam o resultado antes de gravar.
+          O horário de funcionamento saiu daqui: ele é da ACADEMIA, e editá-lo
+          por dentro de uma quadra dava a impressão de valer só para ela. */}
+      <PriceTableSection
+        courts={[court]}
+        windows={initialWindows(court)}
+        onDone={slotsCreated}
+        singleCourt
       />
-      <PriceRangeSection courtId={court.id} onDone={reloadSlots} />
-      <RegenerateSection courtId={court.id} onDone={slotsCreated} />
       <AddSlotsSection courtId={court.id} onDone={slotsCreated} />
       <ImportPrintSection courtId={court.id} courtName={court.name} onDone={slotsCreated} />
       {repriceNote && (
