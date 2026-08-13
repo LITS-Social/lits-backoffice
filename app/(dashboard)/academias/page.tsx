@@ -58,9 +58,7 @@ export default async function AcademiasPage() {
 
   return (
     <div>
-      <PageHeader
-        eyebrow="Gestão"
-        title="Academias"
+      <PageHeader title="Academias"
         description={`${academias.length} academia${academias.length === 1 ? "" : "s"} · ${totalCourts} quadra${totalCourts === 1 ? "" : "s"}. Clique numa academia para gerenciar definições, horários, quadras e importar prints.`}
         action={
           <Link

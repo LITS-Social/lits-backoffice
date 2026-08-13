@@ -1,35 +1,41 @@
 interface PageHeaderProps {
-  eyebrow: string;
+  /** Fólio da seção — "#08". Ausente na maioria das telas: um rótulo de
+      categoria em cima do título ("Gestão" sobre o nome da academia) não
+      informa nada que o título já não diga. */
+  eyebrow?: string;
   title: string;
   description?: string;
   action?: React.ReactNode;
 }
 
 /**
- * The masthead of every panel. Gravesend eyebrow in tracked caps, the panel's
- * folio number set as an oversized Colus watermark, then the title in upright
- * Colus — the design system's editorial grammar on an ops console.
+ * The masthead of every panel: the title in upright Colus over the paper's own
+ * grain — the design system's editorial grammar on an ops console.
+ *
+ * O fólio marca-d'água só aparece quando o eyebrow É um fólio ("#08"). Ele foi
+ * desenhado para um NÚMERO; uma palavra a 172px não vira profundidade, vira
+ * "GESTÃO" gigante atrás do nome da academia.
+ *
+ * O fundo é o granulado da marca, não o quadriculado de quadra: a linha de
+ * quadra desenha uma grade sobre um painel que já é feito de grades.
  */
 export function PageHeader({ eyebrow, title, description, action }: PageHeaderProps) {
-  const num = eyebrow.replace("#", "");
+  const folio = eyebrow && /^#?\s*[\d\s·]+$/.test(eyebrow) ? eyebrow.replace("#", "") : null;
 
   return (
-    <div className="relative overflow-hidden border-b border-[var(--border)] px-4 sm:px-8 pt-9 pb-7">
-      {/* Folio watermark — depth, not decoration: it tells you which panel you
-          are standing in from across the room. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute right-5 bottom-0 select-none font-display leading-none text-[var(--text-primary)] opacity-[0.05] translate-y-[22%]"
-        style={{ fontSize: "clamp(100px, 13vw, 172px)" }}
-      >
-        {num}
-      </span>
-
-      {/* Court-line atmosphere, masked to nothing before it reaches the text. */}
-      <span aria-hidden className="court-lines" />
+    <div className="grain relative overflow-hidden border-b border-[var(--border)] px-4 sm:px-8 pt-9 pb-7">
+      {folio && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute right-5 bottom-0 select-none font-display leading-none text-[var(--text-primary)] opacity-[0.05] translate-y-[22%]"
+          style={{ fontSize: "clamp(100px, 13vw, 172px)" }}
+        >
+          {folio}
+        </span>
+      )}
 
       <div className="relative">
-        <p className="eyebrow mb-3.5">{eyebrow}</p>
+        {eyebrow && <p className="eyebrow mb-3.5">{eyebrow}</p>}
 
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">

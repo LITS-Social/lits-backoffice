@@ -27,9 +27,7 @@ export default async function NovaQuadraPage({
 
   return (
     <div>
-      <PageHeader
-        eyebrow="Gestão"
-        title="Nova Academia"
+      <PageHeader title="Nova Academia"
         description="Crie uma franquia (se necessário) e cadastre a quadra com disponibilidade gerada automaticamente."
       />
 

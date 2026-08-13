@@ -27,9 +27,7 @@ const KIND_LABEL: Record<string, string> = {
 export function EmptyAcademiaPage({ franchise }: { franchise: FranchiseItem }) {
   return (
     <div>
-      <PageHeader
-        eyebrow="Gestão"
-        title={franchise.name}
+      <PageHeader title={franchise.name}
         description="Esta academia existe no banco, mas ainda não tem nenhuma quadra cadastrada."
       />
       <div className="space-y-5 px-4 sm:px-8 py-6">

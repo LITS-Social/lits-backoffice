@@ -34,7 +34,7 @@ export default async function EditarQuadraPage({ params }: { params: Promise<{ i
         </Link>
       </div>
 
-      <PageHeader eyebrow="Gestão" title={`Editar · ${court.name}`} description={court.franchise_name} />
+      <PageHeader title={`Editar · ${court.name}`} description={court.franchise_name} />
 
       <div className="px-4 sm:px-8 py-6">
         <EditCourt court={court} />

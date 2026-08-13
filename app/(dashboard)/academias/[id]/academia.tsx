@@ -176,9 +176,7 @@ export function AcademiaPage({
 
   return (
     <div>
-      <PageHeader
-        eyebrow="Gestão"
-        title={base.franchise_name}
+      <PageHeader title={base.franchise_name}
         description={`${courts.length} quadra${courts.length === 1 ? "" : "s"}. Definições, horário de funcionamento, calendário e importação de print — tudo da academia num lugar só.`}
       />
       <div className="space-y-5 px-4 sm:px-8 py-6">
