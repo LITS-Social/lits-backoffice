@@ -391,6 +391,26 @@ export function FranchiseSection({
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
 
+  /** As horas que a régua mostra. Fora de 5h–23h nenhuma academia opera, e
+      cada coluna a mais encolhe as outras. */
+  const HOUR_RULER = Array.from({ length: 19 }, (_, i) => i + 5);
+
+  /** Move a borda MAIS PRÓXIMA da hora clicada. Um clique só, sem modo: fora
+      da janela ela cresce, dentro ela encolhe pelo lado mais perto. A janela
+      nunca fecha — o fim fica ao menos uma hora depois do início. */
+  function moveEdge(ks: "weekStart" | "satStart" | "sunStart", ke: "weekEnd" | "satEnd" | "sunEnd", h: number) {
+    touched();
+    setHours((cur: HourWindows) => {
+      const s = cur[ks];
+      const e = cur[ke];
+      if (h <= s) return { ...cur, [ks]: Math.min(h, e - 1) };
+      if (h >= e) return { ...cur, [ke]: Math.max(h, s + 1) };
+      return h - s <= e - h
+        ? { ...cur, [ks]: Math.min(h, e - 1) }
+        : { ...cur, [ke]: Math.max(h, s + 1) };
+    });
+  }
+
   const HOUR_ROWS = [
     ["Segunda a sexta", "weekStart", "weekEnd"],
     ["Sábado", "satStart", "satEnd"],
@@ -627,9 +647,6 @@ export function FranchiseSection({
     });
   }
 
-  const hourField =
-    "w-[68px] rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-center text-[13px] tabular-nums text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:outline-none";
-
   return (
     <SectionCard
       title="A academia"
@@ -805,47 +822,71 @@ export function FranchiseSection({
           label="Funcionamento"
           hint={
             <>
-              A grade de <strong>todas as quadras</strong> segue estas janelas. O fim é a hora do
-              último horário que começa — 22 = último slot 22h–23h.
+              Clique numa hora para mover a borda mais perto. A grade de{" "}
+              <strong>todas as quadras</strong> segue estas janelas.
             </>
           }
         >
-          <div className="space-y-1.5">
-            {HOUR_ROWS.map(([label, ks, ke]) => (
-              <div key={label} className="flex items-center gap-2">
-                <span className="w-[110px] shrink-0 text-[11.5px] font-300 text-[var(--text-secondary)]">
-                  {label}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  max={22}
-                  aria-label={`${label} — início`}
-                  value={hours[ks]}
-                  onChange={(e) => {
-                    setHours((cur: HourWindows) => ({ ...cur, [ks]: Number(e.target.value) }));
-                    touched();
-                  }}
-                  className={hourField}
-                />
-                <span className="text-[11px] text-[var(--text-tertiary)]">às</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={23}
-                  aria-label={`${label} — último início`}
-                  value={hours[ke]}
-                  onChange={(e) => {
-                    setHours((cur: HourWindows) => ({ ...cur, [ke]: Number(e.target.value) }));
-                    touched();
-                  }}
-                  className={hourField}
-                />
-                <span className="numeral text-[10.5px] text-[var(--text-tertiary)]">
-                  {String(hours[ks]).padStart(2, "0")}h – {String(hours[ke] + 1).padStart(2, "0")}h
-                </span>
-              </div>
-            ))}
+          {/* A régua: as horas são COLUNAS, os grupos de dias são linhas, e a
+              janela aberta é uma barra cheia. Antes eram seis campos numéricos
+              com um "às" no meio e a janela resultante escrita ao lado — o
+              operador tinha que montar a imagem de cabeça para conferir se
+              sábado abria mais cedo que domingo. Agora ele vê.
+
+              Um clique só, sem modo: a borda mais próxima da hora clicada é
+              que se move. Clique fora da janela, ela cresce; clique dentro,
+              ela encolhe do lado mais perto. */}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[400px] border-separate border-spacing-[2px]">
+              <thead>
+                <tr>
+                  <th className="w-[86px]" />
+                  {HOUR_RULER.map((h) => (
+                    <th
+                      key={h}
+                      className="numeral pb-1 text-[9px] font-300 text-[var(--text-tertiary)]"
+                    >
+                      {h % 2 === 0 ? h : ""}
+                    </th>
+                  ))}
+                  <th className="w-[58px]" />
+                </tr>
+              </thead>
+              <tbody>
+                {HOUR_ROWS.map(([label, ks, ke]) => (
+                  <tr key={label}>
+                    <th className="pr-2 text-right text-[11px] font-400 text-[var(--text-secondary)]">
+                      {label}
+                    </th>
+                    {HOUR_RULER.map((h) => {
+                      const open = h >= hours[ks] && h <= hours[ke];
+                      const edge = h === hours[ks] || h === hours[ke];
+                      return (
+                        <td key={h} className="p-0">
+                          <button
+                            type="button"
+                            aria-label={`${label} — ${h}h`}
+                            aria-pressed={open}
+                            onClick={() => moveEdge(ks, ke, h)}
+                            className={cn(
+                              "block h-6 w-full rounded-[2px] transition-colors",
+                              open
+                                ? edge
+                                  ? "bg-[var(--primary)]"
+                                  : "bg-[var(--primary)]/45 hover:bg-[var(--primary)]/60"
+                                : "bg-[var(--surface-sunken)] hover:bg-[var(--surface-raised)]"
+                            )}
+                          />
+                        </td>
+                      );
+                    })}
+                    <th className="numeral pl-2 text-left text-[10.5px] font-400 text-[var(--text-primary)]">
+                      {String(hours[ks]).padStart(2, "0")}–{String(hours[ke] + 1).padStart(2, "0")}h
+                    </th>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </SettingRow>
 
