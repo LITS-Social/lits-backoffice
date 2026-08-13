@@ -4,7 +4,6 @@ import { useState, useTransition, type ReactNode } from "react";
 import {
   AlertCircle,
   Check,
-  Pencil,
   RefreshCw,
   ClipboardPaste,
   MapPin,
@@ -631,42 +630,10 @@ export function FranchiseSection({
   const hourField =
     "w-[68px] rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-center text-[13px] tabular-nums text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:outline-none";
 
-  // Fechado por padrão: nome, endereço e janela de funcionamento mudam uma vez
-  // por ano. Aberto, era o bloco mais alto da página — a configuração empurrava
-  // para baixo tudo o que se usa todo dia.
-  const [open, setOpen] = useState(false);
-  const summary = [
-    KIND_LABELS[kind],
-    address.trim() || "sem endereço",
-    `${String(hours.weekStart).padStart(2, "0")}h–${String(hours.weekEnd + 1).padStart(2, "0")}h`,
-  ].join(" · ");
-
-  if (!open) {
-    return (
-      <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3.5 shadow-sm sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-          <div className="min-w-0">
-            <h2 className="eyebrow">A academia</h2>
-            <p className="mt-1.5 truncate text-[11.5px] font-300 text-[var(--text-tertiary)]">
-              {summary}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1 text-[10.5px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
-          >
-            <Pencil size={11} strokeWidth={2} /> Editar
-          </button>
-        </div>
-      </section>
-    );
-  }
-
   return (
     <SectionCard
       title="A academia"
-      description="Um salvar para tudo; os preços ficam na tabela abaixo."
+      description="Nome, tipo, localização e horário de funcionamento. Um salvar para tudo; os preços ficam na tabela abaixo."
     >
       <div>
         <SettingRow label="Nome">
@@ -958,19 +925,10 @@ export function FranchiseSection({
               <RefreshCw size={11} strokeWidth={2} />
               {applying ? "Aplicando grade…" : "Aplicar grade em todas as quadras"}
             </button>
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="text-[11px] font-500 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
-              >
-                Fechar
-              </button>
-              <button type="button" onClick={save} disabled={pending} className={primaryBtn}>
-                {pending ? "Salvando…" : "Salvar"}
-                <Check size={11} strokeWidth={2.5} />
-              </button>
-            </div>
+            <button type="button" onClick={save} disabled={pending} className={primaryBtn}>
+              {pending ? "Salvando…" : "Salvar"}
+              <Check size={11} strokeWidth={2.5} />
+            </button>
           </div>
         )}
       </div>

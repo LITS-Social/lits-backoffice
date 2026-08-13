@@ -310,8 +310,10 @@ export function AcademiaCalendar({
           <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
             {description ?? (
               <>
-                Clique numa célula para alternar <strong>disponível ↔ bloqueado</strong>. Arraste o
-                nome de uma quadra para reordenar.
+                Todas as quadras lado a lado, como numa planilha. Clique numa célula para alternar{" "}
+                <strong>disponível ↔ bloqueado</strong>; célula vazia vira disponível. Arraste o
+                nome de uma quadra para reordenar as colunas. Horários com reserva real ficam
+                travados.
               </>
             )}
           </p>

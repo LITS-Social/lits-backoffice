@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import type { CourtListItem } from "../../quadras/actions";
@@ -36,72 +35,22 @@ const SURFACE_LABEL: Record<string, string> = {
 function SectionCard({
   eyebrow,
   description,
-  aside,
   children,
 }: {
   eyebrow: string;
-  /** Uma linha, quando a seção não se explica sozinha. Ausente é o normal:
-      um parágrafo em cima de cada caixa vira ruído quando toda caixa tem um. */
-  description?: ReactNode;
-  /** Canto direito do cabeçalho — contagem, atalho, o que for do bloco. */
-  aside?: ReactNode;
+  description: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
-      <div className="mb-5 flex items-baseline justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="eyebrow">{eyebrow}</h2>
-          {description && (
-            <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-              {description}
-            </p>
-          )}
-        </div>
-        {aside}
+      <div className="mb-5">
+        <h2 className="eyebrow">{eyebrow}</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          {description}
+        </p>
       </div>
       {children}
     </section>
-  );
-}
-
-/* ══ os números do topo ═══════════════════════════════════════════════════ */
-
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "muted" }) {
-  return (
-    <div>
-      <p className="label-colus text-[8px] text-[var(--text-tertiary)]">{label}</p>
-      <p
-        className={cn(
-          "numeral mt-1 text-[24px] leading-none",
-          tone === "muted" ? "text-[var(--text-tertiary)]" : "text-[var(--text-primary)]"
-        )}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
-/** O estado da academia em quatro números. Nenhum deles cabia numa frase sem
-    o operador ter que contar cards com o dedo. */
-function Stats({ courts, matches }: { courts: CourtListItem[]; matches: AcademiaMatches }) {
-  const indoor = courts.filter((c) => c.indoor).length;
-  const gmv = matches.matches.reduce((t, m) => t + m.price_cents, 0);
-  return (
-    <div className="flex flex-wrap items-end gap-x-10 gap-y-4 border-b border-[var(--border)] pb-5">
-      <Stat label="Quadras" value={String(courts.length)} />
-      <Stat
-        label="Cobertas · descobertas"
-        value={`${indoor} · ${courts.length - indoor}`}
-        tone="muted"
-      />
-      <Stat label="Partidas jogadas" value={String(matches.matches.length)} />
-      <Stat
-        label="Em quadra"
-        value={(gmv / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-      />
-    </div>
   );
 }
 
@@ -227,7 +176,11 @@ export function AcademiaPage({
 
   return (
     <div>
-      <PageHeader eyebrow="Gestão" title={base.franchise_name} />
+      <PageHeader
+        eyebrow="Gestão"
+        title={base.franchise_name}
+        description={`${courts.length} quadra${courts.length === 1 ? "" : "s"}. Definições, horário de funcionamento, calendário e importação de print — tudo da academia num lugar só.`}
+      />
       <div className="space-y-5 px-4 sm:px-8 py-6">
         <Link
           href="/academias"
@@ -235,12 +188,6 @@ export function AcademiaPage({
         >
           <ArrowLeft size={12} /> Todas as academias
         </Link>
-
-        {/* A cara da academia em números, antes de qualquer caixa. Estava tudo
-            descrito em prosa no cabeçalho — "N quadras, definições, horário,
-            calendário e importação" —, que é o operador lendo o índice da
-            página em vez de ver o estado dela. */}
-        <Stats courts={courts} matches={matches} />
 
         {/* Nome, tipo, localização e funcionamento num card só: eram dois, com
             dois botões de salvar, gravando a MESMA franquia pela mesma ação. */}
@@ -261,14 +208,7 @@ export function AcademiaPage({
 
         <SectionCard
           eyebrow="Quadras"
-          aside={
-            <Link
-              href={`/quadras/nova?franquia=${base.franchise_id}`}
-              className="inline-flex shrink-0 items-center gap-1 text-[10.5px] font-500 text-[var(--primary)] transition-opacity hover:opacity-70"
-            >
-              <Plus size={11} strokeWidth={2.5} /> Adicionar quadra
-            </Link>
-          }
+          description="As quadras desta academia. Edite superfície, preço e horários individuais na página da quadra — o calendário abaixo mostra todas juntas."
         >
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {courts.map((c) => (

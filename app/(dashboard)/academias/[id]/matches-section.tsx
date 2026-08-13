@@ -161,8 +161,9 @@ export function MatchesSection({ data }: { data: AcademiaMatches }) {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div>
           <h2 className="eyebrow">Partidas</h2>
-          <p className="mt-2 text-[11.5px] font-300 text-[var(--text-tertiary)]">
-            Clique num nome para abrir o dossiê do jogador.
+          <p className="mt-2 max-w-xl text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+            Tudo que já foi jogado nas quadras desta academia — quando, em qual quadra, quem jogou
+            e quanto entrou. Clique num nome para abrir o dossiê do jogador.
           </p>
         </div>
 
