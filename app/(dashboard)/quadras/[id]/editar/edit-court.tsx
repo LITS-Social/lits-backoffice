@@ -391,10 +391,6 @@ export function FranchiseSection({
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  /** As horas que a régua mostra. Fora de 5h–23h nenhuma academia opera, e
-      cada coluna a mais encolhe as outras. */
-  const HOUR_RULER = Array.from({ length: 19 }, (_, i) => i + 5);
-
   /** Move a borda MAIS PRÓXIMA da hora clicada. Um clique só, sem modo: fora
       da janela ela cresce, dentro ela encolhe pelo lado mais perto. A janela
       nunca fecha — o fim fica ao menos uma hora depois do início. */
@@ -822,71 +818,74 @@ export function FranchiseSection({
           label="Funcionamento"
           hint={
             <>
-              Clique numa hora para mover a borda mais perto. A grade de{" "}
+              Clique na barra para mover a borda mais perto. A grade de{" "}
               <strong>todas as quadras</strong> segue estas janelas.
             </>
           }
         >
-          {/* A régua: as horas são COLUNAS, os grupos de dias são linhas, e a
-              janela aberta é uma barra cheia. Antes eram seis campos numéricos
-              com um "às" no meio e a janela resultante escrita ao lado — o
-              operador tinha que montar a imagem de cabeça para conferir se
-              sábado abria mais cedo que domingo. Agora ele vê.
+          {/* Uma BARRA por grupo de dias, num eixo de 24h compartilhado.
+              Antes eram 19 células com preenchimento a 45%: virava um bloco
+              marrom onde não se via onde a janela começava nem terminava, e o
+              eixo tinha rótulo em hora sim, hora não. Agora a barra é sólida,
+              a posição dela no eixo já diz o horário, e o número ao lado
+              confirma. As três linhas se comparam de relance porque dividem a
+              mesma régua. */}
+          <div className="space-y-2">
+            {HOUR_ROWS.map(([label, ks, ke]) => {
+              const from = hours[ks];
+              // O fim é a hora do último slot que COMEÇA, então a janela vai
+              // até uma hora depois dele.
+              const to = hours[ke] + 1;
+              return (
+                <div key={label} className="flex items-center gap-3">
+                  <span className="w-[100px] shrink-0 text-right text-[11.5px] font-300 text-[var(--text-secondary)]">
+                    {label}
+                  </span>
+                  <div className="relative h-7 flex-1 rounded-md bg-[var(--surface-sunken)]">
+                    <div
+                      className="absolute inset-y-0 rounded-md bg-[var(--primary)]"
+                      style={{ left: `${(from / 24) * 100}%`, width: `${((to - from) / 24) * 100}%` }}
+                    />
+                    {/* Alvos de clique invisíveis, uma hora cada: a barra fica
+                        limpa e mesmo assim cada hora é clicável e tem nome
+                        para quem navega por teclado. */}
+                    <div className="absolute inset-0 flex">
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <button
+                          key={h}
+                          type="button"
+                          aria-label={`${label} — ${h}h`}
+                          onClick={() => moveEdge(ks, ke, h)}
+                          className="h-full flex-1 rounded-md transition-colors hover:bg-[var(--text-primary)]/10"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <span className="numeral w-[76px] shrink-0 text-[12px] text-[var(--text-primary)]">
+                    {String(from).padStart(2, "0")}–{String(to).padStart(2, "0")}h
+                  </span>
+                </div>
+              );
+            })}
 
-              Um clique só, sem modo: a borda mais próxima da hora clicada é
-              que se move. Clique fora da janela, ela cresce; clique dentro,
-              ela encolhe do lado mais perto. */}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[400px] border-separate border-spacing-[2px]">
-              <thead>
-                <tr>
-                  <th className="w-[86px]" />
-                  {HOUR_RULER.map((h) => (
-                    <th
-                      key={h}
-                      className="numeral pb-1 text-[9px] font-300 text-[var(--text-tertiary)]"
-                    >
-                      {h % 2 === 0 ? h : ""}
-                    </th>
-                  ))}
-                  <th className="w-[58px]" />
-                </tr>
-              </thead>
-              <tbody>
-                {HOUR_ROWS.map(([label, ks, ke]) => (
-                  <tr key={label}>
-                    <th className="pr-2 text-right text-[11px] font-400 text-[var(--text-secondary)]">
-                      {label}
-                    </th>
-                    {HOUR_RULER.map((h) => {
-                      const open = h >= hours[ks] && h <= hours[ke];
-                      const edge = h === hours[ks] || h === hours[ke];
-                      return (
-                        <td key={h} className="p-0">
-                          <button
-                            type="button"
-                            aria-label={`${label} — ${h}h`}
-                            aria-pressed={open}
-                            onClick={() => moveEdge(ks, ke, h)}
-                            className={cn(
-                              "block h-6 w-full rounded-[2px] transition-colors",
-                              open
-                                ? edge
-                                  ? "bg-[var(--primary)]"
-                                  : "bg-[var(--primary)]/45 hover:bg-[var(--primary)]/60"
-                                : "bg-[var(--surface-sunken)] hover:bg-[var(--surface-raised)]"
-                            )}
-                          />
-                        </td>
-                      );
-                    })}
-                    <th className="numeral pl-2 text-left text-[10.5px] font-400 text-[var(--text-primary)]">
-                      {String(hours[ks]).padStart(2, "0")}–{String(hours[ke] + 1).padStart(2, "0")}h
-                    </th>
-                  </tr>
+            {/* O eixo, uma vez só. Cada rótulo é ancorado na SUA posição, não
+                distribuído por igual: espalhado, o "12h" caía longe do meio da
+                barra e o eixo virava enfeite em vez de referência. */}
+            <div className="flex items-center gap-3 pt-1">
+              <span className="w-[100px] shrink-0" />
+              <div className="relative h-3 flex-1">
+                {[0, 6, 12, 18, 24].map((h) => (
+                  <span
+                    key={h}
+                    className="numeral absolute top-0 -translate-x-1/2 text-[9.5px] text-[var(--text-tertiary)]"
+                    style={{ left: `${(h / 24) * 100}%` }}
+                  >
+                    {h}h
+                  </span>
                 ))}
-              </tbody>
-            </table>
+              </div>
+              <span className="w-[76px] shrink-0" />
+            </div>
           </div>
         </SettingRow>
 
