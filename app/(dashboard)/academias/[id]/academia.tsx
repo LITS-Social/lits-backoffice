@@ -3,15 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
-import { AlertCircle, ArrowLeft, Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import type { CourtListItem } from "../../quadras/actions";
 import { deleteCourtAction } from "../../quadras/actions";
-import {
-  regenerateAvailabilityAction,
-  updateFranchiseAction,
-} from "../../quadras/[id]/editar/actions";
 import { FranchiseSection } from "../../quadras/[id]/editar/edit-court";
 import { AcademiaCalendar } from "./calendar";
 import { DangerZone } from "./danger-zone";
@@ -36,12 +32,6 @@ const SURFACE_LABEL: Record<string, string> = {
   carpet: "Carpete",
 };
 
-const fieldClass =
-  "w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:bg-[var(--surface)] focus:outline-none";
-const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
-const primaryBtn =
-  "inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50";
-
 function SectionCard({
   eyebrow,
   description,
@@ -64,24 +54,6 @@ function SectionCard({
   );
 }
 
-function ErrorNote({ message }: { message: string }) {
-  return (
-    <p className="flex items-start gap-2 rounded-lg border border-[var(--color-error)]/25 bg-[var(--color-error-bg)] px-3 py-2.5 text-[12px] leading-snug text-[var(--color-error)]">
-      <AlertCircle size={13} className="mt-px shrink-0" />
-      {message}
-    </p>
-  );
-}
-
-function SuccessNote({ children }: { children: ReactNode }) {
-  return (
-    <p className="flex items-center gap-2 rounded-lg border border-[var(--color-success)]/25 bg-[var(--color-success-bg)] px-3 py-2.5 text-[12px] leading-snug text-[var(--color-success)]">
-      <Check size={13} strokeWidth={2.5} className="shrink-0" />
-      <span>{children}</span>
-    </p>
-  );
-}
-
 /* ══ operating hours ══════════════════════════════════════════════════════ */
 
 export type HourWindows = {
@@ -101,215 +73,6 @@ export function initialWindows(c: CourtListItem): HourWindows {
     sunStart:  c.franchise_hours_sun_start ?? c.franchise_hours_week_start ?? 6,
     sunEnd:    c.franchise_hours_sun_end ?? c.franchise_hours_week_end ?? 22,
   };
-}
-
-function OperatingHoursSection({
-  franchiseId,
-  courts,
-  onApplied,
-}: {
-  franchiseId: string;
-  courts: CourtListItem[];
-  onApplied: () => void;
-}) {
-  const [w, setW] = useState<HourWindows>(() => initialWindows(courts[0]));
-  const [saved, setSaved] = useState<HourWindows | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState("");
-  const [savedNote, setSavedNote] = useState(false);
-  const [applyNote, setApplyNote] = useState("");
-  const [saving, startSaving] = useTransition();
-  const [applying, startApplying] = useTransition();
-
-  const rows = [
-    ["Segunda a sexta", "weekStart", "weekEnd"],
-    ["Sábado", "satStart", "satEnd"],
-    ["Domingo", "sunStart", "sunEnd"],
-  ] as const;
-
-  function validate(): string {
-    for (const [label, ks, ke] of rows) {
-      if (w[ks] < 0 || w[ks] > 22 || w[ke] < 1 || w[ke] > 23 || w[ks] >= w[ke])
-        return `${label}: início deve ser antes do fim (início 0–22, fim 1–23).`;
-    }
-    return "";
-  }
-
-  function save() {
-    const v = validate();
-    if (v) {
-      setError(v);
-      return;
-    }
-    setError("");
-    setSavedNote(false);
-    startSaving(async () => {
-      const res = await updateFranchiseAction(franchiseId, { hours: w });
-      if (!res.ok) {
-        setError(res.error ?? "Falha ao salvar o horário de funcionamento.");
-        return;
-      }
-      setSaved({ ...w });
-      setSavedNote(true);
-    });
-  }
-
-  function applyAll() {
-    const v = validate();
-    if (v) {
-      setError(v);
-      setConfirming(false);
-      return;
-    }
-    // Horizonte fixo: um mês rolante — não é decisão do operador.
-    const daysForward = 30;
-    setError("");
-    setApplyNote("");
-    setConfirming(false);
-    startApplying(async () => {
-      // Sequential on purpose: each regenerate is a whole-court rewrite; a
-      // clear per-court failure beats a pile of interleaved errors.
-      let created = 0;
-      let deleted = 0;
-      const failures: string[] = [];
-      for (const c of courts) {
-        const res = await regenerateAvailabilityAction(c.id, {
-          startHour: w.weekStart,
-          endHour: w.weekEnd,
-          daysForward,
-          saturday: { startHour: w.satStart, endHour: w.satEnd },
-          sunday: { startHour: w.sunStart, endHour: w.sunEnd },
-        });
-        if (res.ok) {
-          created += res.slotsCreated ?? 0;
-          deleted += res.slotsDeleted ?? 0;
-        } else {
-          failures.push(`${c.name}: ${res.error ?? "falha"}`);
-        }
-      }
-      if (failures.length > 0) setError(failures.join(" · "));
-      if (failures.length < courts.length) {
-        // A grade nova nasce toda no preço padrão da quadra; as FAIXAS não
-        // existem para o gerador, que só conhece um preço. Reaplicar a tabela
-        // guardada é o que faz "horário novo já sai no padrão" ser verdade —
-        // e cada quadra segue a tabela do SEU tipo, coberta ou descoberta.
-        const done = courts.filter((c) => !failures.some((f) => f.startsWith(`${c.name}:`)));
-        const priced = await reapplySavedTable(franchiseId, done);
-        setApplyNote(
-          `Grade aplicada em ${courts.length - failures.length} de ${courts.length} quadras — ` +
-            `${created} horários criados (bloqueados), ${deleted} antigos removidos (reservas reais preservadas).` +
-            (priced
-              ? ` A tabela de preços foi reaplicada: ${priced.slots.toLocaleString("pt-BR")} horários já saíram no padrão.`
-              : "")
-        );
-        onApplied();
-      }
-    });
-  }
-
-  return (
-    <SectionCard
-      eyebrow="Horário de funcionamento"
-      description={
-        <>
-          O horário padrão da academia — a grade de <strong>todas as quadras</strong> segue estas
-          janelas. O fim é a hora do último horário que começa (22 = último slot 22h–23h). Salve
-          para registrar, e use “Aplicar grade” para recriar os horários de todas as quadras de uma
-          vez — a grade nova entra inteira <strong>bloqueada</strong>; libere horários pelo import
-          do print ou clicando no calendário. Reservas reais nunca são apagadas.
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <div className="space-y-2.5">
-          {rows.map(([label, ks, ke]) => (
-            <div key={ks} className="flex flex-wrap items-end gap-3">
-              <p className="w-full pb-0.5 text-[12px] font-500 text-[var(--text-secondary)] sm:w-[130px] sm:pb-2">
-                {label}
-              </p>
-              <div className="w-[110px]">
-                <label htmlFor={`h-${ks}`} className={labelClass}>
-                  Início
-                </label>
-                <input
-                  id={`h-${ks}`}
-                  type="number"
-                  min={0}
-                  max={22}
-                  value={w[ks]}
-                  onChange={(e) => {
-                    setW({ ...w, [ks]: Number(e.target.value) });
-                    setSavedNote(false);
-                  }}
-                  className={fieldClass}
-                />
-              </div>
-              <div className="w-[110px]">
-                <label htmlFor={`h-${ke}`} className={labelClass}>
-                  Último início
-                </label>
-                <input
-                  id={`h-${ke}`}
-                  type="number"
-                  min={1}
-                  max={23}
-                  value={w[ke]}
-                  onChange={(e) => {
-                    setW({ ...w, [ke]: Number(e.target.value) });
-                    setSavedNote(false);
-                  }}
-                  className={fieldClass}
-                />
-              </div>
-              <p className="pb-2.5 text-[11px] font-300 tabular-nums text-[var(--text-tertiary)]">
-                {String(w[ks]).padStart(2, "0")}h – {String(w[ke] + 1).padStart(2, "0")}h
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-end justify-end gap-3 border-t border-[var(--border)] pt-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={save} disabled={saving} className={primaryBtn}>
-              {saving ? "Salvando…" : "Salvar horário"}
-            </button>
-            {confirming ? (
-              <span className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={applyAll}
-                  disabled={applying}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-error)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  Confirmar — regera {courts.length} quadra{courts.length === 1 ? "" : "s"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirming(false)}
-                  className="text-[11px] font-500 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-                >
-                  Cancelar
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirming(true)}
-                disabled={applying}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/8 disabled:opacity-50"
-              >
-                {applying ? "Aplicando…" : "Aplicar grade em todas as quadras"}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {saved && savedNote && <SuccessNote>Horário de funcionamento salvo.</SuccessNote>}
-        {applyNote && <SuccessNote>{applyNote}</SuccessNote>}
-        {error && <ErrorNote message={error} />}
-      </div>
-    </SectionCard>
-  );
 }
 
 /* ══ courts ═══════════════════════════════════════════════════════════════ */
@@ -426,18 +189,15 @@ export function AcademiaPage({
           <ArrowLeft size={12} /> Todas as academias
         </Link>
 
+        {/* Nome, tipo, localização e funcionamento num card só: eram dois, com
+            dois botões de salvar, gravando a MESMA franquia pela mesma ação. */}
         <FranchiseSection
           franchiseId={base.franchise_id}
           franchiseName={base.franchise_name}
           initialKind={base.franchise_kind}
-          initialDefaultPriceCents={base.franchise_default_price_cents}
           initialLat={base.franchise_lat}
           initialLng={base.franchise_lng}
           initialAddress={base.franchise_street_address}
-        />
-
-        <OperatingHoursSection
-          franchiseId={base.franchise_id}
           courts={courts}
           onApplied={refresh}
         />

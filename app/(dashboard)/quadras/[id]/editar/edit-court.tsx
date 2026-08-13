@@ -4,25 +4,24 @@ import { useState, useTransition, type ReactNode } from "react";
 import {
   AlertCircle,
   Check,
+  RefreshCw,
   ClipboardPaste,
   MapPin,
-  Plus,
   Search,
 } from "lucide-react";
-import { cn, formatCurrency, reaisToCents } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { CourtListItem } from "../../actions";
 import {
-  addCourtSlotsAction,
   deleteCourtSlotsAction,
+  regenerateAvailabilityAction,
   geocodeAction,
   updateCourtAction,
   updateFranchiseAction,
-  type AddSlotInput,
   type GeocodeCandidate,
 } from "./actions";
 import { ImportPrintSection } from "./import-print";
 import { AcademiaCalendar } from "../../../academias/[id]/calendar";
-import { initialWindows } from "../../../academias/[id]/academia";
+import { initialWindows, type HourWindows } from "../../../academias/[id]/academia";
 import { PriceTableSection } from "../../../academias/[id]/price-table";
 import { reapplySavedTable } from "../../../academias/[id]/price-table-store";
 
@@ -40,7 +39,6 @@ const fieldClass =
   "w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--text-primary)] transition-colors placeholder:font-300 placeholder:text-[var(--text-tertiary)] hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:bg-[var(--surface)] focus:outline-none";
 
 const labelClass = "label-colus mb-1.5 block text-[8.5px] text-[var(--text-tertiary)]";
-const labelInlineClass = "label-colus block text-[8.5px] text-[var(--text-tertiary)]";
 
 /* ── shared bits ──────────────────────────────────────────────────────────── */
 
@@ -88,12 +86,6 @@ function SectionCard({
 
 const primaryBtn =
   "inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-5 py-2 font-700 text-[9.5px] uppercase tracking-[0.16em] text-[var(--primary-fg)] transition-opacity hover:opacity-90 disabled:opacity-50";
-
-function reaisFromCents(cents: number | null): string {
-  if (cents == null) return "";
-  const v = cents / 100;
-  return v % 1 === 0 ? String(v) : v.toFixed(2).replace(".", ",");
-}
 
 /* ── geo helpers ──────────────────────────────────────────────────────────── */
 
@@ -156,76 +148,6 @@ function mapsUrl(lat: number, lng: number): string {
 // São Paulo is UTC-3 with no DST, so a fixed offset turns a picked wall-clock
 // date+time into the exact absolute instant the backend stores (RFC3339 Z),
 // independent of whatever timezone the staff's browser is in.
-const SP_OFFSET = "-03:00";
-
-const WEEKDAYS: { idx: number; label: string }[] = [
-  { idx: 0, label: "Dom" },
-  { idx: 1, label: "Seg" },
-  { idx: 2, label: "Ter" },
-  { idx: 3, label: "Qua" },
-  { idx: 4, label: "Qui" },
-  { idx: 5, label: "Sex" },
-  { idx: 6, label: "Sáb" },
-];
-
-/** Epoch ms for a São Paulo wall-clock date (yyyy-mm-dd) + time (HH:mm). */
-function spStartMs(ymd: string, hm: string): number {
-  return new Date(`${ymd}T${hm}:00${SP_OFFSET}`).getTime();
-}
-
-/** São Paulo local yyyy-mm-dd + HH:mm for an instant — used to advance to the next slot. */
-function spParts(ms: number): { ymd: string; hm: string } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date(ms));
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  const hour = get("hour") === "24" ? "00" : get("hour");
-  return { ymd: `${get("year")}-${get("month")}-${get("day")}`, hm: `${hour}:${get("minute")}` };
-}
-
-/** Midnight-UTC epoch ms for a calendar date — a tz-safe anchor for range iteration. */
-function ymdToUTC(ymd: string): number {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return Date.UTC(y, m - 1, d);
-}
-
-function utcToYmd(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(
-    d.getUTCDate()
-  ).padStart(2, "0")}`;
-}
-
-/**
- * "Grátis" pill that clamps a price field to R$ 0,00. A blank price means "use
- * the court/franchise default"; this means "charge nothing" — the two have to be
- * distinguishable, since beta partner clubs can be free too.
- */
-function GratisToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={active}
-      className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-600 transition-colors ${
-        active
-          ? "bg-[var(--primary)] text-[var(--primary-fg)]"
-          : "bg-[var(--surface-raised)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-      }`}
-    >
-      Grátis
-    </button>
-  );
-}
-
-/* ══ court basics ═════════════════════════════════════════════════════════ */
-
 function CourtBasicsSection({ court }: { court: CourtListItem }) {
   const [name, setName] = useState(court.name);
   const [surface, setSurface] = useState<Surface>(
@@ -366,29 +288,73 @@ const KIND_HINTS: Record<FranchiseKind, string> = {
   listing: "Diretório: local não integrado — o app sintetiza a grade livre (06h–22h, R$ 0).",
 };
 
+/* ══ definições da academia ═══════════════════════════════════════════════ */
+
+/** Uma linha de configuração: rótulo e ajuda à esquerda, controle à direita.
+    É o formato de tela de ajustes que o operador já conhece de fora daqui
+    (Linear · Settings, Stripe · Business details, Vercel · Project settings):
+    a coluna da esquerda vira um índice que se lê de cima a baixo sem entrar
+    em nenhum campo, e cada linha ocupa a altura do que ela precisa. Os dois
+    cards antigos empilhavam rótulo sobre campo, e a página ficava com o dobro
+    da altura para a mesma informação. */
+function SettingRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-x-6 gap-y-2 border-t border-[var(--border)] py-4 first:border-t-0 first:pt-0 sm:grid-cols-[168px_minmax(0,1fr)]">
+      <div className="sm:pt-2">
+        <p className="text-[12px] font-500 text-[var(--text-primary)]">{label}</p>
+        {hint && (
+          <p className="mt-0.5 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {hint}
+          </p>
+        )}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Tudo que é da ACADEMIA num card só: nome, tipo, localização e horário de
+ * funcionamento — com UM botão de salvar.
+ *
+ * Eram dois cards com dois botões, e a divisão não tinha razão de ser: os dois
+ * gravavam a mesma franquia, pela mesma ação. Quem mudava o nome e o horário
+ * na mesma visita tinha que lembrar de salvar duas vezes, e esquecer um deles
+ * era silencioso.
+ *
+ * "Aplicar grade em todas as quadras" fica junto, mas separado por uma régua e
+ * fora do botão principal: salvar é registrar a janela; aplicar RECRIA a grade
+ * de todas as quadras. São gestos de peso diferente e não devem parecer o
+ * mesmo botão.
+ */
 export function FranchiseSection({
   franchiseId,
   franchiseName,
   initialKind,
-  initialDefaultPriceCents,
   initialLat,
   initialLng,
   initialAddress,
+  courts,
+  onApplied,
 }: {
   franchiseId: string;
   franchiseName: string;
   initialKind: string;
-  initialDefaultPriceCents: number | null | undefined;
   initialLat: number | null | undefined;
   initialLng: number | null | undefined;
   initialAddress: string | null | undefined;
+  courts: CourtListItem[];
+  onApplied: () => void;
 }) {
   const [name, setName] = useState(franchiseName);
-  // The field IS the current default price, edited in place (destaque grande
-  // — não mais um hint miúdo embaixo de um campo vazio).
-  const [price, setPrice] = useState(
-    initialDefaultPriceCents != null ? reaisFromCents(initialDefaultPriceCents) : ""
-  );
   const normalizedInitialKind: FranchiseKind = (
     ["partner", "public", "listing"] as const
   ).includes(initialKind as FranchiseKind)
@@ -406,8 +372,8 @@ export function FranchiseSection({
   const [address, setAddress] = useState(initialAddress ?? "");
   const [lat, setLat] = useState(initialLat != null ? String(initialLat) : "");
   const [lng, setLng] = useState(initialLng != null ? String(initialLng) : "");
-  // Only a touched pair is sent: Huma 422s on unknown body keys, so name/price
-  // saves must keep working while the geo-aware BFF rolls out.
+  // Only a touched pair is sent: Huma 422s on unknown body keys, so the other
+  // fields keep saving while the geo-aware BFF rolls out.
   const [geoDirty, setGeoDirty] = useState(false);
   // The address is persisted too (it feeds the app's invite/booking cards) —
   // what's in the field is what gets saved, under the same touched-only gate.
@@ -416,18 +382,37 @@ export function FranchiseSection({
   const [candidates, setCandidates] = useState<GeocodeCandidate[] | null>(null);
   const [geoError, setGeoError] = useState("");
   const [geoPending, startGeoTransition] = useTransition();
+  // As janelas de funcionamento — a grade de todas as quadras as segue.
+  const [hours, setHours] = useState<HourWindows>(() => initialWindows(courts[0]));
+  const [confirmingApply, setConfirmingApply] = useState(false);
+  const [applyNote, setApplyNote] = useState("");
+  const [applying, startApplying] = useTransition();
   const [error, setError] = useState("");
-  const [savedPrice, setSavedPrice] = useState<number | null | undefined>(
-    initialDefaultPriceCents
-  );
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  const HOUR_ROWS = [
+    ["Segunda a sexta", "weekStart", "weekEnd"],
+    ["Sábado", "satStart", "satEnd"],
+    ["Domingo", "sunStart", "sunEnd"],
+  ] as const;
 
   function touched() {
     setSaved(false);
     setError("");
-    // Any further edit invalidates a pending kind confirmation.
+    setApplyNote("");
+    // Any further edit invalidates a pending confirmation.
     setConfirmingKind(false);
+    setConfirmingApply(false);
+  }
+
+  /** "" quando as janelas fazem sentido; a queixa, quando não. */
+  function hoursProblem(): string {
+    for (const [label, ks, ke] of HOUR_ROWS) {
+      if (hours[ks] < 0 || hours[ks] > 22 || hours[ke] < 1 || hours[ke] > 23 || hours[ks] >= hours[ke])
+        return `${label}: início deve ser antes do fim (início 0–22, fim 1–23).`;
+    }
+    return "";
   }
 
   function searchAddress() {
@@ -512,17 +497,14 @@ export function FranchiseSection({
     setError("");
     setSaved(false);
     if (!name.trim()) {
-      setError("Informe o nome da franquia.");
+      setError("Informe o nome da academia.");
       return;
     }
-    const cents = reaisToCents(price);
-    if (price.trim() !== "" && cents === null) {
-      setError("Preço padrão inválido. Use ex: 220 ou 220,50.");
+    const hp = hoursProblem();
+    if (hp) {
+      setError(hp);
       return;
     }
-    // Touched-only: só envia o preço quando difere do padrão salvo (o campo
-    // vem preenchido; mandar sempre reenviaria o mesmo valor a cada save).
-    const priceChanged = cents != null && cents !== (savedPrice ?? null);
     // Always a complete pair; clearing is its own flag (a JSON null pair would
     // be silently ignored by the BFF) — see updateFranchiseAction.
     let geo: { lat: number; lng: number } | { clearGeo: true } | undefined;
@@ -566,21 +548,18 @@ export function FranchiseSection({
     startTransition(async () => {
       const res = await updateFranchiseAction(franchiseId, {
         name: name.trim(),
-        ...(priceChanged ? { defaultPriceCents: cents! } : {}),
+        hours,
         ...(kindDirty ? { kind } : {}),
         ...(geo ?? {}),
         ...(addr !== undefined ? { streetAddress: addr } : {}),
       });
       if (!res.ok || !res.franchise) {
-        setError(res.error ?? "Falha ao salvar franquia.");
+        setError(res.error ?? "Falha ao salvar a academia.");
         return;
       }
       setKindDirty(false);
       setLastSavedKind(kind);
       setSaved(true);
-      setSavedPrice(res.franchise.default_price_cents);
-      if (res.franchise.default_price_cents != null)
-        setPrice(reaisFromCents(res.franchise.default_price_cents));
       if (addr !== undefined) {
         setAddressDirty(false);
         setAddress(addr);
@@ -590,25 +569,74 @@ export function FranchiseSection({
         if ("clearGeo" in geo) {
           setLat("");
           setLng("");
-        } else {
-          // Normalize what the staff typed (comma decimals etc.) to what was saved.
-          setLat(String(geo.lat));
-          setLng(String(geo.lng));
         }
       }
     });
   }
 
+  function applyGrid() {
+    const hp = hoursProblem();
+    if (hp) {
+      setError(hp);
+      setConfirmingApply(false);
+      return;
+    }
+    // Horizonte fixo: um mês rolante — não é decisão do operador.
+    const daysForward = 30;
+    setError("");
+    setApplyNote("");
+    setConfirmingApply(false);
+    startApplying(async () => {
+      // Sequential on purpose: each regenerate is a whole-court rewrite; a
+      // clear per-court failure beats a pile of interleaved errors.
+      let created = 0;
+      let deleted = 0;
+      const failures: string[] = [];
+      for (const c of courts) {
+        const res = await regenerateAvailabilityAction(c.id, {
+          startHour: hours.weekStart,
+          endHour: hours.weekEnd,
+          daysForward,
+          saturday: { startHour: hours.satStart, endHour: hours.satEnd },
+          sunday: { startHour: hours.sunStart, endHour: hours.sunEnd },
+        });
+        if (res.ok) {
+          created += res.slotsCreated ?? 0;
+          deleted += res.slotsDeleted ?? 0;
+        } else {
+          failures.push(`${c.name}: ${res.error ?? "falha"}`);
+        }
+      }
+      if (failures.length > 0) setError(failures.join(" · "));
+      if (failures.length < courts.length) {
+        // A grade nova nasce toda no preço padrão da quadra; as FAIXAS não
+        // existem para o gerador, que só conhece um preço. Reaplicar a tabela
+        // guardada é o que faz "horário novo já sai no padrão" ser verdade —
+        // e cada quadra segue a tabela do SEU tipo, coberta ou descoberta.
+        const done = courts.filter((c) => !failures.some((f) => f.startsWith(`${c.name}:`)));
+        const priced = await reapplySavedTable(franchiseId, done);
+        setApplyNote(
+          `Grade aplicada em ${courts.length - failures.length} de ${courts.length} quadras — ` +
+            `${created} horários criados (bloqueados), ${deleted} antigos removidos (reservas reais preservadas).` +
+            (priced
+              ? ` A tabela de preços foi reaplicada: ${priced.slots.toLocaleString("pt-BR")} horários já saíram no padrão.`
+              : "")
+        );
+        onApplied();
+      }
+    });
+  }
+
+  const hourField =
+    "w-[68px] rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-center text-[13px] tabular-nums text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--primary)] focus:outline-none";
+
   return (
     <SectionCard
-      title="Franquia"
-      description="Edita a academia dona da quadra. O preço padrão é aplicado às quadras que não têm preço próprio; a localização posiciona a academia no app (distância e mapa)."
+      title="A academia"
+      description="Nome, tipo, localização e horário de funcionamento. Um salvar para tudo; os preços ficam na tabela abaixo."
     >
-      <div className="space-y-5">
-        <div>
-          <label htmlFor="franchise_name" className={labelClass}>
-            Nome da franquia
-          </label>
+      <div>
+        <SettingRow label="Nome">
           <input
             id="franchise_name"
             value={name}
@@ -619,11 +647,10 @@ export function FranchiseSection({
             placeholder="ex: PlayTennis Morumbi"
             className={fieldClass}
           />
-        </div>
+        </SettingRow>
 
-        <div>
-          <p className={labelClass}>Tipo</p>
-          <div className="flex flex-wrap gap-2">
+        <SettingRow label="Tipo" hint={KIND_HINTS[kind]}>
+          <div className="flex flex-wrap gap-1.5">
             {(Object.keys(KIND_LABELS) as FranchiseKind[]).map((k) => (
               <button
                 key={k}
@@ -634,65 +661,29 @@ export function FranchiseSection({
                   touched();
                 }}
                 aria-pressed={kind === k}
-                className={`rounded-lg border px-3 py-1.5 text-[11.5px] font-600 transition-colors ${
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-[11.5px] font-500 transition-colors",
                   kind === k
-                    ? "border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--primary)]"
-                    : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
-                }`}
+                    ? "border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary)]"
+                    : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]"
+                )}
               >
                 {KIND_LABELS[k]}
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            {KIND_HINTS[kind]}
-          </p>
           {kindDirty && kind === "partner" && (
-            <p className="mt-1.5 rounded-lg border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-3 py-2 text-[11px] leading-snug text-[var(--color-clay)]">
+            <p className="mt-2 rounded-lg border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-3 py-2 text-[11px] leading-snug text-[var(--color-clay)]">
               Ao virar parceira, o app deixa a grade sintetizada e passa a vender os slots reais —
-              se a quadra estiver sem disponibilidade, gere a grade nesta página após salvar.
+              se as quadras estiverem sem disponibilidade, aplique a grade depois de salvar.
             </p>
           )}
-        </div>
+        </SettingRow>
 
-        <div>
-          <label htmlFor="franchise_price" className={labelClass}>
-            Preço padrão da academia (R$)
-          </label>
-          <div className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-4 py-3 transition-colors focus-within:border-[var(--primary)] hover:border-[var(--border-strong)]">
-            <span className="numeral text-[22px] leading-none text-[var(--text-tertiary)]">R$</span>
-            <input
-              id="franchise_price"
-              inputMode="decimal"
-              value={price}
-              onChange={(e) => {
-                setPrice(e.target.value);
-                touched();
-              }}
-              placeholder={savedPrice == null ? "sem preço padrão" : "ex: 220"}
-              className="numeral w-full bg-transparent text-[26px] leading-none text-[var(--text-primary)] placeholder:font-sans placeholder:text-[13px] placeholder:font-300 placeholder:text-[var(--text-tertiary)] focus:outline-none"
-            />
-          </div>
-          <p className="mt-1 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            O preço da hora nas quadras sem preço próprio. Edite e salve para mudar.
-          </p>
-        </div>
-
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="franchise_address" className={labelInlineClass}>
-              Localização
-            </label>
-            <button
-              type="button"
-              onClick={pasteFromClipboard}
-              className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-raised)] px-2.5 py-0.5 text-[10.5px] font-600 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
-            >
-              <ClipboardPaste size={11} strokeWidth={2} />
-              Colar &quot;lat, lng&quot;
-            </button>
-          </div>
-
+        <SettingRow
+          label="Localização"
+          hint="Posiciona a academia no app — distância e mapa. O endereço aparece nos cards."
+        >
           <div className="flex items-stretch gap-2">
             <input
               id="franchise_address"
@@ -709,17 +700,17 @@ export function FranchiseSection({
                   searchAddress();
                 }
               }}
-              placeholder="Endereço — ex: Rua Girassol 555, Vila Madalena, São Paulo"
+              placeholder="Rua Girassol 555, Vila Madalena, São Paulo"
               className={cn(fieldClass, "flex-1")}
             />
             <button
               type="button"
               onClick={searchAddress}
               disabled={geoPending}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--surface-raised)] px-3.5 text-[11.5px] font-600 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--surface-raised)] px-3 text-[11.5px] font-500 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
             >
               <Search size={12} strokeWidth={2} />
-              {geoPending ? "Buscando…" : "Buscar coordenadas"}
+              {geoPending ? "Buscando…" : "Buscar"}
             </button>
           </div>
 
@@ -754,7 +745,7 @@ export function FranchiseSection({
               </ul>
             ))}
 
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <input
               id="franchise_lat"
               aria-label="Latitude"
@@ -768,8 +759,8 @@ export function FranchiseSection({
               onPaste={(e) => {
                 if (applyPair(e.clipboardData.getData("text"))) e.preventDefault();
               }}
-              placeholder="Latitude — ex: -23.5936"
-              className={fieldClass}
+              placeholder="-23.5936"
+              className={cn(fieldClass, "w-[130px] tabular-nums")}
             />
             <input
               id="franchise_lng"
@@ -784,44 +775,97 @@ export function FranchiseSection({
               onPaste={(e) => {
                 if (applyPair(e.clipboardData.getData("text"))) e.preventDefault();
               }}
-              placeholder="Longitude — ex: -46.6731"
-              className={fieldClass}
+              placeholder="-46.6731"
+              className={cn(fieldClass, "w-[130px] tabular-nums")}
             />
-          </div>
-          <p className="mt-1 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
             {previewOk ? (
               <a
                 href={mapsUrl(latPreview, lngPreview)}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 font-500 text-[var(--primary)] hover:underline"
+                className="inline-flex items-center gap-1 text-[10.5px] font-500 text-[var(--primary)] hover:underline"
               >
                 <MapPin size={11} strokeWidth={2} />
-                Conferir no Google Maps
+                Conferir no mapa
               </a>
             ) : (
-              "Busque pelo endereço acima (ele aparece nos cards do app), ou cole coordenadas do Google Maps. Lat/lng vazias = sem localização."
+              <button
+                type="button"
+                onClick={pasteFromClipboard}
+                className="inline-flex items-center gap-1 text-[10.5px] font-500 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                <ClipboardPaste size={11} strokeWidth={2} />
+                Colar &quot;lat, lng&quot;
+              </button>
             )}
-          </p>
-        </div>
+          </div>
+        </SettingRow>
 
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2">
-          <p className="text-[10px] font-700 uppercase tracking-widest text-[var(--text-tertiary)]">
-            Franchise ID
-          </p>
-          <p className="mt-1 font-mono text-[11px] text-[var(--text-secondary)]">{franchiseId}</p>
-        </div>
+        <SettingRow
+          label="Funcionamento"
+          hint={
+            <>
+              A grade de <strong>todas as quadras</strong> segue estas janelas. O fim é a hora do
+              último horário que começa — 22 = último slot 22h–23h.
+            </>
+          }
+        >
+          <div className="space-y-1.5">
+            {HOUR_ROWS.map(([label, ks, ke]) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className="w-[110px] shrink-0 text-[11.5px] font-300 text-[var(--text-secondary)]">
+                  {label}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  max={22}
+                  aria-label={`${label} — início`}
+                  value={hours[ks]}
+                  onChange={(e) => {
+                    setHours((cur: HourWindows) => ({ ...cur, [ks]: Number(e.target.value) }));
+                    touched();
+                  }}
+                  className={hourField}
+                />
+                <span className="text-[11px] text-[var(--text-tertiary)]">às</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={23}
+                  aria-label={`${label} — último início`}
+                  value={hours[ke]}
+                  onChange={(e) => {
+                    setHours((cur: HourWindows) => ({ ...cur, [ke]: Number(e.target.value) }));
+                    touched();
+                  }}
+                  className={hourField}
+                />
+                <span className="numeral text-[10.5px] text-[var(--text-tertiary)]">
+                  {String(hours[ks]).padStart(2, "0")}h – {String(hours[ke] + 1).padStart(2, "0")}h
+                </span>
+              </div>
+            ))}
+          </div>
+        </SettingRow>
 
+        <SettingRow label="ID" hint="A chave desta academia no banco.">
+          <p className="font-mono text-[11px] text-[var(--text-tertiary)]">{franchiseId}</p>
+        </SettingRow>
+      </div>
+
+      <div className="mt-4 space-y-3">
         {error && <ErrorBanner message={error} />}
-        {saved && <SuccessNote>Franquia salva.</SuccessNote>}
+        {saved && <SuccessNote>Academia salva.</SuccessNote>}
+        {applyNote && <SuccessNote>{applyNote}</SuccessNote>}
 
-        {confirmingKind ? (
+        {confirmingKind && (
           <div className="rounded-lg border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-4 py-3.5">
             <p className="text-[12.5px] font-500 leading-snug text-[var(--color-clay)]">
               Mudar o tipo de {KIND_LABELS[lastSavedKind]} para {KIND_LABELS[kind]} altera como o
-              app vende/mostra os horários desta academia.
+              app vende e mostra os horários desta academia.
             </p>
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-3 flex items-center gap-3">
               <button
                 type="button"
                 onClick={save}
@@ -839,10 +883,50 @@ export function FranchiseSection({
               </button>
             </div>
           </div>
-        ) : (
-          <div className="flex justify-end border-t border-[var(--border)] pt-4">
+        )}
+
+        {confirmingApply && (
+          <div className="rounded-lg border border-[var(--color-clay)]/30 bg-[var(--color-warning-bg)] px-4 py-3.5">
+            <p className="text-[12.5px] font-500 leading-snug text-[var(--color-clay)]">
+              Isto RECRIA a grade das {courts.length} quadras nos próximos 30 dias, inteira
+              bloqueada — os horários voltam a vender pelo import do print ou pelo calendário.
+              Reservas reais nunca são apagadas.
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={applyGrid}
+                disabled={applying}
+                className="rounded-full bg-[var(--color-clay)] px-4 py-1.5 text-[11.5px] font-600 text-white transition-opacity disabled:opacity-50"
+              >
+                {applying ? "Aplicando…" : "Recriar a grade"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingApply(false)}
+                className="text-[11.5px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!confirmingKind && !confirmingApply && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
+            {/* Um gesto de peso maior, e por isso longe do botão principal:
+                salvar registra a janela; aplicar recria a grade inteira. */}
+            <button
+              type="button"
+              onClick={() => setConfirmingApply(true)}
+              disabled={applying || courts.length === 0}
+              className="inline-flex items-center gap-1.5 text-[11px] font-500 text-[var(--text-tertiary)] transition-colors hover:text-[var(--color-clay)] disabled:opacity-50"
+            >
+              <RefreshCw size={11} strokeWidth={2} />
+              {applying ? "Aplicando grade…" : "Aplicar grade em todas as quadras"}
+            </button>
             <button type="button" onClick={save} disabled={pending} className={primaryBtn}>
-              {pending ? "Salvando…" : "Salvar franquia"}
+              {pending ? "Salvando…" : "Salvar"}
               <Check size={11} strokeWidth={2.5} />
             </button>
           </div>
@@ -935,308 +1019,6 @@ function DeleteSlotsSection({ courtId, onDone }: { courtId: string; onDone: () =
   );
 }
 
-/* ══ add slots ════════════════════════════════════════════════════════════ */
-
-function AddSlotsSection({ courtId, onDone }: { courtId: string; onDone: () => void }) {
-  const today = new Date();
-  const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
-    today.getDate()
-  ).padStart(2, "0")}`;
-
-  const [mode, setMode] = useState<"single" | "range">("single");
-  const [date, setDate] = useState(todayYmd);
-  const [rangeFrom, setRangeFrom] = useState(todayYmd);
-  const [rangeTo, setRangeTo] = useState(todayYmd);
-  const [weekdays, setWeekdays] = useState<Set<number>>(new Set([0, 1, 2, 3, 4, 5, 6]));
-  const [time, setTime] = useState("19:00");
-  const [duration, setDuration] = useState(60);
-  const [price, setPrice] = useState("");
-  const [free, setFree] = useState(false);
-  const [status, setStatus] = useState<"available" | "blocked">("available");
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function toggleWeekday(idx: number) {
-    setWeekdays((prev) => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
-    });
-  }
-
-  function buildSlots(): { slots: AddSlotInput[]; error?: string } {
-    if (!/^\d{2}:\d{2}$/.test(time)) return { slots: [], error: "Informe a hora de início." };
-    if (!Number.isFinite(duration) || duration <= 0) {
-      return { slots: [], error: "Duração inválida (minutos)." };
-    }
-    const priceCents = free ? 0 : reaisToCents(price);
-    if (!free && price.trim() !== "" && priceCents === null) {
-      return { slots: [], error: "Preço inválido. Use ex: 250 ou 250,50." };
-    }
-
-    const dates: string[] = [];
-    if (mode === "single") {
-      if (!date) return { slots: [], error: "Informe a data." };
-      dates.push(date);
-    } else {
-      if (!rangeFrom || !rangeTo) return { slots: [], error: "Informe o intervalo de datas." };
-      const fromMs = ymdToUTC(rangeFrom);
-      const toMs = ymdToUTC(rangeTo);
-      if (toMs < fromMs) return { slots: [], error: "A data final deve ser igual ou após a inicial." };
-      if (weekdays.size === 0) return { slots: [], error: "Selecione ao menos um dia da semana." };
-      for (let ms = fromMs; ms <= toMs; ms += 86_400_000) {
-        if (weekdays.has(new Date(ms).getUTCDay())) dates.push(utcToYmd(ms));
-      }
-      if (dates.length === 0) {
-        return { slots: [], error: "Nenhuma data no intervalo bate com os dias escolhidos." };
-      }
-      if (dates.length > 366) {
-        return { slots: [], error: "Muitos horários de uma vez (máx. 366). Reduza o intervalo." };
-      }
-    }
-
-    const slots: AddSlotInput[] = dates.map((d) => {
-      const startMs = spStartMs(d, time);
-      return {
-        slot_start: new Date(startMs).toISOString(),
-        slot_end: new Date(startMs + duration * 60_000).toISOString(),
-        ...(priceCents != null ? { price_cents: priceCents } : {}),
-        status,
-      };
-    });
-    return { slots };
-  }
-
-  function submit() {
-    setError("");
-    setResult(null);
-    const built = buildSlots();
-    if (built.error) {
-      setError(built.error);
-      return;
-    }
-    startTransition(async () => {
-      const res = await addCourtSlotsAction(courtId, built.slots);
-      if (!res.ok) {
-        setError(res.error ?? "Falha ao adicionar horários.");
-        return;
-      }
-      setResult({ created: res.slotsCreated ?? 0, skipped: res.slotsSkipped ?? 0 });
-      onDone();
-      // Keep the form primed for the next add; in single mode advance to the slot
-      // that starts where this one ended, so consecutive hours go in fast.
-      if (mode === "single") {
-        const next = spParts(spStartMs(date, time) + duration * 60_000);
-        setDate(next.ymd);
-        setTime(next.hm);
-      }
-    });
-  }
-
-  const previewCents = free ? 0 : reaisToCents(price);
-  const priceHint = free
-    ? "Grátis — R$ 0,00"
-    : previewCents != null
-      ? formatCurrency(previewCents)
-      : "preço padrão da quadra";
-
-  return (
-    <SectionCard
-      title="Adicionar horário"
-      description="Cria horários avulsos em qualquer data e hora, fora da grade automática. Horários já existentes no mesmo instante são ignorados."
-    >
-      <div className="space-y-4">
-        <div className="flex gap-2">
-          {(
-            [
-              ["single", "Um horário"],
-              ["range", "Vários dias"],
-            ] as const
-          ).map(([m, label]) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              className={`rounded-full px-4 py-1.5 text-[11.5px] font-600 transition-colors ${
-                mode === m
-                  ? "bg-[var(--primary)] text-[var(--primary-fg)]"
-                  : "bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {mode === "single" ? (
-          <div>
-            <label htmlFor="add_date" className={labelClass}>
-              Data
-            </label>
-            <input
-              id="add_date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className={fieldClass}
-            />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="add_from" className={labelClass}>
-                  De
-                </label>
-                <input
-                  id="add_from"
-                  type="date"
-                  value={rangeFrom}
-                  onChange={(e) => setRangeFrom(e.target.value)}
-                  className={fieldClass}
-                />
-              </div>
-              <div>
-                <label htmlFor="add_to" className={labelClass}>
-                  Até
-                </label>
-                <input
-                  id="add_to"
-                  type="date"
-                  value={rangeTo}
-                  onChange={(e) => setRangeTo(e.target.value)}
-                  className={fieldClass}
-                />
-              </div>
-            </div>
-            <div>
-              <p className={labelClass}>Dias da semana</p>
-              <div className="flex flex-wrap gap-1.5">
-                {WEEKDAYS.map((w) => {
-                  const on = weekdays.has(w.idx);
-                  return (
-                    <button
-                      key={w.idx}
-                      type="button"
-                      onClick={() => toggleWeekday(w.idx)}
-                      aria-pressed={on}
-                      className={`rounded-md border px-2.5 py-1 text-[11px] font-600 transition-colors ${
-                        on
-                          ? "border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--primary)]"
-                          : "border-[var(--border)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
-                      }`}
-                    >
-                      {w.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="add_time" className={labelClass}>
-              Hora início
-            </label>
-            <input
-              id="add_time"
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className={fieldClass}
-            />
-          </div>
-          <div>
-            <label htmlFor="add_duration" className={labelClass}>
-              Duração (min)
-            </label>
-            <input
-              id="add_duration"
-              type="number"
-              min={15}
-              step={15}
-              value={duration}
-              onChange={(e) => setDuration(Number(e.target.value))}
-              className={fieldClass}
-            />
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="add_price" className={labelInlineClass}>
-              Preço (R$)
-            </label>
-            <GratisToggle active={free} onToggle={() => setFree((v) => !v)} />
-          </div>
-          <input
-            id="add_price"
-            inputMode="decimal"
-            value={free ? "" : price}
-            onChange={(e) => setPrice(e.target.value)}
-            disabled={free}
-            placeholder={free ? "Grátis — R$ 0,00" : "ex: 250 (vazio = padrão)"}
-            className={cn(fieldClass, free && "opacity-60")}
-          />
-          <p className="mt-1 text-[10.5px] font-300 text-[var(--text-tertiary)]">
-            Preço aplicado: {priceHint}.
-          </p>
-        </div>
-
-        <div>
-          <p className={labelClass}>Status</p>
-          <div className="flex gap-2">
-            {(
-              [
-                ["available", "Disponível"],
-                ["blocked", "Bloqueado"],
-              ] as const
-            ).map(([s, label]) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatus(s)}
-                className={`rounded-lg border px-3 py-1.5 text-[11.5px] font-600 transition-colors ${
-                  status === s
-                    ? "border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--primary)]"
-                    : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error && <ErrorBanner message={error} />}
-        {result !== null && (
-          <SuccessNote>
-            {result.created.toLocaleString("pt-BR")} horário{result.created === 1 ? "" : "s"}{" "}
-            adicionado{result.created === 1 ? "" : "s"}
-            {result.skipped > 0
-              ? ` / ${result.skipped.toLocaleString("pt-BR")} já existia${
-                  result.skipped === 1 ? "" : "m"
-                }`
-              : ""}
-            .
-          </SuccessNote>
-        )}
-
-        <div className="flex justify-end border-t border-[var(--border)] pt-4">
-          <button type="button" onClick={submit} disabled={pending} className={primaryBtn}>
-            {pending ? "Adicionando…" : "Adicionar"}
-            <Plus size={11} strokeWidth={2.5} />
-          </button>
-        </div>
-      </div>
-    </SectionCard>
-  );
-}
-
 /* ══ root ═════════════════════════════════════════════════════════════════ */
 
 export function EditCourt({ court }: { court: CourtListItem }) {
@@ -1288,7 +1070,6 @@ export function EditCourt({ court }: { court: CourtListItem }) {
         onDone={slotsCreated}
         singleCourt
       />
-      <AddSlotsSection courtId={court.id} onDone={slotsCreated} />
       <ImportPrintSection courtId={court.id} courtName={court.name} onDone={slotsCreated} />
       {repriceNote && (
         <p className="flex items-center gap-2 rounded-lg border border-[var(--color-success)]/25 bg-[var(--color-success-bg)] px-3 py-2.5 text-[12px] leading-snug text-[var(--color-success)]">
