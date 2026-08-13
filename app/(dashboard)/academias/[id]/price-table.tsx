@@ -757,23 +757,13 @@ export function PriceTableSection({
         <p className="mt-2 max-w-3xl text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
           {singleCourt ? (
             <>
-              Um preço base para o dia inteiro e, por cima dele, as faixas de horário — só desta
-              quadra. Ela passa a ter tabela própria, que <strong>ganha da tabela do tipo</strong>{" "}
-              (coberta ou descoberta) e é reaplicada sozinha toda vez que o painel criar horários
-              aqui. O base pega todo horário futuro; as faixas alcançam os próximos 30 dias.
-              Quando duas faixas pegam a mesma hora, vale a de baixo. Reservas já vendidas mantêm
-              o preço combinado.
+              Tabela só desta quadra — <strong>ganha da tabela do tipo</strong>. Vira o padrão dela:
+              horário novo já nasce nele.
             </>
           ) : (
             <>
-              Um preço base para o dia inteiro e, por cima dele, as faixas de horário. Uma tabela
-              para as cobertas e outra para as descobertas — elas nunca custam o mesmo. Aplica nas
-              quadras daquele tipo de uma vez e <strong>fica valendo como padrão</strong>: toda vez
-              que o painel criar horários — regenerar a grade, acrescentar horários, importar print
-              — a tabela do tipo daquela quadra volta por cima, e o horário novo já nasce nela. O
-              base pega todo horário futuro; as faixas alcançam os próximos 30 dias. Quando duas
-              faixas pegam a mesma hora, vale a de baixo. Reservas já vendidas mantêm o preço
-              combinado.
+              Uma tabela para as cobertas, outra para as descobertas. Vira o padrão do tipo:
+              horário novo já nasce nele.
             </>
           )}
         </p>
@@ -785,7 +775,6 @@ export function PriceTableSection({
             Escondido por CSS ainda ia no HTML; melhor não existir. */}
         {!singleCourt && (
           <div>
-          <span className={labelClass}>Onde aplicar</span>
           <div className="flex flex-wrap gap-1.5">
             {SCOPES.map((sc) => {
               const n = counts[sc];
@@ -810,19 +799,13 @@ export function PriceTableSection({
               );
             })}
           </div>
-          <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            {`Cada tipo tem a sua tabela: esta cai ${
-              scope === "indoor" ? "nas cobertas" : "nas descobertas"
-            } e ${
-              scope === "indoor" ? "as descobertas" : "as cobertas"
-            } ficam como estão. Troque o tipo acima para editar a outra.`}
-          </p>
+
         </div>
         )}
 
         {/* De onde veio o que está na tela. Sem isto o formulário parece um
             rascunho em branco quando na verdade mostra a tabela em vigor. */}
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-300 text-[var(--text-tertiary)]">
+        <p className="-mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] font-300 text-[var(--text-tertiary)]">
           {loading ? (
             "Lendo a tabela…"
           ) : dirty ? (
@@ -879,8 +862,7 @@ export function PriceTableSection({
             className={fieldClass}
           />
           <p className="mt-1.5 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            Vale para toda hora que nenhuma faixa pegar. Em branco, o preço atual de cada horário
-            fica como está.
+            Em branco, cada horário fica como está.
           </p>
         </div>
 
@@ -1043,17 +1025,13 @@ export function PriceTableSection({
               const reqs = estimateRequests(targets.length, bands.length, baseCents !== null);
               return (
                 <>
-                  <span className="numeral">{reqs}</span> requisições ao servidor — uma para o
-                  preço base e uma por faixa, em cada quadra.{" "}
+                  O base pega todo horário futuro; as faixas, os próximos 30 dias. Faixa de baixo
+                  vence. Reserva vendida mantém o preço.{" "}
+                  <span className="numeral">{reqs}</span> requisições.
                 </>
               );
             })()}
-            {baseCents !== null && bands.length > 0 && (
-              <>
-                O base entra primeiro, em todos os horários, e as faixas logo em seguida por
-                cima — cada uma numa requisição só.{" "}
-              </>
-            )}
+
           </p>
         )}
 
