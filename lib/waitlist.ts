@@ -1,4 +1,5 @@
 import "server-only";
+import { TOKEN_MISSING, errorFrom, landingAuthHeaders, landingBaseUrl } from "./landing-admin";
 
 /**
  * Cliente da lista de espera (painel #15).
@@ -9,9 +10,8 @@ import "server-only";
  * uma janela de divergência —, o painel lê na fonte, por uma Pages Function
  * autenticada em `LitsLandingPage/functions/api/admin/waitlist.ts`.
  *
- * Envs no worker do backoffice:
- *   WAITLIST_API_URL    origem da landing (default https://lits.social)
- *   WAITLIST_ADMIN_TOKEN  o MESMO secret configurado no projeto Pages
+ * Host, token e tratamento de erro vêm de `lib/landing-admin` — compartilhados
+ * com o painel #16 (Professores), que lê pelo mesmo canal.
  *
  * Mesma forma do `pushRiSnapshot` (lib/ri-sync.ts), com uma diferença que
  * importa: aquele é fire-and-forget porque manda agregado e perder um snapshot
@@ -52,30 +52,6 @@ export type MarkResult =
   | { ok: true; calledAt: number | null; calledBy: string | null }
   | { ok: false; error: string };
 
-function baseUrl(): string {
-  return process.env.WAITLIST_API_URL || "https://lits.social";
-}
-
-function authHeaders(staffEmail?: string | null): Record<string, string> | null {
-  const token = process.env.WAITLIST_ADMIN_TOKEN;
-  if (!token) return null;
-  return {
-    authorization: `Bearer ${token}`,
-    ...(staffEmail ? { "x-lits-staff-email": staffEmail } : {}),
-  };
-}
-
-/** Mensagem de erro da Function, sem deixar vazar corpo cru na tela. */
-async function errorFrom(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: unknown };
-    if (typeof body.error === "string" && body.error) return body.error;
-  } catch {
-    /* corpo não-JSON: fica o fallback */
-  }
-  return `${fallback} (HTTP ${res.status})`;
-}
-
 /**
  * A lista, opcionalmente recortada por período de inscrição.
  *
@@ -90,16 +66,10 @@ export async function fetchWaitlist(opts?: {
   to?: number;
   limit?: number;
 }): Promise<WaitlistResult> {
-  const headers = authHeaders();
-  if (!headers) {
-    return {
-      ok: false,
-      error:
-        "WAITLIST_ADMIN_TOKEN não está configurado neste ambiente — o painel não consegue autenticar na base da lista de espera.",
-    };
-  }
+  const headers = landingAuthHeaders();
+  if (!headers) return { ok: false, error: TOKEN_MISSING };
 
-  const url = new URL("/api/admin/waitlist", baseUrl());
+  const url = new URL("/api/admin/waitlist", landingBaseUrl());
   if (opts?.from !== undefined) url.searchParams.set("from", String(opts.from));
   if (opts?.to !== undefined) url.searchParams.set("to", String(opts.to));
   if (opts?.limit !== undefined) url.searchParams.set("limit", String(opts.limit));
@@ -129,10 +99,8 @@ export async function markWaitlistCalled(
   called: boolean,
   staffEmail: string | null
 ): Promise<MarkResult> {
-  const headers = authHeaders(staffEmail);
-  if (!headers) {
-    return { ok: false, error: "WAITLIST_ADMIN_TOKEN não está configurado neste ambiente." };
-  }
+  const headers = landingAuthHeaders(staffEmail);
+  if (!headers) return { ok: false, error: TOKEN_MISSING };
   if (called && !staffEmail) {
     // O check só vale se registrar QUEM chamou; sem identidade a marcação
     // seria um booleano anônimo, que é o que foi pedido para não ser.
@@ -144,7 +112,7 @@ export async function markWaitlistCalled(
 
   let res: Response;
   try {
-    res = await fetch(new URL("/api/admin/waitlist", baseUrl()), {
+    res = await fetch(new URL("/api/admin/waitlist", landingBaseUrl()), {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({ id, called }),

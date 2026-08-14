@@ -24,6 +24,7 @@ import {
   ShieldAlert,
   ScrollText,
   ClipboardList,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { OpsSummary } from "@/lib/ops";
@@ -52,6 +53,7 @@ const nav = [
   { id: "13", label: "Enviar Anúncio",        href: "/anuncios",               icon: Megaphone },
   { id: "14", label: "Públicos",              href: "/publicos",               icon: Users2 },
   { id: "15", label: "Lista de Espera",       href: "/lista-espera",           icon: ClipboardList },
+  { id: "16", label: "Professores",           href: "/professores",            icon: GraduationCap },
 ];
 
 // Red is the money-and-moderation colour. Only these panels get to use it:

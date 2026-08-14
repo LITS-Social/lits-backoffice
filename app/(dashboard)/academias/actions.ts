@@ -3,6 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { getApi } from "@/lib/api";
 import type { components } from "@/lib/api/openapi";
+import {
+  academiasParaPublicar,
+  publishAcademias,
+  type FranchiseLike,
+  type PublishResult,
+} from "@/lib/landing-academias";
 
 /* ══ o relatório que o BFF devolve ═════════════════════════════════════════ */
 
@@ -278,4 +284,35 @@ export async function deleteFranchiseAction(
   revalidatePath(`/academias/${id}`);
   revalidatePath("/quadras");
   return res;
+}
+
+/* ══ publicação do diretório na landing ════════════════════════════════════ */
+
+/**
+ * Manda o diretório de academias para lits.social, que o usa no dropdown
+ * "onde você dá aula" do cadastro de professores (ver lib/landing-academias).
+ *
+ * É EXPLÍCITO, com botão, e não um efeito colateral de criar/editar academia.
+ * Sincronizar sozinho no salvamento pareceria melhor até o dia em que a landing
+ * estivesse fora do ar: a academia seria salva, o push falharia calado e o
+ * dropdown ficaria velho sem ninguém saber. Com botão, a tela mostra de quando
+ * é a lista publicada e quantas academias ela tem — a defasagem fica VISÍVEL, e
+ * republicar é um clique.
+ */
+export async function publishAcademiasToLandingAction(
+  force = false
+): Promise<PublishResult & { source?: number }> {
+  const api = await getApi();
+  const { data, error } = await api.GET("/v1/ops/franchises");
+  if (error) {
+    return {
+      ok: false,
+      error: error.detail || error.title || "Falha ao listar as academias para publicar.",
+    };
+  }
+
+  const academias = academiasParaPublicar((data.franchises ?? []) as FranchiseLike[]);
+  const res = await publishAcademias(academias, force);
+  if (res.ok) revalidatePath("/academias");
+  return { ...res, source: academias.length };
 }

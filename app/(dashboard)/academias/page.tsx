@@ -4,7 +4,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PanelError } from "../_components/notes";
 import { listCourtsAction, type CourtListItem } from "../quadras/actions";
 import { listFranchisesAction } from "../quadras/nova/actions";
+import { academiasParaPublicar, fetchMirrorStatus, type FranchiseLike } from "@/lib/landing-academias";
 import { AcademiasTable } from "./academias-table";
+import { LandingSync } from "./landing-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +30,12 @@ export default async function AcademiasPage() {
   // aparecem nesta lista (que é derivada das quadras). Elas ficam num bloco
   // recolhido no rodapé, e não misturadas na grade: são centenas de venues de
   // diretório do crawler, e a grade é a tela de trabalho do dia a dia.
-  const [{ courts, error }, { franchises, error: franchisesError }] = await Promise.all([
+  const [{ courts, error }, { franchises, error: franchisesError }, mirror] = await Promise.all([
     listCourtsAction(),
     listFranchisesAction(),
+    // Estado do espelho da landing. Falha aqui NÃO derruba o painel: a faixa
+    // mostra o erro e o resto da tela de gestão continua utilizável.
+    fetchMirrorStatus(),
   ]);
   if (error) return <PanelError eyebrow="Gestão" title="Academias" detail={error} />;
 
@@ -70,6 +75,16 @@ export default async function AcademiasPage() {
         }
       />
       <div className="space-y-5 px-4 sm:px-8 py-6">
+        {/* A landing não consegue ler o Postgres (o BFF exige JWT humano), então
+            este diretório é EMPURRADO para lá. A faixa mostra o que está no ar
+            e republica — ver lib/landing-academias. */}
+        <LandingSync
+          publicado={mirror.ok ? mirror.total : null}
+          syncedAt={mirror.ok ? mirror.syncedAt : null}
+          origem={academiasParaPublicar(franchises as FranchiseLike[]).length}
+          erro={mirror.ok ? undefined : mirror.error}
+        />
+
         <AcademiasTable academias={academias} />
 
         {franchisesError ? (
