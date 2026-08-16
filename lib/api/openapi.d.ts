@@ -132,6 +132,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/bookings/{booking_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancelar uma reserva pela ops, com estorno integral (painéis #06 e #10)
+         * @description Cancela e devolve TUDO a quem pagou, ignorando de propósito a janela de reembolso do app (100% com antecedência, 0% fora dela): quando quem cancela é a ops, a culpa não é do jogador. Alcança reserva confirmada e também aquelas em que apenas um lado pagou — nessas a LITS já está com dinheiro e a quadra nunca foi reservada no clube. Recusa estados terminais. O ator vem da sessão verificada, nunca do corpo. Staff-gated como os demais /v1/ops/* de escrita.
+         */
+        post: operations["ops-cancel-booking"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/cancellations": {
         parameters: {
             query?: never;
@@ -1312,6 +1332,32 @@ export interface components {
             /** @description Blocked user UUID */
             target_user_id: string;
         };
+        CancelBookingInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CancelBookingInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Por que está cancelando (ex.: clube não tinha a quadra) */
+            reason: string;
+        };
+        CancelBookingResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CancelBookingResponseBody.json
+             */
+            readonly $schema?: string;
+            booking_id: string;
+            currency?: string;
+            /** Format: int64 */
+            refunded_cents: number;
+            /** Format: int32 */
+            refunded_legs: number;
+            /** @description Sempre 'cancelled' quando deu certo */
+            status: string;
+        };
         CancellationItem: {
             booking_id: string;
             cancel_reason: string;
@@ -2394,18 +2440,31 @@ export interface components {
         };
         ManualReservationItem: {
             booking_id: string;
+            /** @description reserve | release */
+            club_ack_action?: string;
+            /** Format: date-time */
+            club_ack_at?: string;
+            /** @description Quem carimbou (Slack). Auditoria, nunca autorização */
+            club_ack_by?: string;
+            /** @description Nome do clube a ligar */
+            club_name?: string;
+            /** @description WhatsApp do clube (E.164). Vazio = não cadastrado; o painel não oferece ligar */
+            club_phone?: string;
             court_id?: string;
             /** @description court_name, else private-court bairro/rua, else street_address */
             court_label: string;
             currency?: string;
             guest?: components["schemas"]["OpsUserRef"];
+            guest_has_paid: boolean;
             host: components["schemas"]["OpsUserRef"];
-            /** @description always 'approved' for this panel */
+            host_has_paid: boolean;
             payment_status: string;
             /** Format: int64 */
             price_cents: number;
             /** Format: date-time */
             starts_at: string;
+            /** @description confirmed | awaiting_guest_accept | awaiting_guest_payment */
+            status: string;
             /** @description franchises.street_address for the physical reservation call */
             street_address?: string;
             /** @description clay | hard | grass | beach | carpet */
@@ -2418,6 +2477,8 @@ export interface components {
              * @example https://example.com/schemas/ManualReservationsResponseBody.json
              */
             readonly $schema?: string;
+            /** Format: int32 */
+            pending: number;
             reservations: components["schemas"]["ManualReservationItem"][] | null;
             /** Format: int32 */
             total: number;
@@ -4094,6 +4155,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListBlockGraphBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-cancel-booking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 da reserva a cancelar */
+                booking_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelBookingInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelBookingResponseBody"];
                 };
             };
             /** @description Error */

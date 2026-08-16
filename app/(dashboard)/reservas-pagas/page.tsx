@@ -27,6 +27,7 @@ export default async function ReservasPagasPage() {
   const reservations = data.reservations ?? [];
   const total = data.total ?? reservations.length;
   const truncated = reservations.length < total;
+  const pending = data.pending ?? reservations.length;
 
   // The money these confirmed-and-paid bookings represent. It is the sum of the
   // rows we actually hold: when everything fits under LIMIT that IS the total and
@@ -39,16 +40,22 @@ export default async function ReservasPagasPage() {
       <PageHeader
         eyebrow="#10"
         title="Reservas Pagas"
-        description="Partidas pagas e confirmadas que ainda precisam da quadra reservada no clube. Quem ligar, para onde, e o telefone dos dois jogadores."
+        description="Partidas com dinheiro em caixa que ainda precisam da quadra reservada no clube — inclusive quando só um dos jogadores pagou. Quem ligar, para onde, o telefone dos dois jogadores, e cancelar com estorno integral."
       />
 
       <StatRail
         stats={[
           {
-            label: "Reservas a fazer",
-            value: total,
+            // O que é TAREFA de verdade: ainda sem carimbo de reservado no
+            // clube. As já reservadas seguem na lista com selo (decisão do
+            // founder), então o total sozinho não diz o que falta fazer.
+            label: "Falta reservar",
+            value: pending,
             tone: "attention",
-            hint: truncated ? `só ${reservations.length} carregadas — veja abaixo` : undefined,
+            hint:
+              truncated
+                ? `contado nas ${reservations.length} carregadas — pode haver mais`
+                : `de ${total} reservas com dinheiro em caixa`,
           },
           {
             label: truncated ? "Valor carregado" : "Valor pago",

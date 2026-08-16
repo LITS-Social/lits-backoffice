@@ -1,11 +1,13 @@
 "use client";
 
-import { MapPin } from "lucide-react";
+import { MapPin, Phone } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { DetailGrid } from "@/components/ui/detail-grid";
+import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import type { components } from "@/lib/api/openapi";
 import { Absent, Contact, Player, When } from "../_components/cells";
+import { CancelBookingButton } from "../_components/cancel-booking";
 
 type ManualReservationItem = components["schemas"]["ManualReservationItem"];
 
@@ -55,6 +57,49 @@ const columns: DataTableColumn<ManualReservationItem>[] = [
             {r.street_address}
           </span>
         )}
+        {/* O "quem ligar". Sem telefone cadastrado a linha some — melhor
+            ausência honesta que um botão que não disca. */}
+        {r.club_phone && (
+          <a
+            href={`https://wa.me/${r.club_phone.replace(/\D/g, "")}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-fit items-center gap-1 text-[10.5px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          >
+            <Phone size={10} strokeWidth={2} className="shrink-0" />
+            {r.club_name ? `${r.club_name} · ` : ""}
+            {r.club_phone}
+          </a>
+        )}
+      </span>
+    ),
+  },
+  {
+    id: "situacao",
+    header: "Situação",
+    width: "150px",
+    // Ordena por urgência de ATENÇÃO, não alfabética: o que ninguém carimbou e
+    // está com pagamento pela metade vem primeiro.
+    sortAccessor: (r) => (r.club_ack_at ? 2 : 0) + (r.host_has_paid && r.guest_has_paid ? 1 : 0),
+    render: (r) => (
+      <span className="flex flex-col items-start gap-1">
+        {/* Quem pagou. Numa partida dividida são DUAS cobranças; "pago" sem
+            dizer de quem esconde exatamente o caso que este painel passou a
+            cobrir — dinheiro parado de um lado só. */}
+        {r.host_has_paid && r.guest_has_paid ? (
+          <Badge variant="success">Os dois pagaram</Badge>
+        ) : r.host_has_paid ? (
+          <Badge variant="warning">Só o jogador pagou</Badge>
+        ) : (
+          <Badge variant="warning">Só o adversário pagou</Badge>
+        )}
+        {r.club_ack_at ? (
+          <Badge variant="info">
+            {r.club_ack_action === "release" ? "Liberada no clube" : "Reservada no clube"}
+          </Badge>
+        ) : (
+          <Badge variant="error">Falta reservar</Badge>
+        )}
       </span>
     ),
   },
@@ -92,6 +137,14 @@ const columns: DataTableColumn<ManualReservationItem>[] = [
         <Absent />
       ),
   },
+  {
+    id: "acoes",
+    header: "Ações",
+    width: "168px",
+    render: (r) => (
+      <CancelBookingButton bookingId={r.booking_id} priceLabel={formatCurrency(r.price_cents, r.currency)} />
+    ),
+  },
 ];
 
 export function ManualReservationsTable({ reservations }: { reservations: ManualReservationItem[] }) {
@@ -120,6 +173,18 @@ export function ManualReservationsTable({ reservations }: { reservations: Manual
             { label: "Valor pago", value: formatCurrency(r.price_cents, r.currency) },
             { label: "Moeda", value: r.currency ?? "BRL" },
             { label: "Pagamento", value: r.payment_status },
+            { label: "Estado", value: r.status },
+            { label: "Jogador pagou", value: r.host_has_paid ? "sim" : "não" },
+            { label: "Adversário pagou", value: r.guest_has_paid ? "sim" : "não" },
+            { label: "Clube", value: r.club_name ?? "—" },
+            { label: "Telefone do clube", value: r.club_phone ?? "—" },
+            {
+              label: "Reserva no clube",
+              value: r.club_ack_at
+                ? `${r.club_ack_action === "release" ? "liberada" : "reservada"} em ${new Date(r.club_ack_at).toLocaleString("pt-BR")}`
+                : "ainda não feita",
+            },
+            { label: "Quem carimbou", value: r.club_ack_by ?? "—" },
             { label: "Horário da partida", value: new Date(r.starts_at).toLocaleString("pt-BR") },
             { label: "Jogador", value: r.host.name },
             { label: "Jogador ID", value: r.host.user_id, mono: true },

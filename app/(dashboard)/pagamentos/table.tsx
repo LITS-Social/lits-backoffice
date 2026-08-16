@@ -6,6 +6,7 @@ import { DetailGrid } from "@/components/ui/detail-grid";
 import { formatCurrency } from "@/lib/utils";
 import type { components } from "@/lib/api/openapi";
 import { Player, When, rail } from "../_components/cells";
+import { CancelBookingButton } from "../_components/cancel-booking";
 
 type PaymentIssueItem = components["schemas"]["PaymentIssueItem"];
 
@@ -114,6 +115,25 @@ const columns: DataTableColumn<PaymentIssueItem>[] = [
         </Badge>
       );
     },
+  },
+  {
+    id: "acoes",
+    header: "Ações",
+    width: "168px",
+    // Mesmo botão do painel #10, de propósito: um pagamento preso numa reserva
+    // viva muitas vezes se resolve cancelando com estorno, e mandar a ops
+    // trocar de tela pra isso era o que tornava o cancelamento manual.
+    //
+    // Reserva já morta (cancelada) não oferece o botão: o servidor recusaria
+    // estado terminal, e oferecer o que vai falhar é pior que não oferecer.
+    render: (p) => (
+      <CancelBookingButton
+        bookingId={p.booking_id}
+        priceLabel={formatCurrency(p.amount_cents, p.currency)}
+        disabled={isDead(p.booking_status)}
+        disabledHint="A reserva já está cancelada — não há o que cancelar."
+      />
+    ),
   },
 ];
 
