@@ -6,8 +6,16 @@ import { DetailGrid } from "@/components/ui/detail-grid";
 import { formatCurrency } from "@/lib/utils";
 import type { components } from "@/lib/api/openapi";
 import { Player, When } from "../_components/cells";
+import { CancelBookingButton } from "../_components/cancel-booking";
 
 type SuccessfulPaymentItem = components["schemas"]["SuccessfulPaymentItem"];
+
+/**
+ * Reserva que ja acabou ou ja morreu nao tem o que cancelar — o servidor
+ * recusaria estado terminal, e oferecer o que vai falhar e pior que nao
+ * oferecer. 'refunded' entra aqui: o dinheiro ja voltou.
+ */
+const TERMINAIS = new Set(["cancelled", "played", "no_show", "refunded", "expired"]);
 
 const columns: DataTableColumn<SuccessfulPaymentItem>[] = [
   {
@@ -40,6 +48,23 @@ const columns: DataTableColumn<SuccessfulPaymentItem>[] = [
     width: "168px",
     sortAccessor: (p) => p.booking_status,
     render: (p) => <Badge variant="success">{p.booking_status}</Badge>,
+  },
+  {
+    id: "acoes",
+    header: "Ações",
+    width: "168px",
+    // Mesmo botao dos paineis #10 e da tabela de problemas: pagamento que
+    // entrou numa reserva ainda viva se resolve cancelando com estorno, e
+    // mandar a ops trocar de tela pra isso era o que mantinha o cancelamento
+    // manual.
+    render: (p) => (
+      <CancelBookingButton
+        bookingId={p.booking_id}
+        priceLabel={formatCurrency(p.amount_cents, p.currency)}
+        disabled={TERMINAIS.has(p.booking_status)}
+        disabledHint="A reserva já terminou ou foi cancelada — não há o que cancelar."
+      />
+    ),
   },
 ];
 

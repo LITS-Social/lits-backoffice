@@ -24,6 +24,26 @@ const SURFACE_LABELS: Record<string, string> = {
   carpet: "Carpete",
 };
 
+/**
+ * Estados em que a partida ainda vai acontecer — os unicos em que faz sentido
+ * ligar pro clube. Espelha `precisaReservaNoClube` no BFF, que e quem conta o
+ * numero de pendentes; se os dois divergirem, o contador do topo passa a
+ * discordar dos selos da tabela.
+ *
+ * Lista de PERMISSAO: estado novo entra como "nao e tarefa" ate alguem decidir.
+ */
+const VIVOS = new Set(["confirmed", "awaiting_guest_accept", "awaiting_guest_payment", "checked_in"]);
+
+/** Como cada estado terminal se chama pra quem le o painel. */
+const STATUS_LABEL: Record<string, string> = {
+  cancelled: "Cancelada",
+  played: "Jogada",
+  no_show: "Nao compareceu",
+  refunded: "Estornada",
+  pending: "Aguardando pagamento",
+  checked_in: "Check-in feito",
+};
+
 function surfaceLabel(value?: string): string | undefined {
   if (!value) return undefined;
   return SURFACE_LABELS[value] ?? value;
@@ -105,8 +125,12 @@ const columns: DataTableColumn<ManualReservationItem>[] = [
           <Badge variant="info">
             {r.club_ack_action === "release" ? "Liberada no clube" : "Reservada no clube"}
           </Badge>
-        ) : r.status !== undefined ? (
+        ) : r.status !== undefined && VIVOS.has(r.status) ? (
           <Badge variant="error">Falta reservar</Badge>
+        ) : r.status && STATUS_LABEL[r.status] ? (
+          // Terminal: nao e tarefa, e dizer "falta reservar" numa partida
+          // cancelada seria mandar a ops ligar pro clube a toa.
+          <Badge variant="muted">{STATUS_LABEL[r.status]}</Badge>
         ) : null}
       </span>
     ),
@@ -150,7 +174,12 @@ const columns: DataTableColumn<ManualReservationItem>[] = [
     header: "Ações",
     width: "168px",
     render: (r) => (
-      <CancelBookingButton bookingId={r.booking_id} priceLabel={formatCurrency(r.price_cents, r.currency)} />
+      <CancelBookingButton
+        bookingId={r.booking_id}
+        priceLabel={formatCurrency(r.price_cents, r.currency)}
+        disabled={r.status !== undefined && !VIVOS.has(r.status)}
+        disabledHint="A reserva já terminou ou foi cancelada — não há o que cancelar."
+      />
     ),
   },
 ];

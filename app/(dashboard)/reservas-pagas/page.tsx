@@ -40,7 +40,7 @@ export default async function ReservasPagasPage() {
       <PageHeader
         eyebrow="#10"
         title="Reservas Pagas"
-        description="Partidas com dinheiro em caixa que ainda precisam da quadra reservada no clube — inclusive quando só um dos jogadores pagou. Quem ligar, para onde, o telefone dos dois jogadores, e cancelar com estorno integral."
+        description="Todas as reservas pagas que já existiram, inclusive as em que só um jogador pagou. O selo diz quais ainda precisam da quadra reservada no clube. Quem ligar, para onde, o telefone dos dois jogadores, e cancelar com estorno integral."
       />
 
       <StatRail
@@ -52,10 +52,13 @@ export default async function ReservasPagasPage() {
             label: "Falta reservar",
             value: pending,
             tone: "attention",
+            // Conta so partida que ainda vai acontecer: reserva cancelada ou
+            // ja jogada nao precisa de quadra segurada no clube, e inflar o
+            // numero com elas faria o painel pedir trabalho que nao existe.
             hint:
               truncated
                 ? `contado nas ${reservations.length} carregadas — pode haver mais`
-                : `de ${total} reservas com dinheiro em caixa`,
+                : `de ${total} reservas pagas no histórico`,
           },
           {
             label: truncated ? "Valor carregado" : "Valor pago",
