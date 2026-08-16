@@ -85,21 +85,29 @@ const columns: DataTableColumn<ManualReservationItem>[] = [
       <span className="flex flex-col items-start gap-1">
         {/* Quem pagou. Numa partida dividida são DUAS cobranças; "pago" sem
             dizer de quem esconde exatamente o caso que este painel passou a
-            cobrir — dinheiro parado de um lado só. */}
-        {r.host_has_paid && r.guest_has_paid ? (
+            cobrir — dinheiro parado de um lado só.
+            AUSENTE ≠ FALSO: um BFF anterior a cbade74 não manda estes campos,
+            e tratar `undefined` como "não pagou" faria toda linha afirmar "só
+            o adversário pagou". Sem o dado, o painel cala em vez de mentir. */}
+        {r.host_has_paid === undefined && r.guest_has_paid === undefined ? (
+          <Badge variant="muted">Pagamento não informado</Badge>
+        ) : r.host_has_paid && r.guest_has_paid ? (
           <Badge variant="success">Os dois pagaram</Badge>
         ) : r.host_has_paid ? (
           <Badge variant="warning">Só o jogador pagou</Badge>
         ) : (
           <Badge variant="warning">Só o adversário pagou</Badge>
         )}
+        {/* Mesmo cuidado: "falta reservar" só pode ser dito quando o campo
+            existe e veio vazio. Se o servidor nem manda `status`, ele é antigo
+            demais pra saber do carimbo, e afirmar que falta seria chute. */}
         {r.club_ack_at ? (
           <Badge variant="info">
             {r.club_ack_action === "release" ? "Liberada no clube" : "Reservada no clube"}
           </Badge>
-        ) : (
+        ) : r.status !== undefined ? (
           <Badge variant="error">Falta reservar</Badge>
-        )}
+        ) : null}
       </span>
     ),
   },
