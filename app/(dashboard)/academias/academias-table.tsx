@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { ArrowRight, MapPin, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, ChevronDown, MapPin, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { AcademiaRow } from "./page";
@@ -31,9 +31,47 @@ const KIND_FILTERS = [
   { value: "listing", label: "Diretório" },
 ] as const;
 
+/** As ordens que a lista oferece. A alfabética é a primeira porque é a única
+    que não depende de dado que pode faltar. */
+const SORTS = [
+  { value: "name", label: "Ordem alfabética" },
+  { value: "players", label: "Mais jogadores" },
+  { value: "courts", label: "Mais quadras" },
+  { value: "bookings", label: "Mais partidas" },
+] as const;
+
+type SortValue = (typeof SORTS)[number]["value"];
+
+const SORT_KEY = "lits-academias-sort";
+
 export function AcademiasTable({ academias }: { academias: AcademiaRow[] }) {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("");
+  const [sort, setSort] = useState<SortValue>("name");
+
+  // A escolha fica até ser trocada. Lida DEPOIS do primeiro render, num rAF:
+  // o servidor não tem localStorage, e ler durante o render faria o HTML do
+  // servidor e o do cliente discordarem.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      try {
+        const saved = localStorage.getItem(SORT_KEY);
+        if (saved && SORTS.some((o) => o.value === saved)) setSort(saved as SortValue);
+      } catch {
+        /* sem localStorage a lista abre na ordem alfabética, que é o padrão */
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  function changeSort(v: SortValue) {
+    setSort(v);
+    try {
+      localStorage.setItem(SORT_KEY, v);
+    } catch {
+      /* a ordem vale nesta sessão mesmo sem conseguir guardar */
+    }
+  }
 
   const shown = useMemo(() => {
     const norm = (s: string) =>
@@ -48,10 +86,27 @@ export function AcademiasTable({ academias }: { academias: AcademiaRow[] }) {
         return true;
       })
       .sort((x, y) => {
+        if (sort === "name") return x.name.localeCompare(y.name, "pt-BR");
+        // Contagem AUSENTE não é zero: a academia não apareceu no diretório, e
+        // ordenar por um zero inventado a jogaria para o fim como se não
+        // tivesse ninguém. Ela vai para o fim mesmo, mas por não ter resposta.
+        const val = (a: AcademiaRow) =>
+          sort === "courts"
+            ? a.courts.length
+            : sort === "players"
+              ? a.preferredByUsersCount
+              : a.bookingsCount;
+        const vx = val(x);
+        const vy = val(y);
+        if (vx == null && vy == null) return x.name.localeCompare(y.name, "pt-BR");
+        if (vx == null) return 1;
+        if (vy == null) return -1;
+        // Empate cai no de sempre: parceiro antes, e então alfabética.
+        if (vy !== vx) return vy - vx;
         const r = kindBadge(x).rank - kindBadge(y).rank;
         return r !== 0 ? r : x.name.localeCompare(y.name, "pt-BR");
       });
-  }, [academias, q, kind]);
+  }, [academias, q, kind, sort]);
 
   return (
     <div className="space-y-4">
@@ -86,6 +141,27 @@ export function AcademiasTable({ academias }: { academias: AcademiaRow[] }) {
               {f.label}
             </button>
           ))}
+        </div>
+
+        {/* Select nativo de propósito: abre no teclado, no leitor de tela e no
+            seletor do celular sem eu reimplementar nenhum dos três. */}
+        <div className="relative ml-auto">
+          <select
+            aria-label="Ordenar por"
+            value={sort}
+            onChange={(e) => changeSort(e.target.value as SortValue)}
+            className="appearance-none rounded-full border border-[var(--border)] bg-[var(--bg)] py-1.5 pl-3.5 pr-8 text-[11px] font-600 text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] focus:border-[var(--primary)] focus:outline-none"
+          >
+            {SORTS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={12}
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
+          />
         </div>
       </div>
 
