@@ -9,7 +9,7 @@
 
 export const BP_PREMISSAS = {
   /** Jogos pagos por usuário ativo / mês — a premissa central do modelo. */
-  jogosPagosPorAtivoMes: 1.0,
+  jogosPagosPorAtivoMes: 0.5,
   /** Jogos (pagos + normais) por usuário ativo / mês. */
   jogosPorAtivoMes: 2.0,
   /** Ticket médio da quadra (premissa de mercado SP). */
@@ -17,13 +17,13 @@ export const BP_PREMISSAS = {
   /** Comissão da academia sobre o valor da quadra. */
   comissao: 0.075,
   /** Markup cobrado do usuário sobre o valor da quadra. */
-  markup: 0.10,
+  markup: 0.075,
   /** Taxa de marcação fixa por partida (R$3 de cada jogador). */
   taxaMarcacaoCents: 600,
-  /** Receita LITS por partida na premissa (comissão + markup + marcação). */
-  receitaPorPartidaCents: 5_000,
-  /** GMV por partida na premissa (valor que passa pelo gateway). */
-  gmvPorPartidaCents: 27_500,
+  /** Receita LITS por partida na premissa: 250 × (7,5% + 7,5%) + R$6. */
+  receitaPorPartidaCents: 4_350,
+  /** GMV por partida na premissa: o ticket mais o markup do usuário. */
+  gmvPorPartidaCents: 26_875,
   churnGratuitos: 0.15,
   churnMembros: 0.05,
 } as const;
@@ -48,44 +48,49 @@ export type BpMonth = {
 export const BP_MENSAL: Record<string, BpMonth> = {
   "2026-07": { baseAcumulada: 130 },
   "2026-08": {
-    membros: 15, ativacao: 0.25, novosAtivados: 151, totalAtivos: 151, ativosSobreBase: 0.206,
-    churnBlended: 0.15, partidasPagasMes: 76, partidasTotaisMes: 151,
-    gmvCents: 2_080_800, novosCadastros: 605, baseAcumulada: 735,
+    membros: 13, ativacao: 0.12, novosAtivados: 112, totalAtivos: 112,
+    ativosSobreBase: 0.1053, churnBlended: 0.15, partidasPagasMes: 28,
+    partidasTotaisMes: 112, gmvCents: 749_812, novosCadastros: 930, baseAcumulada: 1060,
   },
   "2026-09": {
-    membros: 57, ativacao: 0.30, novosAtivados: 389, totalAtivos: 520, ativosSobreBase: 0.256,
-    churnBlended: 0.14, partidasPagasMes: 260, partidasTotaisMes: 520,
-    gmvCents: 7_144_300, novosCadastros: 1_298, baseAcumulada: 2_033,
+    membros: 51, ativacao: 0.16, novosAtivados: 296, totalAtivos: 392,
+    ativosSobreBase: 0.1348, churnBlended: 0.138, partidasPagasMes: 110,
+    partidasTotaisMes: 392, gmvCents: 2_951_518, novosCadastros: 1850, baseAcumulada: 2910,
   },
   "2026-10": {
-    membros: 146, ativacao: 0.35, novosAtivados: 771, totalAtivos: 1_219, ativosSobreBase: 0.288,
-    churnBlended: 0.139, partidasPagasMes: 609, partidasTotaisMes: 1_219,
-    gmvCents: 16_754_600, novosCadastros: 2_203, baseAcumulada: 4_237,
+    membros: 133, ativacao: 0.2, novosAtivados: 610, totalAtivos: 949,
+    ativosSobreBase: 0.1591, churnBlended: 0.137, partidasPagasMes: 304,
+    partidasTotaisMes: 949, gmvCents: 8_158_916, novosCadastros: 3051, baseAcumulada: 5961,
   },
   "2026-11": {
-    membros: 354, ativacao: 0.42, novosAtivados: 1_571, totalAtivos: 2_621, ativosSobreBase: 0.329,
-    churnBlended: 0.138, partidasPagasMes: 1_311, partidasTotaisMes: 2_621,
-    gmvCents: 36_043_600, novosCadastros: 3_740, baseAcumulada: 7_977,
+    membros: 305, ativacao: 0.24, novosAtivados: 1215, totalAtivos: 2035,
+    ativosSobreBase: 0.1846, churnBlended: 0.136, partidasPagasMes: 712,
+    partidasTotaisMes: 2035, gmvCents: 19_138_561, novosCadastros: 5062,
+    baseAcumulada: 11_024,
   },
   "2026-12": {
-    membros: 753, ativacao: 0.50, novosAtivados: 2_753, totalAtivos: 5_017, ativosSobreBase: 0.372,
-    churnBlended: 0.137, partidasPagasMes: 2_508, partidasTotaisMes: 5_017,
-    gmvCents: 68_983_500, novosCadastros: 5_507, baseAcumulada: 13_484,
+    membros: 652, ativacao: 0.28, novosAtivados: 2077, totalAtivos: 3837,
+    ativosSobreBase: 0.2081, churnBlended: 0.135, partidasPagasMes: 1420,
+    partidasTotaisMes: 3837, gmvCents: 38_157_173, novosCadastros: 7419,
+    baseAcumulada: 18_443,
   },
   "2027-01": {
-    membros: 1_217, ativacao: 0.50, novosAtivados: 3_772, totalAtivos: 8_112, ativosSobreBase: 0.386,
-    churnBlended: 0.135, partidasPagasMes: 4_056, partidasTotaisMes: 8_112,
-    gmvCents: 111_541_100, novosCadastros: 7_545, baseAcumulada: 21_029,
+    membros: 1179, ativacao: 0.32, novosAtivados: 3223, totalAtivos: 6550,
+    ativosSobreBase: 0.2297, churnBlended: 0.133, partidasPagasMes: 2555,
+    partidasTotaisMes: 6550, gmvCents: 68_656_242, novosCadastros: 10_073,
+    baseAcumulada: 28_516,
   },
   "2027-02": {
-    membros: 1_754, ativacao: 0.50, novosAtivados: 4_674, totalAtivos: 11_691, ativosSobreBase: 0.385,
-    churnBlended: 0.135, partidasPagasMes: 5_846, partidasTotaisMes: 11_691,
-    gmvCents: 160_753_900, novosCadastros: 9_348, baseAcumulada: 30_377,
+    membros: 1946, ativacao: 0.36, novosAtivados: 4557, totalAtivos: 10_242,
+    ativosSobreBase: 0.2488, churnBlended: 0.132, partidasPagasMes: 4097,
+    partidasTotaisMes: 10_242, gmvCents: 110_104_112, novosCadastros: 12_657,
+    baseAcumulada: 41_173,
   },
   "2027-03": {
-    membros: 2_336, ativacao: 0.50, novosAtivados: 5_458, totalAtivos: 15_571, ativosSobreBase: 0.377,
-    churnBlended: 0.135, partidasPagasMes: 7_785, partidasTotaisMes: 15_571,
-    gmvCents: 214_097_800, novosCadastros: 10_916, baseAcumulada: 41_293,
+    membros: 2870, ativacao: 0.37, novosAtivados: 5449, totalAtivos: 14_350,
+    ativosSobreBase: 0.2567, churnBlended: 0.131, partidasPagasMes: 5740,
+    partidasTotaisMes: 14_350, gmvCents: 154_258_430, novosCadastros: 14_727,
+    baseAcumulada: 55_900,
   },
 };
 
@@ -205,8 +210,26 @@ export async function getBp(): Promise<Record<string, BpMonth>> {
   }
 }
 
+/**
+ * Meta de PERNAS pagas por ativo no mês — o multiplicador que transforma
+ * ativo em receita.
+ *
+ * Não é a premissa de 0,5: essa é só o ponto de partida. O plano sobe a fatia
+ * de partidas pagas dentro do app de 25% para 40% ao longo do ano, e a razão
+ * acompanha — 0,50 em ago, 0,64 em out, 0,80 em fev. Comparar o real de
+ * dezembro com 0,5 diria "acima da meta" quando o plano pede 0,74.
+ *
+ * Em PERNAS porque é assim que o real é contado (cada partida consome dois
+ * jogadores) e é assim que a premissa do BP fala: 2,0 jogos por ativo/mês com
+ * uma partida por ativo é exatamente duas pernas.
+ */
+export function metaPernasPagasPorAtivo(m: BpMonth): number | null {
+  if (m.partidasPagasMes === undefined || !m.totalAtivos) return null;
+  return (2 * m.partidasPagasMes) / m.totalAtivos;
+}
+
 /** Receita LITS de uma partida paga pela fórmula do BP:
-    comissão 7,5% + markup 10% sobre o valor da quadra + R$6 de marcação. */
+    comissão 7,5% + markup 7,5% sobre o valor da quadra + R$6 de marcação. */
 export function receitaPorPartidaCents(priceCents: number): number {
   return Math.round(
     priceCents * (BP_PREMISSAS.comissao + BP_PREMISSAS.markup) + BP_PREMISSAS.taxaMarcacaoCents

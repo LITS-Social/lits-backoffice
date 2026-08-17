@@ -2,7 +2,13 @@ import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { getProductMetrics, type NorthMetrics, type PlatformSplit } from "@/lib/metrics";
-import { BP_MENSAL, BP_PREMISSAS, bpTarget, getBp } from "@/lib/bp";
+import {
+  BP_MENSAL,
+  BP_PREMISSAS,
+  bpTarget,
+  getBp,
+  metaPernasPagasPorAtivo,
+} from "@/lib/bp";
 import { pushRiSnapshot } from "@/lib/ri-sync";
 import { buildBpPace } from "@/lib/bp-pace";
 import { cn } from "@/lib/utils";
@@ -937,6 +943,20 @@ export default async function MetricsPage() {
   );
   // Réguas do topo: agosto/26 do BP (julho é pré-lançamento no plano). O /api/bp
   // do RI não carrega partidas totais, então essas caem na cópia local.
+  // O mês CORRENTE do plano — as razões por ativo têm meta que muda de mês a
+  // mês, e comparar dezembro com a régua de agosto seria comparar errado.
+  const curYm = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).format(new Date());
+  const bpMetaMes = bpMensal[curYm] ?? null;
+  const bpMetaMesLabel = bpMetaMes
+    ? new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit", timeZone: "UTC" })
+        .format(new Date(`${curYm}-15T12:00:00Z`))
+        .replace(".", "")
+    : "premissa";
+
   const bpAgo = bpMensal["2026-08"] ?? {};
   const bpAgoLocal = BP_MENSAL["2026-08"] ?? {};
   const metaUsuarios = bpAgo.baseAcumulada ?? bpAgoLocal.baseAcumulada ?? META_FASE.usuarios;
@@ -1388,8 +1408,10 @@ export default async function MetricsPage() {
                   ? monthly.currentMonthPaidLegs / monthly.currentMonthActives
                   : null,
               fmt: (v) => v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
-              target: BP_PREMISSAS.jogosPagosPorAtivoMes,
-              targetMonth: "premissa",
+              // A meta do MÊS, não a premissa fixa: o plano sobe a fatia de
+              // partidas pagas de 25% para 40% ao longo do ano.
+              target: bpMetaMes ? metaPernasPagasPorAtivo(bpMetaMes) : BP_PREMISSAS.jogosPagosPorAtivoMes,
+              targetMonth: bpMetaMesLabel,
               context: monthly
                 ? `${monthly.currentMonthPaidLegs} participações pagas ÷ ${monthly.currentMonthActives} ativos no mês`
                 : "sem dado",
