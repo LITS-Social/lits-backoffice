@@ -17,6 +17,11 @@ export type AcademiaRow = {
   brand: string | null;
   hasGeo: boolean;
   courts: CourtListItem[];
+  /** Mesmas duas métricas do StatRail da página de detalhe — vêm do diretório
+      (GET /v1/ops/franchises), não das quadras. `undefined` quando a academia
+      não apareceu no diretório (franchisesError), pra não fabricar um zero. */
+  preferredByUsersCount?: number;
+  bookingsCount?: number;
 };
 
 /**
@@ -39,12 +44,19 @@ export default async function AcademiasPage() {
   ]);
   if (error) return <PanelError eyebrow="Gestão" title="Academias" detail={error} />;
 
+  // As duas métricas vêm do diretório (franquias), não das quadras — CourtListItem
+  // não as carrega. Indexa por id pra anexar aos grupos montados abaixo.
+  const statsByFranchise = new Map(
+    franchises.map((f) => [f.id, { preferred: f.preferred_by_users_count, bookings: f.bookings_count }])
+  );
+
   const byFranchise = new Map<string, AcademiaRow>();
   for (const c of courts) {
     const row = byFranchise.get(c.franchise_id);
     if (row) {
       row.courts.push(c);
     } else {
+      const stats = statsByFranchise.get(c.franchise_id);
       byFranchise.set(c.franchise_id, {
         franchiseId: c.franchise_id,
         name: c.franchise_name,
@@ -52,6 +64,8 @@ export default async function AcademiasPage() {
         brand: c.franchise_brand,
         hasGeo: c.franchise_lat != null && c.franchise_lng != null,
         courts: [c],
+        preferredByUsersCount: stats?.preferred,
+        bookingsCount: stats?.bookings,
       });
     }
   }

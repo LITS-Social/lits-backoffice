@@ -2201,6 +2201,11 @@ export interface components {
             readonly $schema?: string;
             /** @description Whether the franchise is currently active */
             active: boolean;
+            /**
+             * Format: int64
+             * @description Number of bookings on this franchise's courts that reached a real status (confirmed, live, played, rescheduled, no_show, refunded) — excludes abandoned payment attempts, expired holds and never-confirmed cancellations
+             */
+            bookings_count: number;
             /** @description Brand discriminator (e.g. 'playtennis'), or null */
             brand: string | null;
             /** @description True when lat and lng are set and not the (0,0) null-island sentinel; venues without geo are excluded from the app's distance ranking */
@@ -2221,6 +2226,11 @@ export interface components {
             lng: number | null;
             /** @description Display name */
             name: string;
+            /**
+             * Format: int64
+             * @description Number of users whose self-declared preferred/home club (profiles.preferred_club_id) is this franchise
+             */
+            preferred_by_users_count: number;
             /** @description URL-safe unique slug (citext) */
             slug: string;
             /** @description Venue street address (shown on app cards), or null */
