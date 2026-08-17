@@ -4,6 +4,7 @@ import { listFranchisesAction } from "../../quadras/nova/actions";
 import { AcademiaPage } from "./academia";
 import { EmptyAcademiaPage } from "./empty-academia";
 import { getAcademiaMatches } from "./matches";
+import { getFranchiseStats } from "./stats";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   }
   // Buscado aqui, no servidor, e não por fetch no cliente: é a mesma página, e
   // o painel não deve piscar um bloco vazio antes de saber o que houve.
-  const matches = await getAcademiaMatches(mine.map((c) => c.id));
-  return <AcademiaPage courts={mine} matches={matches} franchiseSlug={franchise?.slug} />;
+  const [matches, stats] = await Promise.all([
+    getAcademiaMatches(mine.map((c) => c.id)),
+    getFranchiseStats(id),
+  ]);
+  return <AcademiaPage courts={mine} matches={matches} stats={stats} franchiseSlug={franchise?.slug} />;
 }

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import type { CourtListItem } from "../../quadras/actions";
 import { deleteCourtAction } from "../../quadras/actions";
 import { FranchiseSection } from "../../quadras/[id]/editar/edit-court";
+import { StatRail } from "../../_components/stat-rail";
 import { AcademiaCalendar } from "./calendar";
 import { DangerZone } from "./danger-zone";
 import { ImportPrintAcademia } from "./import-print-academia";
@@ -16,6 +17,7 @@ import { MatchesSection } from "./matches-section";
 import { PriceTableSection } from "./price-table";
 import { reapplySavedTable } from "./price-table-store";
 import type { AcademiaMatches } from "./matches";
+import type { FranchiseStats } from "./stats";
 
 /**
  * The academia page is the operating unit of the panel: definições (nome,
@@ -154,10 +156,14 @@ function CourtCard({ court }: { court: CourtListItem }) {
 export function AcademiaPage({
   courts,
   matches,
+  stats,
   franchiseSlug,
 }: {
   courts: CourtListItem[];
   matches: AcademiaMatches;
+  /** `null` quando o endpoint de estatísticas falhou — StatRail desenha "—"
+      em vez de um zero falso. */
+  stats: FranchiseStats | null;
   /** Chave natural da academia, vinda do diretório (`GET /v1/ops/franchises`) —
       CourtListItem não a carrega. É o que o operador redigita para apagar;
       ausente quando o diretório não respondeu. */
@@ -179,6 +185,24 @@ export function AcademiaPage({
       <PageHeader title={base.franchise_name}
         description={`${courts.length} quadra${courts.length === 1 ? "" : "s"}. Definições, horário de funcionamento, calendário e importação de print — tudo da academia num lugar só.`}
       />
+
+      <StatRail
+        stats={[
+          {
+            label: "Preferida por",
+            value: stats?.preferred_by_users_count ?? 0,
+            unknown: !stats,
+            hint: "usuários marcaram esta academia como preferida no perfil",
+          },
+          {
+            label: "Reservas",
+            value: stats?.bookings_count ?? 0,
+            unknown: !stats,
+            hint: "confirmadas, jogadas, remarcadas ou reembolsadas — sem tentativa de pagamento abandonada",
+          },
+        ]}
+      />
+
       <div className="space-y-5 px-4 sm:px-8 py-6">
         <Link
           href="/academias"

@@ -458,6 +458,26 @@ export interface paths {
         patch: operations["ops-update-franchise"];
         trace?: never;
     };
+    "/v1/ops/franchises/{id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Franchise detail-page metrics: users who picked it as home club, and real bookings
+         * @description preferred_by_users_count counts profiles.preferred_club_id (self-declared home club). bookings_count counts bookings on this franchise's courts (joined via courts.franchise_id, not the nullable bookings.club_id) whose status is confirmed, live, played, rescheduled, no_show or refunded — abandoned payment attempts, expired holds and never-confirmed cancellations are excluded. 404 if the franchise does not exist.
+         */
+        get: operations["ops-get-franchise-stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/geocode": {
         parameters: {
             query?: never;
@@ -2205,6 +2225,24 @@ export interface components {
             slug: string;
             /** @description Venue street address (shown on app cards), or null */
             street_address: string | null;
+        };
+        FranchiseStatsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FranchiseStatsBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description Number of bookings on this franchise's courts that reached a real status (confirmed, live, played, rescheduled, no_show, refunded) — excludes abandoned payment attempts, expired holds and never-confirmed cancellations
+             */
+            bookings_count: number;
+            /**
+             * Format: int64
+             * @description Number of users whose self-declared preferred/home club (profiles.preferred_club_id) is this franchise
+             */
+            preferred_by_users_count: number;
         };
         GeocodeBody: {
             /**
@@ -4893,6 +4931,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FranchiseDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-get-franchise-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Franchise UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FranchiseStatsBody"];
                 };
             };
             /** @description Error */
