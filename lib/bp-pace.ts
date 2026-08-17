@@ -90,6 +90,27 @@ function checkpoints(
   return out;
 }
 
+/**
+ * Checkpoints de uma métrica que ZERA a cada mês — ativos é a única assim.
+ *
+ * As outras seis acumulam desde o lançamento, e a régua delas vai de um
+ * fechamento de mês ao seguinte. Ativos não: quem jogou em agosto e voltou em
+ * setembro é ativo nos dois, e somar os meses contaria a mesma pessoa duas
+ * vezes. Então a rampa do mês corrente vai de ZERO (dia 1) ao total do mês.
+ */
+function monthCheckpoints(
+  mensal: Record<string, BpMonth>,
+  ym: string,
+  pick: (m: BpMonth) => number | undefined
+): Checkpoint[] {
+  const v = mensal[ym] === undefined ? undefined : pick(mensal[ym]);
+  if (v === undefined) return [];
+  return [
+    { atMs: monthStartMs(ym), cum: 0 },
+    { atMs: monthEndMs(ym), cum: v },
+  ];
+}
+
 /** Meta interpolada no instante t; null fora do trecho que o BP define. */
 function metaAt(cps: Checkpoint[], t: number): number | null {
   if (cps.length === 0 || t < cps[0].atMs) return null;
@@ -227,6 +248,25 @@ export function buildBpPace(m: ProductMetrics, mensal: Record<string, BpMonth>):
     users.dateless,
     checkpoints(mensal, (x) => x.baseAcumulada, false)
   );
+  // Ativos do mês: a métrica-mãe do modelo. O evento é a PRIMEIRA perna de
+  // cada pessoa dentro do mês — daí em diante ela já está contada, e a soma
+  // acumulada dá o número de pessoas distintas que jogaram até ali.
+  if (matches.legs) {
+    const firstInMonth = new Map<string, number>();
+    for (const leg of matches.legs) {
+      if (leg.startsAtMs < startMs || leg.startsAtMs > endMs + DAY_MS - 1) continue;
+      const prev = firstInMonth.get(leg.userId);
+      if (prev === undefined || leg.startsAtMs < prev) firstInMonth.set(leg.userId, leg.startsAtMs);
+    }
+    push(
+      "ativos",
+      "Ativos no mês",
+      "count",
+      [...firstInMonth.values()].map((t) => ({ t, v: 1 })),
+      0,
+      monthCheckpoints(mensal, curYm, (x) => x.totalAtivos)
+    );
+  }
   push(
     "partidas",
     "Partidas totais",

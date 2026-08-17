@@ -331,6 +331,13 @@ export type ProductMetrics = {
   monthly: {
     currentMonthActives: number;
     prevMonthActives: number;
+    /** Pernas (participações) do MÊS-CALENDÁRIO corrente, no total e só as
+        pagas. São o numerador de "partidas por ativo no mês" — a janela de 30
+        dias rolantes respondia outra pergunta, e comparava com uma meta que é
+        mensal. Cada partida consome duas pernas, que é como a premissa do BP
+        conta (2,0 no total, 1,0 nas pagas). */
+    currentMonthLegs: number;
+    currentMonthPaidLegs: number;
     churn: { rate: number; left: number; base: number; month: string; baseMonth: string } | null;
   } | null;
 };
@@ -724,7 +731,15 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
         baseMonth: monthName.format(shift(2)),
       };
     }
-    monthly = { currentMonthActives: cur.size, prevMonthActives: closed.size, churn };
+    const inCurrentMonth = (ms: number) => monthKey.format(new Date(ms)) === kCur;
+    monthly = {
+      currentMonthActives: cur.size,
+      prevMonthActives: closed.size,
+      currentMonthLegs: matches.legs.filter((l) => inCurrentMonth(l.startsAtMs)).length,
+      currentMonthPaidLegs: (matches.paidLegs ?? []).filter((l) => inCurrentMonth(l.startsAtMs))
+        .length,
+      churn,
+    };
   }
 
   // ── Estatísticas de jogador + coortes (pernas × índice de cadastro) ──────

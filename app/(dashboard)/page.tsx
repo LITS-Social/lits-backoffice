@@ -1364,16 +1364,47 @@ export default async function MetricsPage() {
         <BpScoreboard
           rows={[
             {
-              label: "Jogos pagos / ativo / mês",
+              // A métrica-mãe do modelo: o BP calcula partidas, assinaturas e
+              // receita a partir de ATIVOS, não da base cadastrada. Faltava.
+              label: "Ativos no mês",
+              real: monthly?.currentMonthActives ?? null,
+              fmt: (v) => v.toLocaleString("pt-BR"),
+              target: bpTarget(bpMensal, "totalAtivos")?.value ?? null,
+              targetMonth: bpTarget(bpMensal, "totalAtivos")?.monthLabel ?? "—",
+              context: monthly
+                ? `jogaram ≥1 partida no mês-calendário${
+                    monthly.prevMonthActives > 0
+                      ? ` · mês passado: ${monthly.prevMonthActives}`
+                      : ""
+                  }`
+                : "sem dado",
+            },
+            {
+              // No MÊS-CALENDÁRIO, não em 30 dias rolantes: a meta é mensal, e
+              // comparar uma janela móvel com ela é comparar coisas diferentes.
+              label: "Partidas pagas / ativo / mês",
               real:
-                playerStats && playerStats.ativosJogaram30 > 0
-                  ? playerStats.participacoesPagas30 / playerStats.ativosJogaram30
+                monthly && monthly.currentMonthActives > 0
+                  ? monthly.currentMonthPaidLegs / monthly.currentMonthActives
                   : null,
               fmt: (v) => v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
               target: BP_PREMISSAS.jogosPagosPorAtivoMes,
               targetMonth: "premissa",
-              context: playerStats
-                ? `${playerStats.participacoesPagas30} participações pagas ÷ ${playerStats.ativosJogaram30} que jogaram (30d)`
+              context: monthly
+                ? `${monthly.currentMonthPaidLegs} participações pagas ÷ ${monthly.currentMonthActives} ativos no mês`
+                : "sem dado",
+            },
+            {
+              label: "Partidas / ativo / mês",
+              real:
+                monthly && monthly.currentMonthActives > 0
+                  ? monthly.currentMonthLegs / monthly.currentMonthActives
+                  : null,
+              fmt: (v) => v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
+              target: BP_PREMISSAS.jogosPorAtivoMes,
+              targetMonth: "premissa",
+              context: monthly
+                ? `${monthly.currentMonthLegs} participações ÷ ${monthly.currentMonthActives} ativos no mês`
                 : "sem dado",
             },
             {
