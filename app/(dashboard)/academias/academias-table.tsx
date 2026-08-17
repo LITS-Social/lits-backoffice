@@ -119,6 +119,17 @@ export function AcademiasTable({ academias }: { academias: AcademiaRow[] }) {
                       </span>
                     )}
                   </p>
+                  {(a.preferredByUsersCount != null || a.bookingsCount != null) && (
+                    <p className="mt-0.5 text-[10.5px] font-300 text-[var(--text-tertiary)]">
+                      {a.preferredByUsersCount != null && (
+                        <>{a.preferredByUsersCount} preferi{a.preferredByUsersCount === 1 ? "u" : "ram"}</>
+                      )}
+                      {a.preferredByUsersCount != null && a.bookingsCount != null && " · "}
+                      {a.bookingsCount != null && (
+                        <>{a.bookingsCount} reserva{a.bookingsCount === 1 ? "" : "s"}</>
+                      )}
+                    </p>
+                  )}
                   <ul className="mt-3 flex flex-wrap gap-1.5">
                     {a.courts.slice(0, 6).map((c) => (
                       <li
