@@ -19,7 +19,6 @@ import {
   ChartsGrid,
   PaidShareMeter,
   } from "./_components/metric-charts";
-import { MGM_SENT_NOTE } from "./_components/mgm";
 
 export const dynamic = "force-dynamic";
 
@@ -639,27 +638,30 @@ function PlatformCard({ split }: { split: PlatformSplit | null }) {
 
 /* ── Convites entre jogadores (MGM) — a indicação, não o convite de jogo ─────
    TRÊS mecânicas de "convite" convivem nesta tela e este card é só UMA delas:
-   1. convite de RESERVA (linhas "Convites enviados"/"Taxa de aceitação" e o
-      painel 03) — chamar alguém para uma partida;
-   2. código de SIGNUP do beta (linha "Códigos de indicação usados",
-      invitation_code_uses) — o gate de entrada do beta via auth-bridge;
-   3. ESTE card: indicação jogador→jogador (MGM, código compartilhável do app
-      ou telefone declarado antes do cadastro; prêmio VIP a 3 indicados que
-      JOGARAM — cadastro deixou de bastar em 05/08, ADR-0064 §3-bis).
-   O título carrega "(MGM)" e o rodapé diz de onde o número vem exatamente para
-   o founder não somar dois "convites" que medem coisas diferentes.
+   convite de RESERVA (funil acima, painel 03), código de SIGNUP do beta
+   (planilha abaixo) e ESTE card: indicação jogador→jogador com prêmio VIP a 3
+   indicados que JOGARAM (ADR-0064 §3-bis, desde 05/08 cadastro não basta).
+
+   O redesenho tirou as seis caixas iguais. Isto É um funil — gerar código →
+   aceitar → jogar — e caixas de mesmo peso escondiam exatamente isso: o
+   founder somava vizinhos que são estágios um do outro. Agora os três estágios
+   são a linha de cima com a conversão escrita entre eles, e o resto (7 dias,
+   convidadores, vaga reservada) vira uma linha de rodapé em prosa.
 
    O que o card NÃO mostra, de propósito: "enviados". O share é client-side e
-   o servidor só vê o aceite — ver MGM_SENT_NOTE. "Geraram código" é o proxy
-   mais próximo do outro lado do funil e está rotulado pelo que é (abrir a tela
-   de convite), não pelo que gostaríamos que fosse. */
+   o servidor só vê o aceite — ver MGM_SENT_NOTE (citada por extenso no
+   detalhe; aqui só a essência, o card não é o lugar do parágrafo). */
+
+function cnJoin(...parts: string[]) {
+  return parts.join(" ");
+}
 
 function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
   const shell =
     "grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6";
 
   // Bloco ainda não publicado pelo bff (ou ilegível do lado de lá): sem dado,
-  // nunca zero — quatro zeros aqui leriam como "ninguém indica ninguém".
+  // nunca zero — zeros aqui leriam como "ninguém indica ninguém".
   if (!mgm) {
     return (
       <div className={shell}>
@@ -672,79 +674,102 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
     );
   }
 
-  // A ORDEM É O ARGUMENTO. "Jogaram" vem colado em "Aceites · total" porque a
-  // leitura errada que este card produzia era exatamente a de que aceite =
-  // prêmio. Lado a lado, a diferença entre cadastrar e jogar fica na cara em vez
-  // de exigir que o founder abra o detalhe.
-  const boxes = [
-    {
-      label: "Aceites · total",
-      value: mgm.accepted_total,
-      hint: "piso, desde o início — é cadastro, não jogo",
-    },
-    {
-      label: "Jogaram",
-      value: mgm.played,
-      hint: "janela da reserva terminou — a única conta que vale prêmio",
-    },
-    {
-      label: "Reservados",
-      value: mgm.declared,
-      hint: "telefone nomeado, ninguém se cadastrou ainda — ocupa slot",
-    },
-    {
-      label: "Aceites · 7 dias",
-      value: mgm.accepted_7d,
-      hint: "pelo accepted_at",
-    },
-    {
-      label: "Convidadores",
-      value: mgm.inviters,
-      hint: "pessoas com ≥1 linha, vaga reservada incluída",
-    },
-    {
-      label: "Geraram código",
-      value: mgm.codes_created,
-      hint: "abriram a tela de convite — não é envio",
-    },
-  ];
   const top = mgm.top_inviters ?? [];
+  const pct = (num: number, den: number) =>
+    den > 0 ? `${Math.round((num / den) * 100)}%` : "—";
+
+  // Os três estágios do funil, na ordem em que acontecem. O hint é UMA linha:
+  // a diferença entre cadastro e jogo (a leitura errada que este card já
+  // produziu) está no rótulo e na conversão, não num parágrafo.
+  const stages = [
+    { label: "Geraram código", value: mgm.codes_created, hint: "abriram a tela — não é envio" },
+    { label: "Aceitaram", value: mgm.accepted_total, hint: "cadastro, não jogo" },
+    { label: "Jogaram", value: mgm.played, hint: "a única conta que vale prêmio" },
+  ];
 
   return (
     <div className={shell}>
-      <div className="mb-5">
-        <h2 className="eyebrow">Convites entre jogadores (MGM)</h2>
-        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          A indicação jogador→jogador — quem convida (pelo código do app ou nomeando o telefone do
-          amigo antes do cadastro) e o que aconteceu depois. Não é o convite de partida (esse vive
-          no funil acima e no painel 03) nem o código de signup do beta (linha da planilha abaixo).
-          Zeros aqui são zeros reais.
-        </p>
+      <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <div>
+          <h2 className="eyebrow">Convites entre jogadores (MGM)</h2>
+          <p className="mt-2 text-[11.5px] font-300 text-[var(--text-tertiary)]">
+            Quem indica, quem aceita, quem joga. Não é o convite de partida nem o código do beta —
+            zeros aqui são zeros reais.
+          </p>
+        </div>
+        <Link
+          href="/convites/indicacoes"
+          className="inline-flex items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
+        >
+          Detalhe por convidador <ArrowUpRight size={11} />
+        </Link>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,260px)]">
-        {/* ── Os quatro números ─────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3">
-          {boxes.map((b) => (
-            <div
-              key={b.label}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg)]/40 p-3.5"
-            >
-              <p className="label-colus text-[8.5px] leading-snug text-[var(--text-tertiary)]">
-                {b.label}
-              </p>
-              <p className="numeral mt-2 text-[28px] leading-none text-[var(--text-primary)]">
-                {b.value}
-              </p>
-              <p className="mt-1.5 text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
-                {b.hint}
-              </p>
-            </div>
-          ))}
+      <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,250px)]">
+        <div>
+          {/* ── O funil: três números e as conversões entre eles ───────────── */}
+          <div className="flex flex-wrap items-end gap-x-5 gap-y-4">
+            {stages.map((st, i) => (
+              <div key={st.label} className="flex items-end gap-5">
+                {i > 0 && (
+                  <div className="flex flex-col items-center gap-1 pb-4">
+                    <span className="numeral text-[12px] text-[var(--text-tertiary)]">
+                      {pct(st.value, stages[i - 1].value)}
+                    </span>
+                    <span aria-hidden className="text-[13px] leading-none text-[var(--text-tertiary)]">
+                      →
+                    </span>
+                  </div>
+                )}
+                <div className="min-w-[104px]">
+                  <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">{st.label}</p>
+                  <p
+                    className={cnJoin(
+                      "numeral mt-2 text-[38px] leading-none",
+                      // O estágio que paga prêmio é o que importa; os outros
+                      // são caminho. Um destaque só — mais viraria enfeite.
+                      st.label === "Jogaram"
+                        ? "text-[var(--text-primary)]"
+                        : "text-[var(--text-secondary)]"
+                    )}
+                  >
+                    {st.value}
+                  </p>
+                  <p className="mt-1.5 text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
+                    {st.hint}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── O resto, em prosa de uma linha — não em caixas ─────────────── */}
+          <p className="mt-6 border-t border-[var(--border)] pt-3.5 text-[11px] font-300 leading-relaxed text-[var(--text-secondary)]">
+            <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.accepted_7d}</span>{" "}
+            aceite{mgm.accepted_7d === 1 ? "" : "s"} nos últimos 7 dias ·{" "}
+            <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.inviters}</span>{" "}
+            convidador{mgm.inviters === 1 ? "" : "es"} com ≥1 linha ·{" "}
+            <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.declared}</span>{" "}
+            vaga{mgm.declared === 1 ? "" : "s"} reservada{mgm.declared === 1 ? "" : "s"} por
+            telefone, aguardando cadastro
+          </p>
+
+          <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {mgm.reward_reached > 0 ? (
+              <>
+                <span className="font-600 text-[var(--text-secondary)]">{mgm.reward_reached}</span>{" "}
+                {mgm.reward_reached === 1 ? "convidador já tem" : "convidadores já têm"} o prêmio
+                VIP (3 indicados que jogaram).
+              </>
+            ) : (
+              <>Ninguém atingiu o prêmio VIP ainda — 3 indicados que JOGARAM, cadastro não conta.</>
+            )}{" "}
+            &quot;Enviados&quot; não são mensuráveis: o servidor só vê o código nascer e o aceite.
+          </p>
         </div>
 
-        {/* ── Top convidadores + prêmio ─────────────────────────────────────── */}
-        <div className="flex flex-col lg:border-l lg:border-[var(--border)] lg:pl-6">
+        {/* ── Top convidadores ──────────────────────────────────────────────── */}
+        <div className="lg:border-l lg:border-[var(--border)] lg:pl-6">
           <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">Top convidadores</p>
           {top.length > 0 ? (
             <ol className="mt-3 space-y-2">
@@ -767,10 +792,7 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
             </ol>
           ) : mgm.accepted_total > 0 ? (
             // Ranking vazio COM aceites no agregado = a query do top-5 falhou
-            // sozinha; o handler serve o resto do bloco mesmo quando `topErr`
-            // estoura. Dizer "nenhum aceite" aqui contradiria o número ao lado —
-            // é a mesma classe de erro de leitura do painel que contava POSTS de
-            // placar achando que contava partidas.
+            // sozinha; dizer "nenhum aceite" contradiria o número ao lado.
             <p className="mt-3 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
               Ranking indisponível agora — os totais ao lado continuam válidos.
             </p>
@@ -779,38 +801,8 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
               Nenhum aceite ainda — sem ranking para mostrar.
             </p>
           )}
-          <p className="mt-4 border-t border-[var(--border)] pt-3 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            {/* "3 convites" era o texto antigo e virou mentira em 05/08: o
-                prêmio exige 3 indicados que JOGARAM. Quem estava 3/3 por
-                cadastro voltou a pendente de propósito — se este número caiu,
-                foi isso, não perda de dado. */}
-            {mgm.reward_reached > 0 ? (
-              <>
-                <span className="font-600 text-[var(--text-secondary)]">{mgm.reward_reached}</span>{" "}
-                {mgm.reward_reached === 1 ? "convidador já tem" : "convidadores já têm"} 3 indicados
-                que JOGARAM (prêmio VIP). Cadastro não conta desde 05/08.
-              </>
-            ) : (
-              <>
-                Ninguém tem 3 indicados que JOGARAM (prêmio VIP) ainda. Desde 05/08 cadastro não
-                basta — quem estava 3/3 por cadastro voltou a pendente de propósito.
-              </>
-            )}
-          </p>
-          <Link
-            href="/convites/indicacoes"
-            className="mt-3 inline-flex items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
-          >
-            Detalhe por convidador <ArrowUpRight size={11} />
-          </Link>
         </div>
       </div>
-
-      {/* A ressalva de origem, escrita uma vez em _components/mgm e lida aqui e
-          no detalhe — o equivalente MGM do DEVICE_SOURCE_NOTE. */}
-      <p className="mt-5 border-t border-[var(--border)] pt-3 text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-        {MGM_SENT_NOTE}
-      </p>
     </div>
   );
 }
