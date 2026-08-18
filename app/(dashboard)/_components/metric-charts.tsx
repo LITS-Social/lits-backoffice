@@ -454,11 +454,6 @@ export function ChartsGrid({
         range.granularity === "daily" ? "dia" : "semana"
       } (diário até ${MAX_DAILY_RANGE_DAYS} dias)`
     : null;
-  const growthHint = rangeSuffix
-    ? `Novos cadastros ${rangeSuffix}; base acumulada no tooltip.`
-    : growthMode === "daily"
-      ? "Novos cadastros por dia — últimos 12 dias; a fatia escura veio por indicação (MGM); base acumulada no tooltip."
-      : "Novos cadastros por semana — últimas 12 semanas; base acumulada no tooltip.";
   const placarNote =
     placarMs != null
       ? " Linha tracejada = placares publicados no feed (pela data do post; inclui jogos sem reserva)."
@@ -520,7 +515,7 @@ export function ChartsGrid({
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <ChartCard eyebrow="Crescimento da base" hint={growthHint} className="lg:col-span-2">
+        <ChartCard eyebrow="Crescimento da base" className="lg:col-span-2">
           {growthPoints ? (
             mounted ? (
               <>
@@ -777,15 +772,7 @@ export function BpPaceGrid({ items }: { items: BpPaceItem[] }) {
    Era um meter de barra; virou donut com o share como número no centro. As
    cores e contagens da legenda continuam as mesmas da série diária. */
 
-export function PaidShareMeter({
-  pagas,
-  gratis,
-  monthPagas,
-}: {
-  pagas: number;
-  gratis: number;
-  monthPagas: number | null;
-}) {
+export function PaidShareMeter({ pagas, gratis }: { pagas: number; gratis: number }) {
   const total = pagas + gratis;
   if (total === 0) {
     return (
@@ -800,16 +787,16 @@ export function PaidShareMeter({
     { name: "Grátis", value: gratis, color: "var(--chart-cat-b)" },
   ];
   return (
-    <div className="flex h-[220px] w-full items-center justify-center gap-6">
-      <div className="relative h-[164px] w-[164px] shrink-0">
+    <div className="flex h-[248px] w-full items-center justify-center gap-8">
+      <div className="relative h-[196px] w-[196px] shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={rows}
               dataKey="value"
               nameKey="name"
-              innerRadius={56}
-              outerRadius={78}
+              innerRadius={66}
+              outerRadius={94}
               paddingAngle={2}
               strokeWidth={0}
               isAnimationActive={false}
@@ -832,13 +819,13 @@ export function PaidShareMeter({
         </ResponsiveContainer>
         {/* O número no buraco do donut: a razão que o card existe para dar. */}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="numeral text-[30px] leading-none text-[var(--text-primary)]">
+          <span className="numeral text-[34px] leading-none text-[var(--text-primary)]">
             {Math.round(share * 100)}%
           </span>
-          <span className="mt-1 text-[9.5px] font-300 text-[var(--text-tertiary)]">pagas</span>
+          <span className="mt-1 text-[10px] font-300 text-[var(--text-tertiary)]">pagas</span>
         </div>
       </div>
-      <ul className="min-w-[112px] space-y-2.5">
+      <ul className="min-w-[104px] space-y-3">
         {rows.map((r) => (
           <li key={r.name} className="flex items-center gap-2">
             <span
@@ -846,17 +833,12 @@ export function PaidShareMeter({
               className="h-2 w-2 shrink-0 rounded-[2px] border border-[var(--border)]"
               style={{ background: r.color }}
             />
-            <span className="text-[10.5px] font-300 text-[var(--text-secondary)]">{r.name}</span>
-            <span className="numeral ml-auto text-[13px] text-[var(--text-primary)]">
+            <span className="text-[11px] font-300 text-[var(--text-secondary)]">{r.name}</span>
+            <span className="numeral ml-auto pl-4 text-[14px] text-[var(--text-primary)]">
               {r.value}
             </span>
           </li>
         ))}
-        {monthPagas != null && (
-          <li className="border-t border-[var(--border)] pt-2 text-[10px] font-300 text-[var(--text-tertiary)]">
-            no mês corrente: <span className="numeral text-[11px]">{monthPagas}</span> pagas
-          </li>
-        )}
       </ul>
     </div>
   );

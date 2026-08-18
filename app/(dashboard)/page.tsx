@@ -680,7 +680,17 @@ function InviterAvatar({ name, url }: { name: string; url?: string }) {
   );
 }
 
-function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
+function MgmCard({
+  mgm,
+  inviteIntent,
+  avatars,
+}: {
+  mgm: NorthMetrics["mgm"];
+  /** Cliques em compartilhar (Amplitude Invite Sent) — o topo do funil. */
+  inviteIntent: { uniques: number; totals: number } | null;
+  /** user_id → avatar_url, resolvido pelo dossiê dos nossos usuários. */
+  avatars: Record<string, string>;
+}) {
   const shell =
     "grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6";
 
@@ -702,12 +712,18 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
   const pct = (num: number, den: number) =>
     den > 0 ? `${Math.round((num / den) * 100)}%` : "—";
 
-  // "Geraram código" SAIU do funil (founder 18/08: "acredito que está
-  // inflado" — e estava). O código nasce lazy no primeiro GET /v1/mgm/me, e o
-  // card "Convide e ganhe" da aba Você chama esse endpoint: o número media
-  // quem abriu o próprio perfil, não intenção de convite. Fica no rodapé,
-  // rotulado pelo que é.
+  // "Geraram código" saiu de vez (media abrir o próprio perfil). O topo do
+  // funil agora é quem CLICOU em compartilhar — Amplitude `Invite Sent`, a
+  // única superfície que enxerga o share client-side. Sem credencial ou com a
+  // API fora, o estágio simplesmente não aparece: indisponível não é zero.
   const stages = [
+    ...(inviteIntent
+      ? [{
+          label: "Compartilharam",
+          value: inviteIntent.uniques,
+          hint: `${inviteIntent.totals} cliques em compartilhar (Amplitude)`,
+        }]
+      : []),
     { label: "Aceitaram", value: mgm.accepted_total, hint: "cadastro, não jogo" },
     { label: "Jogaram", value: mgm.played, hint: "a única conta que vale prêmio" },
   ];
@@ -725,53 +741,59 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
         </Link>
       </div>
 
-      <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,250px)]">
-        <div>
-          {/* ── O funil: três números e as conversões entre eles ───────────── */}
-          <div className="flex flex-wrap items-end gap-x-5 gap-y-4">
-            {stages.map((st, i) => (
-              <div key={st.label} className="flex items-end gap-5">
-                {i > 0 && (
-                  <div className="flex flex-col items-center gap-1 pb-4">
-                    <span className="numeral text-[12px] text-[var(--text-tertiary)]">
-                      {pct(st.value, stages[i - 1].value)}
-                    </span>
-                    <span aria-hidden className="text-[13px] leading-none text-[var(--text-tertiary)]">
-                      →
-                    </span>
-                  </div>
-                )}
-                <div className="min-w-[128px]">
-                  <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">{st.label}</p>
-                  <p
-                    className={cnJoin(
-                      "numeral mt-2 text-[38px] leading-none",
-                      // O estágio que paga prêmio é o que importa; os outros
-                      // são caminho. Um destaque só — mais viraria enfeite.
-                      st.label === "Jogaram"
-                        ? "text-[var(--text-primary)]"
-                        : "text-[var(--text-secondary)]"
-                    )}
-                  >
-                    {st.value}
-                  </p>
-                  {/* A barra dá a FORMA do funil: o degrau entre os estágios
-                      se vê sem ler os números. */}
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
+      <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,250px)]">
+        <div className="max-w-[560px]">
+          {/* ── O funil, em formato de funil: barras centradas que afunilam.
+              A largura é a proporção contra o topo; o degrau entre estágios
+              se vê na silhueta antes de qualquer número. */}
+          <div className="space-y-1">
+            {stages.map((st, i) => {
+              const width = Math.max((st.value / maxStage) * 100, 14);
+              const conv = i > 0 && stages[i - 1].value > 0
+                ? Math.round((st.value / stages[i - 1].value) * 100)
+                : null;
+              const last = i === stages.length - 1;
+              return (
+                <div key={st.label}>
+                  {conv !== null && (
+                    <p className="py-1 text-center text-[10px] font-300 text-[var(--text-tertiary)]">
+                      ↓ <span className="numeral">{conv}%</span>
+                    </p>
+                  )}
+                  <div className="flex justify-center">
                     <div
                       className={cnJoin(
-                        "h-full rounded-full",
-                        st.label === "Jogaram" ? "bg-[var(--primary)]" : "bg-[var(--primary)]/45"
+                        "flex h-[52px] items-center justify-between gap-3 rounded-lg px-4",
+                        // O estágio que paga prêmio é o único cheio; o caminho
+                        // até ele fica em meio-tom.
+                        last ? "bg-[var(--primary)]" : "bg-[var(--primary)]/30"
                       )}
-                      style={{ width: `${Math.max((st.value / maxStage) * 100, st.value > 0 ? 4 : 0)}%` }}
-                    />
+                      style={{ width: `${width}%`, minWidth: "215px" }}
+                    >
+                      <span
+                        className={cnJoin(
+                          "label-colus whitespace-nowrap text-[8px]",
+                          last ? "text-[var(--primary-fg)]" : "text-[var(--text-secondary)]"
+                        )}
+                      >
+                        {st.label}
+                      </span>
+                      <span
+                        className={cnJoin(
+                          "numeral text-[24px] leading-none",
+                          last ? "text-[var(--primary-fg)]" : "text-[var(--text-primary)]"
+                        )}
+                      >
+                        {st.value}
+                      </span>
+                    </div>
                   </div>
-                  <p className="mt-1.5 text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
+                  <p className="mt-0.5 text-center text-[9.5px] font-300 text-[var(--text-tertiary)]">
                     {st.hint}
                   </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* ── O resto, em prosa de uma linha — não em caixas ─────────────── */}
@@ -779,12 +801,9 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
             <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.accepted_7d}</span>{" "}
             aceite{mgm.accepted_7d === 1 ? "" : "s"} nos últimos 7 dias ·{" "}
             <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.inviters}</span>{" "}
-            convidador{mgm.inviters === 1 ? "" : "es"} com ≥1 linha ·{" "}
+            convidador{mgm.inviters === 1 ? "" : "es"} ·{" "}
             <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.declared}</span>{" "}
-            vaga{mgm.declared === 1 ? "" : "s"} reservada{mgm.declared === 1 ? "" : "s"} por
-            telefone ·{" "}
-            <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.codes_created}</span>{" "}
-            têm código (nasce ao abrir o perfil — não é intenção de convite)
+            vaga{mgm.declared === 1 ? "" : "s"} reservada{mgm.declared === 1 ? "" : "s"} por telefone
           </p>
 
           {mgm.reward_reached > 0 && (
@@ -806,7 +825,7 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
                   <span className="label-colus w-4 shrink-0 text-[9px] text-[var(--text-tertiary)]">
                     {String(i + 1).padStart(2, "0")}
                   </span>
-                  <InviterAvatar name={t.name} url={t.avatar_url} />
+                  <InviterAvatar name={t.name} url={t.avatar_url || avatars[t.user_id]} />
                   <span className="min-w-0 flex-1 truncate text-[12px] font-500 text-[var(--text-primary)]">
                     {t.name}
                   </span>
@@ -949,17 +968,29 @@ function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
 export default async function MetricsPage() {
   const {
     users, matches, scorePosts, north, completion, partnerRating,
-    activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs,
+    activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs, inviteIntent,
   } = await getProductMetrics();
   // BP vivo (portal de RI, fallback local) + push do snapshot real para o RI
   // — fire-and-forget: o investidor vê "Real vs Plano" com o mesmo agregado
   // deste render, sem PII.
   const bpMensal = await getBp();
+  // Avatares do top de convidadores, direto do índice que o crawl de usuários
+  // já montou — zero requisições extras. O bloco mgm passa a carregar
+  // avatar_url no próximo deploy do bff; até lá (e para quem não tem foto) as
+  // iniciais seguram.
+  const mgmAvatars: Record<string, string> = {};
+  if (north.mgm?.top_inviters?.length && users.index) {
+    const byId = new Map(users.index.map((u) => [u.id, u.avatarUrl]));
+    for (const t of north.mgm.top_inviters) {
+      const url = byId.get(t.user_id);
+      if (url) mgmAvatars[t.user_id] = url;
+    }
+  }
   // A trajetória "Rumo ao BP" só precisa de users/matches, mas o builder lê o
   // agregado inteiro — o mesmo objeto que o snapshot do RI já monta abaixo.
   const bpPace = buildBpPace(
     { users, matches, scorePosts, north, completion, partnerRating,
-      activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs },
+      activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs, inviteIntent },
     bpMensal
   );
   // Réguas do topo: agosto/26 do BP (julho é pré-lançamento no plano). O /api/bp
@@ -986,7 +1017,7 @@ export default async function MetricsPage() {
   const metaPartidasPagas = bpAgo.partidasPagasMes ?? bpAgoLocal.partidasPagasMes ?? null;
   pushRiSnapshot({
     users, matches, scorePosts, north, completion, partnerRating,
-    activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs,
+    activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs, inviteIntent,
   });
 
   const broken = [
@@ -1302,7 +1333,7 @@ export default async function MetricsPage() {
         </div>
 
         {/* ── Indicação entre jogadores — a mecânica MGM, não o convite de jogo ── */}
-        <MgmCard mgm={north.mgm} />
+        <MgmCard mgm={north.mgm} inviteIntent={inviteIntent} avatars={mgmAvatars} />
 
 
         {/* ── Dinheiro ─────────────────────────────────────────────────────────── */}
@@ -1379,13 +1410,11 @@ export default async function MetricsPage() {
           engagementSlot={
             <ChartCard
               eyebrow="Pagas × grátis"
-              hint="Share de todas as reservas jogadas desde o início. A evolução diária está no gráfico abaixo."
             >
               {!matches.failed && matches.paid ? (
                 <PaidShareMeter
                   pagas={matches.paid.total}
                   gratis={Math.max(matches.total - matches.paid.total, 0)}
-                  monthPagas={matches.paid.month}
                 />
               ) : (
                 <ChartUnavailable>Não foi possível carregar as partidas.</ChartUnavailable>

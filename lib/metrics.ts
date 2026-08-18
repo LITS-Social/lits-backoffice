@@ -59,7 +59,7 @@ export type UsersMetrics = {
    * da taxa de ativação. Null quando a varredura foi truncada — uma coorte
    * parcial daria uma taxa com a forma errada.
    */
-  index: { id: string; createdAtMs: number; lastSeenMs: number | null }[] | null;
+  index: { id: string; createdAtMs: number; lastSeenMs: number | null; avatarUrl: string | null }[] | null;
   /**
    * Week-2 retention, approximated: of the accounts old enough to have had a
    * second week (created ≥ 14 days ago), how many were seen again 7+ days
@@ -328,6 +328,10 @@ export type ProductMetrics = {
    * jogaram em M ÷ ativos em M-1 — computado só sobre meses FECHADOS (churn de
    * mês parcial encolheria dia a dia). Null quando as reservas falharam.
    */
+  /** Quem clicou em compartilhar o convite (Amplitude `Invite Sent`, desde
+      jul/26): pessoas distintas e cliques. Null sem credenciais ou com a API
+      fora — o funil então abre no Aceitaram. */
+  inviteIntent: { uniques: number; totals: number } | null;
   /** Instantes de cadastro de quem entrou por indicação (MGM) — subconjunto
       de users.createdAtMs, cruzado pelo detalhe /v1/ops/mgm-referrals. Null
       quando o detalhe ou o índice de usuários falharam. */
@@ -355,7 +359,7 @@ async function crawlUsers(): Promise<UsersMetrics> {
   const api = await getApi();
   const now = Date.now();
 
-  type Row = { id: string; created_at?: string; last_seen_at?: string };
+  type Row = { id: string; created_at?: string; last_seen_at?: string; avatar_url?: string };
   const rows: Row[] = [];
   let cursor: string | undefined;
   let truncated = false;
@@ -433,6 +437,9 @@ async function crawlUsers(): Promise<UsersMetrics> {
             id: r.id,
             createdAtMs: new Date(r.created_at!).getTime(),
             lastSeenMs: r.last_seen_at ? new Date(r.last_seen_at).getTime() : null,
+            // A lista já traz o avatar; guardá-lo aqui poupa o painel de sair
+            // caçando dossiê por dossiê para mostrar uma foto de 28px.
+            avatarUrl: r.avatar_url || null,
           })),
     activity,
     // Below ~10 accounts a percentage is theatre; the UI treats null as "ainda cedo".
@@ -630,10 +637,51 @@ async function fetchNorth(): Promise<NorthMetrics> {
   }
 }
 
+/**
+ * Quem CLICOU em compartilhar o convite — o topo verdadeiro do funil MGM.
+ *
+ * O evento é o `Invite Sent` do Amplitude, disparado no clique (copiar link ou
+ * abrir a share sheet). O servidor não tem como ver isso — o share é
+ * client-side — então esta é a única fonte, e o founder pediu exatamente ela.
+ * "Geraram código" media outra coisa (abrir o próprio perfil) e saiu do funil.
+ *
+ * Sem credenciais configuradas (AMPLITUDE_API_KEY / AMPLITUDE_SECRET_KEY no
+ * worker) ou com a API fora, devolve null: o funil abre no Aceitaram, como
+ * hoje — indisponível nunca vira zero.
+ */
+async function fetchInviteIntent(): Promise<{ uniques: number; totals: number } | null> {
+  const key = process.env.AMPLITUDE_API_KEY;
+  const secret = process.env.AMPLITUDE_SECRET_KEY;
+  if (!key || !secret) return null;
+  try {
+    const e = encodeURIComponent(JSON.stringify({ event_type: "Invite Sent" }));
+    // Desde o lançamento do beta; o fim é amanhã para incluir o dia corrente
+    // em qualquer fuso.
+    const end = new Date(Date.now() + DAY_MS).toISOString().slice(0, 10).replace(/-/g, "");
+    const base = `https://amplitude.com/api/2/events/segmentation?e=${e}&start=20260701&end=${end}`;
+    const auth = `Basic ${Buffer.from(`${key}:${secret}`).toString("base64")}`;
+    const [uniq, tot] = await Promise.all([
+      fetch(`${base}&m=uniques`, { headers: { authorization: auth }, next: { revalidate: 900 } }),
+      fetch(`${base}&m=totals`, { headers: { authorization: auth }, next: { revalidate: 900 } }),
+    ]);
+    if (!uniq.ok || !tot.ok) return null;
+    const sum = (j: unknown) => {
+      const series = (j as { data?: { series?: number[][] } }).data?.series?.[0];
+      return Array.isArray(series) ? series.reduce((t, v) => t + v, 0) : null;
+    };
+    const uniques = sum(await uniq.json());
+    const totals = sum(await tot.json());
+    if (uniques === null || totals === null) return null;
+    return { uniques, totals };
+  } catch {
+    return null;
+  }
+}
+
 export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
   const api = await getApi();
 
-  const [users, matches, scorePosts, north, cancellations, evaluations, mgmReferrals] =
+  const [users, matches, scorePosts, north, cancellations, evaluations, mgmReferrals, inviteIntent] =
     await Promise.all([
       crawlUsers(),
       fetchMatches(),
@@ -645,6 +693,7 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
       // O detalhe do MGM dá o user_id de cada indicado — cruzado com o índice
       // de cadastro, vira a fatia "via MGM" do gráfico de crescimento.
       api.GET("/v1/ops/mgm-referrals", { params: { query: { limit: 200, offset: 0 } } }).catch(() => null),
+      fetchInviteIntent(),
     ]);
 
   const cancelled =
@@ -845,6 +894,7 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
 
   return {
     mgmCreatedAtMs,
+    inviteIntent,
     users, matches, scorePosts, north, completion, partnerRating, activationMonth, monthly,
     playerStats, cohorts,
   };
