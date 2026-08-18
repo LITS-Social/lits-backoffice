@@ -328,6 +328,10 @@ export type ProductMetrics = {
    * jogaram em M ÷ ativos em M-1 — computado só sobre meses FECHADOS (churn de
    * mês parcial encolheria dia a dia). Null quando as reservas falharam.
    */
+  /** Instantes de cadastro de quem entrou por indicação (MGM) — subconjunto
+      de users.createdAtMs, cruzado pelo detalhe /v1/ops/mgm-referrals. Null
+      quando o detalhe ou o índice de usuários falharam. */
+  mgmCreatedAtMs: number[] | null;
   monthly: {
     currentMonthActives: number;
     prevMonthActives: number;
@@ -629,15 +633,19 @@ async function fetchNorth(): Promise<NorthMetrics> {
 export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
   const api = await getApi();
 
-  const [users, matches, scorePosts, north, cancellations, evaluations] = await Promise.all([
-    crawlUsers(),
-    fetchMatches(),
-    crawlScorePosts(),
-    fetchNorth(),
-    // Only the server-side `total` is read; one row is the cheapest way to get it.
-    api.GET("/v1/ops/cancellations", { params: { query: { limit: 1, offset: 0 } } }),
-    api.GET("/v1/ops/player-evaluations"),
-  ]);
+  const [users, matches, scorePosts, north, cancellations, evaluations, mgmReferrals] =
+    await Promise.all([
+      crawlUsers(),
+      fetchMatches(),
+      crawlScorePosts(),
+      fetchNorth(),
+      // Only the server-side `total` is read; one row is the cheapest way to get it.
+      api.GET("/v1/ops/cancellations", { params: { query: { limit: 1, offset: 0 } } }),
+      api.GET("/v1/ops/player-evaluations"),
+      // O detalhe do MGM dá o user_id de cada indicado — cruzado com o índice
+      // de cadastro, vira a fatia "via MGM" do gráfico de crescimento.
+      api.GET("/v1/ops/mgm-referrals", { params: { query: { limit: 200, offset: 0 } } }).catch(() => null),
+    ]);
 
   const cancelled =
     !cancellations.error && cancellations.data?.cancellations != null
@@ -748,6 +756,21 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
     };
   }
 
+  // ── Cadastros vindos de indicação (MGM) ──────────────────────────────────
+  // Cruza os invitee_ids do detalhe com o índice de cadastro: o instante usado
+  // é o MESMO createdAtMs das barras, então a fatia nunca desalinha do total.
+  // Null quando qualquer um dos dois lados falhou — indisponível não é zero.
+  let mgmCreatedAtMs: number[] | null = null;
+  if (users.index && mgmReferrals && !mgmReferrals.error && mgmReferrals.data?.referrals) {
+    const inviteeIds = new Set<string>();
+    for (const r of mgmReferrals.data.referrals) {
+      for (const i of r.invitees ?? []) {
+        if (i.user_id) inviteeIds.add(i.user_id);
+      }
+    }
+    mgmCreatedAtMs = users.index.filter((u) => inviteeIds.has(u.id)).map((u) => u.createdAtMs);
+  }
+
   // ── Estatísticas de jogador + coortes (pernas × índice de cadastro) ──────
   let playerStats: ProductMetrics["playerStats"] = null;
   let cohorts: ProductMetrics["cohorts"] = null;
@@ -821,6 +844,7 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
   }
 
   return {
+    mgmCreatedAtMs,
     users, matches, scorePosts, north, completion, partnerRating, activationMonth, monthly,
     playerStats, cohorts,
   };

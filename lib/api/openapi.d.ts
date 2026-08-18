@@ -2749,6 +2749,8 @@ export interface components {
              * @description Aceites deste convidador (linhas em mgm_invites com convidado; vaga só declarada não conta). Mesmo piso de accepted_total
              */
             accepted: number;
+            /** @description profiles.avatar_url do convidador; vazio sem foto ou conta apagada */
+            avatar_url?: string;
             /** @description Nome resolvido: profiles.display_name → @username → id curto. Conta apagada (users.deleted_at) vira 'Conta excluída' em vez de sumir da lista — a indicação aconteceu, apagar a conta não desfaz o fato */
             name: string;
             /** @description UUID do convidador (public.mgm_invites.inviter_id) */
