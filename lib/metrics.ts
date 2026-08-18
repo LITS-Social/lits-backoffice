@@ -94,6 +94,19 @@ export type MatchesMetrics = {
   paidEvents: { t: number; cents: number }[] | null;
   /** Reservas jogadas por mecânica (match_type). Null quando parcial. */
   playedByMode: { invite: number; quick: number; quickScored: number } | null;
+  /** Os quick matches mais recentes já jogados — a vitrine do card do funil.
+      Vem da MESMA página ordenada por recência, então vale mesmo truncada:
+      recência não precisa da lista inteira. */
+  recentQuick: {
+    hostId: string;
+    hostName: string;
+    guestId: string | null;
+    guestName: string | null;
+    club: string;
+    court: string;
+    priceCents: number;
+    startsAtMs: number;
+  }[];
   /** GMV das jogadas pagas (soma de price_cents) e a receita LITS pela
       fórmula do BP (comissão 7,5% + markup 10% + R$6/partida). Null quando
       parcial. `month*` = mês-calendário corrente (SP). */
@@ -458,7 +471,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, paidEvents: null, playedByMode: null, gmv: null, legs: null, paidLegs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, paidEvents: null, playedByMode: null, recentQuick: [], gmv: null, legs: null, paidLegs: null };
   }
 
   const matches = data.matches;
@@ -521,6 +534,19 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     paidEvents: complete
       ? paidRows.map((m) => ({ t: new Date(m.starts_at).getTime(), cents: m.price_cents ?? 0 }))
       : null,
+    recentQuick: matches
+      .filter((m) => (m.match_type ?? "").includes("quick"))
+      .slice(0, 3)
+      .map((m) => ({
+        hostId: m.host.user_id,
+        hostName: m.host.name,
+        guestId: m.guest?.user_id ?? null,
+        guestName: m.guest?.name ?? null,
+        club: m.club_name ?? "",
+        court: m.court_label ?? "",
+        priceCents: m.price_cents ?? 0,
+        startsAtMs: new Date(m.starts_at).getTime(),
+      })),
     playedByMode: complete
       ? {
           quick: matches.filter((m) => (m.match_type ?? "").includes("quick")).length,

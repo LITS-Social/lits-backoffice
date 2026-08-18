@@ -29,11 +29,43 @@ import { InviteeRow } from "./invitee-row";
  * É também a única superfície do painel que ESCREVE no MGM: marcar fraude e
  * desfazer (ADR-0064 §8), em InviteeRow. Ver MGM_FRAUD_NOTE.
  */
+/** Foto do convidador com iniciais de reserva — mesmo desenho do card. */
+function RankAvatar({ name, url }: { name: string; url?: string }) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+  return (
+    <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--surface-raised)]">
+      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-600 text-[var(--text-tertiary)]">
+        {initials || "?"}
+      </span>
+      {url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      )}
+    </span>
+  );
+}
+
 export default async function IndicacoesMgmPage() {
   const api = await getApi();
-  const { data, error } = await api.GET("/v1/ops/mgm-referrals", {
-    params: { query: { limit: 200, offset: 0 } },
-  });
+  const [{ data, error }, usersRes] = await Promise.all([
+    api.GET("/v1/ops/mgm-referrals", {
+      params: { query: { limit: 200, offset: 0 } },
+    }),
+    // Só para os avatares do ranking: uma página cobre o beta; quem ficar de
+    // fora (ou se a busca falhar) cai nas iniciais.
+    api.GET("/v1/ops/users", { params: { query: { limit: 500 } } }).catch(() => null),
+  ]);
+
+  const avatarById = new Map<string, string>(
+    (usersRes?.data?.users ?? [])
+      .filter((u) => u.avatar_url)
+      .map((u) => [u.id, u.avatar_url!])
+  );
 
   if (error) {
     return (
@@ -132,12 +164,18 @@ export default async function IndicacoesMgmPage() {
           </p>
         ) : (
           <ul className="space-y-3">
-            {referrals.map((r) => (
+            {referrals.map((r, i) => (
               <li
                 key={r.inviter_id}
                 className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5"
               >
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  {/* A posição e a foto fazem desta lista o "top convidadores"
+                      que o card do dashboard anuncia — mesma leitura lá e cá. */}
+                  <span className="label-colus w-5 shrink-0 text-[10px] text-[var(--text-tertiary)]">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <RankAvatar name={r.name} url={avatarById.get(r.inviter_id)} />
                   <span className="text-[13.5px] font-600 text-[var(--text-primary)]">
                     {r.name}
                   </span>

@@ -788,15 +788,7 @@ function MgmCard({
 
   return (
     <div className={cnJoin(shell, "flex flex-col")}>
-      <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <h2 className="eyebrow">Convites entre jogadores (MGM)</h2>
-        <Link
-          href="/convites/indicacoes"
-          className="inline-flex items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
-        >
-          Detalhe <ArrowUpRight size={11} />
-        </Link>
-      </div>
+      <h2 className="eyebrow mb-6">Convites entre jogadores (MGM)</h2>
 
       <FunnelStages stages={stages} />
 
@@ -817,7 +809,15 @@ function MgmCard({
 
       {/* ── Top convidadores, embaixo do funil — o card fica alto, não largo ── */}
       <div className="mt-5 border-t border-[var(--border)] pt-4">
-        <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">Top convidadores</p>
+        <div className="flex items-baseline justify-between gap-4">
+          <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">Top convidadores</p>
+          <Link
+            href="/convites/indicacoes"
+            className="inline-flex items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
+          >
+            Ver todos <ArrowUpRight size={11} />
+          </Link>
+        </div>
         {top.length > 0 ? (
           <ol className="mt-3 space-y-2.5">
             {top.map((t, i) => (
@@ -857,9 +857,23 @@ function MgmCard({
 function QuickMatchFunnelCard({
   funnel,
   quickScored,
+  recent,
+  avatars,
 }: {
   funnel: NorthMetrics["matchFunnel"];
   quickScored: number | null;
+  /** Os quick matches mais recentes já jogados — quem, onde, quanto. */
+  recent: {
+    hostId: string;
+    hostName: string;
+    guestId: string | null;
+    guestName: string | null;
+    club: string;
+    court: string;
+    priceCents: number;
+    startsAtMs: number;
+  }[];
+  avatars: Record<string, string>;
 }) {
   const shell =
     "grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6";
@@ -896,14 +910,49 @@ function QuickMatchFunnelCard({
 
       <FunnelStages stages={stages} />
 
-      {funnel.quick_match_median_fill_hours != null && (
-        <p className="mt-5 text-center text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          mediana de{" "}
-          <span className="numeral text-[12px] text-[var(--text-secondary)]">
-            {funnel.quick_match_median_fill_hours.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}h
-          </span>{" "}
-          entre abrir e confirmar
-        </p>
+      {/* ── Os últimos concretizados: quem jogou, onde, quanto ─────────────
+          Espelha o "Top convidadores" do card irmão — funil em cima, a lista
+          humana embaixo, na mesma altura da linha. */}
+      {recent.length > 0 && (
+        <div className="mt-5 border-t border-[var(--border)] pt-4">
+          <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">
+            Últimos concretizados
+          </p>
+          <ul className="mt-3 space-y-2.5">
+            {recent.map((m) => (
+              <li key={`${m.hostId}-${m.startsAtMs}`} className="flex items-center gap-2.5">
+                {/* O par de avatares, sobrepostos — é uma partida, não uma pessoa. */}
+                <span className="flex shrink-0 -space-x-2">
+                  <InviterAvatar name={m.hostName} url={avatars[m.hostId]} />
+                  {m.guestName ? (
+                    <InviterAvatar name={m.guestName} url={m.guestId ? avatars[m.guestId] : undefined} />
+                  ) : null}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12px] font-500 text-[var(--text-primary)]">
+                    {m.hostName}
+                    {m.guestName && <> × {m.guestName}</>}
+                  </span>
+                  <span className="block truncate text-[10.5px] font-300 text-[var(--text-tertiary)]">
+                    {[m.club, m.court].filter(Boolean).join(" · ") || "quadra não registrada"}
+                  </span>
+                </span>
+                <span
+                  className={cnJoin(
+                    "shrink-0",
+                    m.priceCents > 0
+                      ? "numeral text-[13px] text-[var(--text-primary)]"
+                      : "text-[10.5px] font-300 text-[var(--text-tertiary)]"
+                  )}
+                >
+                  {m.priceCents > 0
+                    ? (m.priceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                    : "grátis"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
@@ -1033,11 +1082,16 @@ export default async function MetricsPage() {
   // avatar_url no próximo deploy do bff; até lá (e para quem não tem foto) as
   // iniciais seguram.
   const mgmAvatars: Record<string, string> = {};
-  if (north.mgm?.top_inviters?.length && users.index) {
+  if (users.index) {
     const byId = new Map(users.index.map((u) => [u.id, u.avatarUrl]));
-    for (const t of north.mgm.top_inviters) {
-      const url = byId.get(t.user_id);
-      if (url) mgmAvatars[t.user_id] = url;
+    const want = [
+      ...(north.mgm?.top_inviters ?? []).map((t) => t.user_id),
+      ...matches.recentQuick.flatMap((m) => [m.hostId, m.guestId]),
+    ];
+    for (const id of want) {
+      if (!id) continue;
+      const url = byId.get(id);
+      if (url) mgmAvatars[id] = url;
     }
   }
   // A trajetória "Rumo ao BP" só precisa de users/matches, mas o builder lê o
@@ -1386,6 +1440,44 @@ export default async function MetricsPage() {
           />
         </div>
 
+        {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão — com filtro
+            de período compartilhado entre crescimento e ritmo ─────────────────── */}
+        <ChartsGrid
+          userCreatedAtMs={users.createdAtMs}
+          mgmCreatedAtMs={mgmCreatedAtMs}
+          userDateless={users.dateless}
+          growthFallback={
+            users.failed
+              ? "Não foi possível carregar os usuários."
+              : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."
+          }
+          matchStartsAtMs={matches.startsAtMs}
+          matchPaidStartsAtMs={matches.paidStartsAtMs}
+          placarMs={scorePosts.createdAtMs}
+          paceFallback={
+            matches.failed
+              ? "Não foi possível carregar as partidas."
+              : "Série omitida: a página carregada não cobre o total, e um histograma parcial mostraria semanas que não existem."
+          }
+          engagementSlot={
+            <ChartCard
+              eyebrow="Pagas × grátis"
+            >
+              {!matches.failed && matches.paid ? (
+                <PaidShareMeter
+                  pagas={matches.paid.total}
+                  gratis={Math.max(matches.total - matches.paid.total, 0)}
+                />
+              ) : (
+                <ChartUnavailable>Não foi possível carregar as partidas.</ChartUnavailable>
+              )}
+            </ChartCard>
+          }
+        />
+
+        {/* ── Rumo ao BP — real × meta interpolada, dia a dia ou semana a semana ── */}
+        <BpPaceGrid items={bpPace} />
+
         {/* ── Indicação entre jogadores — a mecânica MGM, não o convite de jogo ── */}
         {/* MGM e Jogo Rápido lado a lado, no mesmo formato de funil: cada
             card meio-largo e alto, não uma faixa retangular com vazio. */}
@@ -1394,6 +1486,8 @@ export default async function MetricsPage() {
           <QuickMatchFunnelCard
             funnel={north.matchFunnel}
             quickScored={matches.playedByMode?.quickScored ?? null}
+            recent={matches.recentQuick}
+            avatars={mgmAvatars}
           />
         </div>
 
@@ -1446,44 +1540,6 @@ export default async function MetricsPage() {
             />
           </div>
         </div>
-
-        {/* ── Rumo ao BP — real × meta interpolada, dia a dia ou semana a semana ── */}
-        <BpPaceGrid items={bpPace} />
-
-        {/* ── Os gráficos: crescimento, engajamento, ritmo, conclusão — com filtro
-            de período compartilhado entre crescimento e ritmo ─────────────────── */}
-        <ChartsGrid
-          userCreatedAtMs={users.createdAtMs}
-          mgmCreatedAtMs={mgmCreatedAtMs}
-          userDateless={users.dateless}
-          growthFallback={
-            users.failed
-              ? "Não foi possível carregar os usuários."
-              : "Curva omitida: a varredura não cobriu a base inteira, e uma curva de crescimento sobre parte dela teria a forma errada."
-          }
-          matchStartsAtMs={matches.startsAtMs}
-          matchPaidStartsAtMs={matches.paidStartsAtMs}
-          placarMs={scorePosts.createdAtMs}
-          paceFallback={
-            matches.failed
-              ? "Não foi possível carregar as partidas."
-              : "Série omitida: a página carregada não cobre o total, e um histograma parcial mostraria semanas que não existem."
-          }
-          engagementSlot={
-            <ChartCard
-              eyebrow="Pagas × grátis"
-            >
-              {!matches.failed && matches.paid ? (
-                <PaidShareMeter
-                  pagas={matches.paid.total}
-                  gratis={Math.max(matches.total - matches.paid.total, 0)}
-                />
-              ) : (
-                <ChartUnavailable>Não foi possível carregar as partidas.</ChartUnavailable>
-              )}
-            </ChartCard>
-          }
-        />
 
         {/* ── Funil de partidas — as métricas interligadas numa visualização só ── */}
         <FunnelSection
