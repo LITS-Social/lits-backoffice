@@ -754,18 +754,13 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
             telefone, aguardando cadastro
           </p>
 
-          <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            {mgm.reward_reached > 0 ? (
-              <>
-                <span className="font-600 text-[var(--text-secondary)]">{mgm.reward_reached}</span>{" "}
-                {mgm.reward_reached === 1 ? "convidador já tem" : "convidadores já têm"} o prêmio
-                VIP (3 indicados que jogaram).
-              </>
-            ) : (
-              <>Ninguém atingiu o prêmio VIP ainda — 3 indicados que JOGARAM, cadastro não conta.</>
-            )}{" "}
-            &quot;Enviados&quot; não são mensuráveis: o servidor só vê o código nascer e o aceite.
-          </p>
+          {mgm.reward_reached > 0 && (
+            <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+              <span className="font-600 text-[var(--text-secondary)]">{mgm.reward_reached}</span>{" "}
+              {mgm.reward_reached === 1 ? "convidador já tem" : "convidadores já têm"} o prêmio VIP
+              (3 indicados que jogaram).
+            </p>
+          )}
         </div>
 
         {/* ── Top convidadores ──────────────────────────────────────────────── */}
