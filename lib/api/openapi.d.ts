@@ -393,6 +393,23 @@ export interface paths {
         patch: operations["ops-update-court-slot"];
         trace?: never;
     };
+    "/v1/ops/day-bookings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every reservation opened on one São Paulo day, paid or not (panel #06 Dinheiro) */
+        get: operations["ops-list-day-bookings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/finished-matches": {
         parameters: {
             query?: never;
@@ -1789,6 +1806,44 @@ export interface components {
             count: number;
             /** @description Day, RFC3339 date-truncated (UTC midnight of that day) */
             date: string;
+        };
+        DayBookingItem: {
+            booking_id: string;
+            booking_status: string;
+            club_name?: string;
+            court_label: string;
+            /** Format: date-time */
+            created_at: string;
+            currency?: string;
+            guest?: components["schemas"]["OpsUserRef"];
+            guest_payment?: components["schemas"]["PaymentLeg"];
+            host: components["schemas"]["OpsUserRef"];
+            host_payment: components["schemas"]["PaymentLeg"];
+            match_type: string;
+            payment_status?: string;
+            /** Format: int64 */
+            price_cents: number;
+            settled: boolean;
+            /** Format: date-time */
+            starts_at: string;
+        };
+        DayBookingsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DayBookingsResponseBody.json
+             */
+            readonly $schema?: string;
+            bookings: components["schemas"]["DayBookingItem"][] | null;
+            date: string;
+            /** Format: int32 */
+            free_count: number;
+            /** Format: int64 */
+            paid_cents: number;
+            /** Format: int64 */
+            pending_cents: number;
+            /** Format: int32 */
+            total: number;
         };
         DayWindow: {
             /**
@@ -4777,6 +4832,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourtSlotItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-list-day-bookings": {
+        parameters: {
+            query?: {
+                /** @description São Paulo calendar day (YYYY-MM-DD); empty = today */
+                date?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayBookingsResponseBody"];
                 };
             };
             /** @description Error */

@@ -7,6 +7,8 @@ import { SuccessfulPaymentsTable } from "../pagamentos/succeeded-table";
 import { ManualReservationsTable } from "../reservas-pagas/table";
 import { CancellationsTable } from "../cancelamentos/table";
 import { MoneyTabs } from "./tabs";
+import { fetchDayAction } from "./day-actions";
+import { DayView } from "./day-view";
 
 export const dynamic = "force-dynamic";
 
@@ -26,11 +28,14 @@ const LIMIT = 500;
 
 export default async function DinheiroPage() {
   const api = await getApi();
-  const [issuesRes, succeededRes, reservationsRes, cancellationsRes] = await Promise.all([
+  const [issuesRes, succeededRes, reservationsRes, cancellationsRes, dayRes] = await Promise.all([
     api.GET("/v1/ops/payment-issues", { params: { query: { limit: LIMIT } } }).catch(() => null),
     api.GET("/v1/ops/payments-succeeded", { params: { query: { limit: LIMIT } } }).catch(() => null),
     api.GET("/v1/ops/manual-reservations", { params: { query: { limit: LIMIT } } }).catch(() => null),
     api.GET("/v1/ops/cancellations", { params: { query: { limit: LIMIT, offset: 0 } } }).catch(() => null),
+    // Sem data: quem decide que dia é hoje é o servidor, que conhece o fuso de
+    // São Paulo. O navegador do operador pode não estar nele.
+    fetchDayAction(),
   ]);
 
   // ── Pix preso ────────────────────────────────────────────────────────────
@@ -73,11 +78,24 @@ export default async function DinheiroPage() {
       <PageHeader
         eyebrow="#06"
         title="Dinheiro"
-        description="Tudo que envolve dinheiro numa tela: o Pix preso, a reserva paga que ainda precisa de quadra no clube, o que entrou, e o que caiu. Clique num número para abrir a fila."
+        description="Tudo que envolve dinheiro numa tela. Comece pelo dia — tudo que foi aberto hoje, pago ou não, com o desfecho do Pix de cada um. As outras filas recortam por desfecho: o Pix preso, a reserva que ainda precisa de quadra no clube, o que entrou e o que caiu."
       />
 
       <MoneyTabs
         tabs={[
+          {
+            key: "dia",
+            label: "O dia",
+            value: dayRes.ok ? dayRes.total : "—",
+            unknown: !dayRes.ok,
+            tone: "neutral",
+            hint: dayRes.ok
+              ? dayRes.pendingCents > 0
+                ? `${formatCurrency(dayRes.pendingCents)} ainda não entraram`
+                : "tudo que foi aberto hoje, pago ou não"
+              : undefined,
+            content: <DayView inicial={dayRes} />,
+          },
           {
             key: "preso",
             label: "Pix preso",
