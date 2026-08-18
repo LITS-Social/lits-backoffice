@@ -93,7 +93,7 @@ export type MatchesMetrics = {
       vs BP). Null quando a página é parcial. */
   paidEvents: { t: number; cents: number }[] | null;
   /** Reservas jogadas por mecânica (match_type). Null quando parcial. */
-  playedByMode: { invite: number; quick: number } | null;
+  playedByMode: { invite: number; quick: number; quickScored: number } | null;
   /** GMV das jogadas pagas (soma de price_cents) e a receita LITS pela
       fórmula do BP (comissão 7,5% + markup 10% + R$6/partida). Null quando
       parcial. `month*` = mês-calendário corrente (SP). */
@@ -525,6 +525,11 @@ async function fetchMatches(): Promise<MatchesMetrics> {
       ? {
           quick: matches.filter((m) => (m.match_type ?? "").includes("quick")).length,
           invite: matches.filter((m) => !(m.match_type ?? "").includes("quick")).length,
+          // Quick matches cujo placar foi publicado — o degrau final do funil
+          // do Jogo Rápido. has_score é status-provado (played), não campo.
+          quickScored: matches.filter(
+            (m) => (m.match_type ?? "").includes("quick") && m.has_score
+          ).length,
         }
       : null,
     gmv: complete

@@ -96,7 +96,7 @@ function FunnelSection({
 }: {
   funnel: FunnelData;
   paid: { total: number; last7: number; prev7: number; last30: number } | null;
-  playedByMode: { invite: number; quick: number } | null;
+  playedByMode: { invite: number; quick: number; quickScored: number } | null;
   inviteAcceptance7d: { sent: number; accepted: number } | null;
 }) {
   if (!funnel) {
@@ -656,6 +656,67 @@ function cnJoin(...parts: string[]) {
   return parts.join(" ");
 }
 
+/**
+ * O funil vertical compartilhado pelos cards de MGM e de Jogo Rápido: barras
+ * centradas que afunilam, conversão entre os degraus, e só o estágio final em
+ * cor cheia. Mesma forma nos dois cards — quem aprendeu um leu o outro.
+ */
+function FunnelStages({ stages }: { stages: { label: string; value: number; hint?: string }[] }) {
+  const max = Math.max(...stages.map((st) => st.value), 1);
+  return (
+    <div className="space-y-1">
+      {stages.map((st, i) => {
+        const width = Math.max((st.value / max) * 100, 30);
+        const conv =
+          i > 0 && stages[i - 1].value > 0
+            ? Math.round((st.value / stages[i - 1].value) * 100)
+            : null;
+        const last = i === stages.length - 1;
+        return (
+          <div key={st.label}>
+            {conv !== null && (
+              <p className="py-1.5 text-center text-[10px] font-300 text-[var(--text-tertiary)]">
+                ↓ <span className="numeral">{conv}%</span>
+              </p>
+            )}
+            <div className="flex justify-center">
+              <div
+                className={cnJoin(
+                  "flex h-[56px] items-center justify-between gap-3 rounded-lg px-4",
+                  last ? "bg-[var(--primary)]" : "bg-[var(--primary)]/30"
+                )}
+                style={{ width: `${width}%`, minWidth: "190px" }}
+              >
+                <span
+                  className={cnJoin(
+                    "label-colus whitespace-nowrap text-[8px]",
+                    last ? "text-[var(--primary-fg)]" : "text-[var(--text-secondary)]"
+                  )}
+                >
+                  {st.label}
+                </span>
+                <span
+                  className={cnJoin(
+                    "numeral text-[26px] leading-none",
+                    last ? "text-[var(--primary-fg)]" : "text-[var(--text-primary)]"
+                  )}
+                >
+                  {st.value}
+                </span>
+              </div>
+            </div>
+            {st.hint && (
+              <p className="mt-1 text-center text-[9.5px] font-300 text-[var(--text-tertiary)]">
+                {st.hint}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Foto do convidador, com iniciais como reserva — o avatar_url chega com o
     deploy do bff; até lá (e para quem não tem foto) as iniciais seguram. */
 function InviterAvatar({ name, url }: { name: string; url?: string }) {
@@ -708,14 +769,10 @@ function MgmCard({
     );
   }
 
-  const top = mgm.top_inviters ?? [];
-  const pct = (num: number, den: number) =>
-    den > 0 ? `${Math.round((num / den) * 100)}%` : "—";
-
   // "Geraram código" saiu de vez (media abrir o próprio perfil). O topo do
-  // funil agora é quem CLICOU em compartilhar — Amplitude `Invite Sent`, a
-  // única superfície que enxerga o share client-side. Sem credencial ou com a
-  // API fora, o estágio simplesmente não aparece: indisponível não é zero.
+  // funil é quem CLICOU em compartilhar — Amplitude `Invite Sent`, a única
+  // superfície que enxerga o share client-side. Sem credencial ou com a API
+  // fora, o estágio não aparece: indisponível não é zero.
   const stages = [
     ...(inviteIntent
       ? [{
@@ -727,130 +784,127 @@ function MgmCard({
     { label: "Aceitaram", value: mgm.accepted_total, hint: "cadastro, não jogo" },
     { label: "Jogaram", value: mgm.played, hint: "a única conta que vale prêmio" },
   ];
-  const maxStage = Math.max(...stages.map((st) => st.value), 1);
+  const top = mgm.top_inviters ?? [];
 
   return (
-    <div className={shell}>
+    <div className={cnJoin(shell, "flex flex-col")}>
       <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <h2 className="eyebrow">Convites entre jogadores (MGM)</h2>
         <Link
           href="/convites/indicacoes"
           className="inline-flex items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
         >
-          Detalhe por convidador <ArrowUpRight size={11} />
+          Detalhe <ArrowUpRight size={11} />
         </Link>
       </div>
 
-      <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,250px)]">
-        <div className="max-w-[560px]">
-          {/* ── O funil, em formato de funil: barras centradas que afunilam.
-              A largura é a proporção contra o topo; o degrau entre estágios
-              se vê na silhueta antes de qualquer número. */}
-          <div className="space-y-1">
-            {stages.map((st, i) => {
-              const width = Math.max((st.value / maxStage) * 100, 14);
-              const conv = i > 0 && stages[i - 1].value > 0
-                ? Math.round((st.value / stages[i - 1].value) * 100)
-                : null;
-              const last = i === stages.length - 1;
-              return (
-                <div key={st.label}>
-                  {conv !== null && (
-                    <p className="py-1 text-center text-[10px] font-300 text-[var(--text-tertiary)]">
-                      ↓ <span className="numeral">{conv}%</span>
-                    </p>
-                  )}
-                  <div className="flex justify-center">
-                    <div
-                      className={cnJoin(
-                        "flex h-[52px] items-center justify-between gap-3 rounded-lg px-4",
-                        // O estágio que paga prêmio é o único cheio; o caminho
-                        // até ele fica em meio-tom.
-                        last ? "bg-[var(--primary)]" : "bg-[var(--primary)]/30"
-                      )}
-                      style={{ width: `${width}%`, minWidth: "215px" }}
-                    >
-                      <span
-                        className={cnJoin(
-                          "label-colus whitespace-nowrap text-[8px]",
-                          last ? "text-[var(--primary-fg)]" : "text-[var(--text-secondary)]"
-                        )}
-                      >
-                        {st.label}
-                      </span>
-                      <span
-                        className={cnJoin(
-                          "numeral text-[24px] leading-none",
-                          last ? "text-[var(--primary-fg)]" : "text-[var(--text-primary)]"
-                        )}
-                      >
-                        {st.value}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="mt-0.5 text-center text-[9.5px] font-300 text-[var(--text-tertiary)]">
-                    {st.hint}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
+      <FunnelStages stages={stages} />
 
-          {/* ── O resto, em prosa de uma linha — não em caixas ─────────────── */}
-          <p className="mt-6 border-t border-[var(--border)] pt-3.5 text-[11px] font-300 leading-relaxed text-[var(--text-secondary)]">
-            <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.accepted_7d}</span>{" "}
-            aceite{mgm.accepted_7d === 1 ? "" : "s"} nos últimos 7 dias ·{" "}
-            <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.inviters}</span>{" "}
-            convidador{mgm.inviters === 1 ? "" : "es"} ·{" "}
-            <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.declared}</span>{" "}
-            vaga{mgm.declared === 1 ? "" : "s"} reservada{mgm.declared === 1 ? "" : "s"} por telefone
+      <p className="mt-5 text-center text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+        <span className="numeral text-[12px] text-[var(--text-secondary)]">{mgm.accepted_7d}</span>{" "}
+        aceite{mgm.accepted_7d === 1 ? "" : "s"} em 7 dias ·{" "}
+        <span className="numeral text-[12px] text-[var(--text-secondary)]">{mgm.inviters}</span>{" "}
+        convidador{mgm.inviters === 1 ? "" : "es"} ·{" "}
+        <span className="numeral text-[12px] text-[var(--text-secondary)]">{mgm.declared}</span>{" "}
+        vaga{mgm.declared === 1 ? "" : "s"} reservada{mgm.declared === 1 ? "" : "s"}
+        {mgm.reward_reached > 0 && (
+          <>
+            {" "}· <span className="numeral text-[12px] text-[var(--text-secondary)]">{mgm.reward_reached}</span>{" "}
+            prêmio{mgm.reward_reached === 1 ? "" : "s"} VIP
+          </>
+        )}
+      </p>
+
+      {/* ── Top convidadores, embaixo do funil — o card fica alto, não largo ── */}
+      <div className="mt-5 border-t border-[var(--border)] pt-4">
+        <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">Top convidadores</p>
+        {top.length > 0 ? (
+          <ol className="mt-3 space-y-2.5">
+            {top.map((t, i) => (
+              <li key={t.user_id} className="flex items-center gap-2.5">
+                <span className="label-colus w-4 shrink-0 text-[9px] text-[var(--text-tertiary)]">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <InviterAvatar name={t.name} url={t.avatar_url || avatars[t.user_id]} />
+                <span className="min-w-0 flex-1 truncate text-[12px] font-500 text-[var(--text-primary)]">
+                  {t.name}
+                </span>
+                <span className="numeral shrink-0 text-[14px] text-[var(--text-primary)]">
+                  {t.accepted}
+                </span>
+                <span className="label-colus shrink-0 text-[7px] text-[var(--text-tertiary)]">
+                  {t.accepted === 1 ? "aceite" : "aceites"}
+                </span>
+              </li>
+            ))}
+          </ol>
+        ) : mgm.accepted_total > 0 ? (
+          <p className="mt-3 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+            Ranking indisponível agora — os totais acima continuam válidos.
           </p>
-
-          {mgm.reward_reached > 0 && (
-            <p className="mt-2 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-              <span className="font-600 text-[var(--text-secondary)]">{mgm.reward_reached}</span>{" "}
-              {mgm.reward_reached === 1 ? "convidador já tem" : "convidadores já têm"} o prêmio VIP
-              (3 indicados que jogaram).
-            </p>
-          )}
-        </div>
-
-        {/* ── Top convidadores ──────────────────────────────────────────────── */}
-        <div className="lg:border-l lg:border-[var(--border)] lg:pl-6">
-          <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">Top convidadores</p>
-          {top.length > 0 ? (
-            <ol className="mt-3 space-y-2">
-              {top.map((t, i) => (
-                <li key={t.user_id} className="flex items-center gap-2.5">
-                  <span className="label-colus w-4 shrink-0 text-[9px] text-[var(--text-tertiary)]">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <InviterAvatar name={t.name} url={t.avatar_url || avatars[t.user_id]} />
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-500 text-[var(--text-primary)]">
-                    {t.name}
-                  </span>
-                  <span className="numeral shrink-0 text-[14px] text-[var(--text-primary)]">
-                    {t.accepted}
-                  </span>
-                  <span className="label-colus shrink-0 text-[7px] text-[var(--text-tertiary)]">
-                    {t.accepted === 1 ? "aceite" : "aceites"}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          ) : mgm.accepted_total > 0 ? (
-            // Ranking vazio COM aceites no agregado = a query do top-5 falhou
-            // sozinha; dizer "nenhum aceite" contradiria o número ao lado.
-            <p className="mt-3 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-              Ranking indisponível agora — os totais ao lado continuam válidos.
-            </p>
-          ) : (
-            <p className="mt-3 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-              Nenhum aceite ainda — sem ranking para mostrar.
-            </p>
-          )}
-        </div>
+        ) : (
+          <p className="mt-3 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+            Nenhum aceite ainda — sem ranking para mostrar.
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** O funil do Jogo Rápido, no MESMO formato do MGM ao lado: abriu → um
+    adversário preencheu → o placar foi publicado. */
+function QuickMatchFunnelCard({
+  funnel,
+  quickScored,
+}: {
+  funnel: NorthMetrics["matchFunnel"];
+  quickScored: number | null;
+}) {
+  const shell =
+    "grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6";
+  if (!funnel) {
+    return (
+      <div className={shell}>
+        <h2 className="eyebrow">Jogo Rápido — do aberto ao placar</h2>
+        <p className="mt-2 text-[11.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          O funil chega com o bloco match_funnel do bff — até lá fica sem dado, não em zero.
+        </p>
+      </div>
+    );
+  }
+  const stages = [
+    { label: "Jogos abertos", value: funnel.quick_matches_opened, hint: "quick matches criados, desde o início" },
+    { label: "Confirmados", value: funnel.quick_matches_filled, hint: "um adversário preencheu" },
+    // Sem a lista completa de partidas não dá para contar placar por modo —
+    // o degrau some em vez de fingir um zero.
+    ...(quickScored !== null
+      ? [{ label: "Placar marcado", value: quickScored, hint: "placar publicado no feed" }]
+      : []),
+  ];
+  return (
+    <div className={cnJoin(shell, "flex flex-col")}>
+      <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <h2 className="eyebrow">Jogo Rápido — do aberto ao placar</h2>
+        <Link
+          href="/partidas-aguardando"
+          className="inline-flex items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
+        >
+          Aguardando <ArrowUpRight size={11} />
+        </Link>
+      </div>
+
+      <FunnelStages stages={stages} />
+
+      {funnel.quick_match_median_fill_hours != null && (
+        <p className="mt-5 text-center text-[10.5px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          mediana de{" "}
+          <span className="numeral text-[12px] text-[var(--text-secondary)]">
+            {funnel.quick_match_median_fill_hours.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}h
+          </span>{" "}
+          entre abrir e confirmar
+        </p>
+      )}
     </div>
   );
 }
@@ -1333,7 +1387,15 @@ export default async function MetricsPage() {
         </div>
 
         {/* ── Indicação entre jogadores — a mecânica MGM, não o convite de jogo ── */}
-        <MgmCard mgm={north.mgm} inviteIntent={inviteIntent} avatars={mgmAvatars} />
+        {/* MGM e Jogo Rápido lado a lado, no mesmo formato de funil: cada
+            card meio-largo e alto, não uma faixa retangular com vazio. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <MgmCard mgm={north.mgm} inviteIntent={inviteIntent} avatars={mgmAvatars} />
+          <QuickMatchFunnelCard
+            funnel={north.matchFunnel}
+            quickScored={matches.playedByMode?.quickScored ?? null}
+          />
+        </div>
 
 
         {/* ── Dinheiro ─────────────────────────────────────────────────────────── */}
