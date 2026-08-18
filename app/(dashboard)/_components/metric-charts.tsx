@@ -787,16 +787,16 @@ export function PaidShareMeter({ pagas, gratis }: { pagas: number; gratis: numbe
     { name: "Grátis", value: gratis, color: "var(--chart-cat-b)" },
   ];
   return (
-    <div className="flex h-[248px] w-full items-center justify-center gap-8">
-      <div className="relative h-[196px] w-[196px] shrink-0">
+    <div className="flex h-[248px] w-full flex-col items-center justify-center gap-4">
+      <div className="relative h-[176px] w-[176px] shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={rows}
               dataKey="value"
               nameKey="name"
-              innerRadius={66}
-              outerRadius={94}
+              innerRadius={60}
+              outerRadius={85}
               paddingAngle={2}
               strokeWidth={0}
               isAnimationActive={false}
@@ -825,7 +825,9 @@ export function PaidShareMeter({ pagas, gratis }: { pagas: number; gratis: numbe
           <span className="mt-1 text-[10px] font-300 text-[var(--text-tertiary)]">pagas</span>
         </div>
       </div>
-      <ul className="min-w-[104px] space-y-3">
+      {/* Legenda embaixo, em linha: o donut fica no centro do card e não
+          empurrado para a esquerda por uma coluna de números ao lado. */}
+      <ul className="flex items-center justify-center gap-7">
         {rows.map((r) => (
           <li key={r.name} className="flex items-center gap-2">
             <span
@@ -834,9 +836,7 @@ export function PaidShareMeter({ pagas, gratis }: { pagas: number; gratis: numbe
               style={{ background: r.color }}
             />
             <span className="text-[11px] font-300 text-[var(--text-secondary)]">{r.name}</span>
-            <span className="numeral ml-auto pl-4 text-[14px] text-[var(--text-primary)]">
-              {r.value}
-            </span>
+            <span className="numeral text-[14px] text-[var(--text-primary)]">{r.value}</span>
           </li>
         ))}
       </ul>
