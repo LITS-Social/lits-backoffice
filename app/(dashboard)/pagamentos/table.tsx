@@ -53,6 +53,11 @@ const filters: DataTableFilterGroup<PaymentIssueItem>[] = [
   {
     id: "booking",
     label: "Reserva",
+    // Abre em "Ainda de pé": é a fila de trabalho. As presas em reserva já
+    // cancelada são pergunta de estorno, não de cobrança — e quando são 79 de
+    // 80, o muro de linhas mortas idênticas enterrava a única que importava.
+    // O chip "Já cancelada · 79" fica a um clique, com a contagem à vista.
+    initialValue: "live",
     options: [
       { value: "live", label: "Ainda de pé", predicate: (p) => !isDead(p.booking_status) },
       { value: "dead", label: "Já cancelada", predicate: (p) => isDead(p.booking_status) },
@@ -143,8 +148,10 @@ export function PaymentIssuesTable({ issues }: { issues: PaymentIssueItem[] }) {
       rows={issues}
       columns={columns}
       filters={filters}
-      // Oldest first: the top of this list is the money that has been stuck longest.
-      initialSort={{ columnId: "age", direction: "asc" }}
+      // Mais recente primeiro (pedido do founder): a fila é lida como um
+      // extrato — o que acabou de travar no topo. A coluna "Parado há"
+      // continua ordenável para quem quiser caçar o mais antigo.
+      initialSort={{ columnId: "age", direction: "desc" }}
       rowKey={(p) => p.booking_id}
       searchText={(p) => `${p.user.name} ${p.booking_id} ${p.payment_status} ${p.booking_status}`}
       searchPlaceholder="Buscar por pagador ou booking id..."

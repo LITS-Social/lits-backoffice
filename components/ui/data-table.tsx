@@ -31,6 +31,10 @@ export interface DataTableFilterGroup<T> {
   id: string;
   label: string;
   options: DataTableFilterOption<T>[];
+  /** Opção pré-selecionada ao abrir (ausente = "all"). Para quando um recorte
+      é ruído por padrão — ex.: Pix preso abre só nas reservas ainda de pé, e
+      o chip com a contagem deixa o resto a um clique. */
+  initialValue?: string;
 }
 
 export interface DataTableProps<T> {
@@ -79,7 +83,7 @@ export function DataTable<T>({
     initialSort ?? null
   );
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>(() =>
-    Object.fromEntries(filters.map((f) => [f.id, "all"]))
+    Object.fromEntries(filters.map((f) => [f.id, f.initialValue ?? "all"]))
   );
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
