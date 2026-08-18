@@ -656,6 +656,30 @@ function cnJoin(...parts: string[]) {
   return parts.join(" ");
 }
 
+/** Foto do convidador, com iniciais como reserva — o avatar_url chega com o
+    deploy do bff; até lá (e para quem não tem foto) as iniciais seguram. */
+function InviterAvatar({ name, url }: { name: string; url?: string }) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+  return (
+    <span className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--surface-raised)]">
+      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-600 text-[var(--text-tertiary)]">
+        {initials || "?"}
+      </span>
+      {url && (
+        /* foto externa do bucket de perfis; next/image exigiria alistar o
+           host para um thumb de 28px */
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      )}
+    </span>
+  );
+}
+
 function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
   const shell =
     "grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6";
@@ -678,25 +702,21 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
   const pct = (num: number, den: number) =>
     den > 0 ? `${Math.round((num / den) * 100)}%` : "—";
 
-  // Os três estágios do funil, na ordem em que acontecem. O hint é UMA linha:
-  // a diferença entre cadastro e jogo (a leitura errada que este card já
-  // produziu) está no rótulo e na conversão, não num parágrafo.
+  // "Geraram código" SAIU do funil (founder 18/08: "acredito que está
+  // inflado" — e estava). O código nasce lazy no primeiro GET /v1/mgm/me, e o
+  // card "Convide e ganhe" da aba Você chama esse endpoint: o número media
+  // quem abriu o próprio perfil, não intenção de convite. Fica no rodapé,
+  // rotulado pelo que é.
   const stages = [
-    { label: "Geraram código", value: mgm.codes_created, hint: "abriram a tela — não é envio" },
     { label: "Aceitaram", value: mgm.accepted_total, hint: "cadastro, não jogo" },
     { label: "Jogaram", value: mgm.played, hint: "a única conta que vale prêmio" },
   ];
+  const maxStage = Math.max(...stages.map((st) => st.value), 1);
 
   return (
     <div className={shell}>
       <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <div>
-          <h2 className="eyebrow">Convites entre jogadores (MGM)</h2>
-          <p className="mt-2 text-[11.5px] font-300 text-[var(--text-tertiary)]">
-            Quem indica, quem aceita, quem joga. Não é o convite de partida nem o código do beta —
-            zeros aqui são zeros reais.
-          </p>
-        </div>
+        <h2 className="eyebrow">Convites entre jogadores (MGM)</h2>
         <Link
           href="/convites/indicacoes"
           className="inline-flex items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
@@ -721,7 +741,7 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
                     </span>
                   </div>
                 )}
-                <div className="min-w-[104px]">
+                <div className="min-w-[128px]">
                   <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">{st.label}</p>
                   <p
                     className={cnJoin(
@@ -735,6 +755,17 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
                   >
                     {st.value}
                   </p>
+                  {/* A barra dá a FORMA do funil: o degrau entre os estágios
+                      se vê sem ler os números. */}
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
+                    <div
+                      className={cnJoin(
+                        "h-full rounded-full",
+                        st.label === "Jogaram" ? "bg-[var(--primary)]" : "bg-[var(--primary)]/45"
+                      )}
+                      style={{ width: `${Math.max((st.value / maxStage) * 100, st.value > 0 ? 4 : 0)}%` }}
+                    />
+                  </div>
                   <p className="mt-1.5 text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
                     {st.hint}
                   </p>
@@ -751,7 +782,9 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
             convidador{mgm.inviters === 1 ? "" : "es"} com ≥1 linha ·{" "}
             <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.declared}</span>{" "}
             vaga{mgm.declared === 1 ? "" : "s"} reservada{mgm.declared === 1 ? "" : "s"} por
-            telefone, aguardando cadastro
+            telefone ·{" "}
+            <span className="numeral text-[13px] text-[var(--text-primary)]">{mgm.codes_created}</span>{" "}
+            têm código (nasce ao abrir o perfil — não é intenção de convite)
           </p>
 
           {mgm.reward_reached > 0 && (
@@ -769,10 +802,11 @@ function MgmCard({ mgm }: { mgm: NorthMetrics["mgm"] }) {
           {top.length > 0 ? (
             <ol className="mt-3 space-y-2">
               {top.map((t, i) => (
-                <li key={t.user_id} className="flex items-baseline gap-2.5">
+                <li key={t.user_id} className="flex items-center gap-2.5">
                   <span className="label-colus w-4 shrink-0 text-[9px] text-[var(--text-tertiary)]">
                     {String(i + 1).padStart(2, "0")}
                   </span>
+                  <InviterAvatar name={t.name} url={t.avatar_url} />
                   <span className="min-w-0 flex-1 truncate text-[12px] font-500 text-[var(--text-primary)]">
                     {t.name}
                   </span>
@@ -915,7 +949,7 @@ function MetricsTable({ title, rows }: { title: string; rows: MetricRow[] }) {
 export default async function MetricsPage() {
   const {
     users, matches, scorePosts, north, completion, partnerRating,
-    activationMonth, monthly, playerStats, cohorts,
+    activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs,
   } = await getProductMetrics();
   // BP vivo (portal de RI, fallback local) + push do snapshot real para o RI
   // — fire-and-forget: o investidor vê "Real vs Plano" com o mesmo agregado
@@ -925,7 +959,7 @@ export default async function MetricsPage() {
   // agregado inteiro — o mesmo objeto que o snapshot do RI já monta abaixo.
   const bpPace = buildBpPace(
     { users, matches, scorePosts, north, completion, partnerRating,
-      activationMonth, monthly, playerStats, cohorts },
+      activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs },
     bpMensal
   );
   // Réguas do topo: agosto/26 do BP (julho é pré-lançamento no plano). O /api/bp
@@ -952,7 +986,7 @@ export default async function MetricsPage() {
   const metaPartidasPagas = bpAgo.partidasPagasMes ?? bpAgoLocal.partidasPagasMes ?? null;
   pushRiSnapshot({
     users, matches, scorePosts, north, completion, partnerRating,
-    activationMonth, monthly, playerStats, cohorts,
+    activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs,
   });
 
   const broken = [
@@ -1327,6 +1361,7 @@ export default async function MetricsPage() {
             de período compartilhado entre crescimento e ritmo ─────────────────── */}
         <ChartsGrid
           userCreatedAtMs={users.createdAtMs}
+          mgmCreatedAtMs={mgmCreatedAtMs}
           userDateless={users.dateless}
           growthFallback={
             users.failed
