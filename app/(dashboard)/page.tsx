@@ -116,7 +116,6 @@ function FunnelSection({
   const tentativas = invites + qms;
   const accepted = funnel.invites_accepted ?? null;
   const filled = funnel.quick_matches_filled ?? null;
-  const fillHours = funnel.quick_match_median_fill_hours ?? null;
   const pagas = paid?.total ?? null;
   const attach = pagas != null && funnel.played > 0 ? pagas / funnel.played : null;
   const catA = "var(--chart-cat-a)";
@@ -178,16 +177,7 @@ function FunnelSection({
             ? `7 dias: ${inviteAcceptance7d.accepted} de ${inviteAcceptance7d.sent} aceitos (${pct(inviteAcceptance7d.accepted / inviteAcceptance7d.sent)})`
             : undefined
         )}
-        {col(
-          "Quick match",
-          catB,
-          qms,
-          filled,
-          playedByMode?.quick ?? null,
-          fillHours != null
-            ? `mediana de ${fillHours.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}h até preencher`
-            : undefined
-        )}
+        {col("Quick match", catB, qms, filled, playedByMode?.quick ?? null)}
         <div className="flex flex-col items-start justify-center gap-1 border-t border-[var(--border)] pt-4 sm:col-span-2 lg:col-span-1 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
           <span className="label-colus text-[8.5px] text-[var(--text-tertiary)]">
             Conversão agregada
