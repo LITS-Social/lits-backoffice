@@ -14,6 +14,9 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +65,14 @@ function CardTooltip({ label, lines }: { label: string; lines: string[] }) {
 
 /* ── Client-side bucketing ─────────────────────────────────────────────────── */
 
-export type GrowthPoint = { label: string; total: number; novos: number };
+export type GrowthPoint = {
+  label: string;
+  total: number;
+  novos: number;
+  /** Quantos dos novos vieram por indicação (MGM); null = detalhe indisponível. */
+  mgm: number | null;
+  resto: number;
+};
 export type PacePoint = { label: string; count: number };
 
 const DAY_MS = 24 * 3600_000;
@@ -105,12 +115,27 @@ function rangeWindows(fromMs: number, toEndMs: number): { wins: Win[]; granulari
 
 /** Cumulative base at each window end; `dateless` accounts are folded into
     every total — they exist now and did not appear this quarter. */
-function growthSeries(times: number[], dateless: number, wins: Win[]): GrowthPoint[] {
-  return wins.map((w) => ({
-    label: fmtDay(w.end),
-    total: times.filter((t) => t <= w.end).length + dateless,
-    novos: times.filter((t) => t >= w.start && t <= w.end).length,
-  }));
+function growthSeries(
+  times: number[],
+  dateless: number,
+  wins: Win[],
+  // Os MESMOS instantes de cadastro, filtrados a quem entrou por indicação —
+  // null quando o detalhe do MGM falhou (a barra fica de uma cor só em vez de
+  // fingir um zero).
+  mgmTimes: number[] | null
+): GrowthPoint[] {
+  return wins.map((w) => {
+    const novos = times.filter((t) => t >= w.start && t <= w.end).length;
+    const mgm =
+      mgmTimes === null ? null : mgmTimes.filter((t) => t >= w.start && t <= w.end).length;
+    return {
+      label: fmtDay(w.end),
+      total: times.filter((t) => t <= w.end).length + dateless,
+      novos,
+      mgm,
+      resto: mgm === null ? novos : novos - mgm,
+    };
+  });
 }
 
 /** "2026-07-21" (input[type=date]) → local midnight ms, or null when unparsable. */
@@ -223,13 +248,20 @@ function GrowthChart({
                   label={labelFor((payload[0].payload as GrowthPoint).label)}
                   lines={[
                     `+${(payload[0].payload as GrowthPoint).novos} ${novosSuffix}`,
+                    ...((payload[0].payload as GrowthPoint).mgm !== null
+                      ? [`via MGM: ${(payload[0].payload as GrowthPoint).mgm}`]
+                      : []),
                     `base acumulada: ${(payload[0].payload as GrowthPoint).total}`,
                   ]}
                 />
               ) : null
             }
           />
-          <Bar dataKey="novos" fill="var(--primary)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          {/* Empilhado: a fatia de baixo é quem chegou por indicação (MGM).
+              Sem o detalhe, `resto` carrega o total e a barra fica de uma cor
+              só — indisponível não vira zero. */}
+          <Bar dataKey="mgm" stackId="novos" fill="var(--chart-cat-b)" isAnimationActive={false} />
+          <Bar dataKey="resto" stackId="novos" fill="var(--primary)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -350,6 +382,7 @@ const labelClass = "label-colus mb-1 block text-[8.5px] text-[var(--text-tertiar
  */
 export function ChartsGrid({
   userCreatedAtMs,
+  mgmCreatedAtMs,
   userDateless,
   growthFallback,
   matchStartsAtMs,
@@ -360,6 +393,9 @@ export function ChartsGrid({
 }: {
   /** Raw signup instants (ms) — null when the crawl failed or was truncated. */
   userCreatedAtMs: number[] | null;
+  /** Instantes de cadastro de quem entrou por indicação (MGM) — subconjunto
+      de userCreatedAtMs. Null quando o detalhe do MGM não veio. */
+  mgmCreatedAtMs: number[] | null;
   userDateless: number;
   /** Why the growth series is missing, shown when `userCreatedAtMs` is null. */
   growthFallback: string;
@@ -395,6 +431,7 @@ export function ChartsGrid({
         userCreatedAtMs,
         userDateless,
         range ? range.wins : rollingWindows(growthMode === "daily" ? DAY_MS : WEEK_MS),
+        mgmCreatedAtMs,
       )
     : null;
   const mixPoints: MatchMixPoint[] | null =
@@ -420,7 +457,7 @@ export function ChartsGrid({
   const growthHint = rangeSuffix
     ? `Novos cadastros ${rangeSuffix}; base acumulada no tooltip.`
     : growthMode === "daily"
-      ? "Novos cadastros por dia — últimos 12 dias; base acumulada no tooltip; visão semanal no toggle."
+      ? "Novos cadastros por dia — últimos 12 dias; a fatia escura veio por indicação (MGM); base acumulada no tooltip."
       : "Novos cadastros por semana — últimas 12 semanas; base acumulada no tooltip.";
   const placarNote =
     placarMs != null
@@ -736,10 +773,9 @@ export function BpPaceGrid({ items }: { items: BpPaceItem[] }) {
   );
 }
 
-/* ── Pagas × grátis — share de todas as partidas num meter único ───────────────
-   Uma razão única contra o todo pede um meter, não um donut de duas fatias:
-   barra empilhada com o mesmo par de cores da série diária, % pagas como
-   número-herói e contagens diretas na legenda. */
+/* ── Pagas × grátis — pizza (pedido do founder, 18/08) ──────────────────────
+   Era um meter de barra; virou donut com o share como número no centro. As
+   cores e contagens da legenda continuam as mesmas da série diária. */
 
 export function PaidShareMeter({
   pagas,
@@ -764,29 +800,45 @@ export function PaidShareMeter({
     { name: "Grátis", value: gratis, color: "var(--chart-cat-b)" },
   ];
   return (
-    <div className="flex h-[220px] w-full flex-col justify-center gap-5">
-      <p className="flex items-baseline gap-2.5">
-        <span className="numeral text-[40px] leading-none text-[var(--text-primary)]">
-          {Math.round(share * 100)}%
-        </span>
-        <span className="text-[12px] font-300 text-[var(--text-tertiary)]">
-          das partidas são pagas
-        </span>
-      </p>
-      <div className="flex h-4 w-full gap-[2px] overflow-hidden rounded-[4px]">
-        {rows.map(
-          (r) =>
-            r.value > 0 && (
-              <div
-                key={r.name}
-                title={`${r.name}: ${r.value} de ${total}`}
-                className="h-full rounded-[3px]"
-                style={{ width: `${(r.value / total) * 100}%`, background: r.color }}
-              />
-            )
-        )}
+    <div className="flex h-[220px] w-full items-center justify-center gap-6">
+      <div className="relative h-[164px] w-[164px] shrink-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={rows}
+              dataKey="value"
+              nameKey="name"
+              innerRadius={56}
+              outerRadius={78}
+              paddingAngle={2}
+              strokeWidth={0}
+              isAnimationActive={false}
+            >
+              {rows.map((r) => (
+                <Cell key={r.name} fill={r.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) =>
+                active && payload?.length ? (
+                  <CardTooltip
+                    label={String(payload[0].name)}
+                    lines={[`${payload[0].value} de ${total} partidas`]}
+                  />
+                ) : null
+              }
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        {/* O número no buraco do donut: a razão que o card existe para dar. */}
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="numeral text-[30px] leading-none text-[var(--text-primary)]">
+            {Math.round(share * 100)}%
+          </span>
+          <span className="mt-1 text-[9.5px] font-300 text-[var(--text-tertiary)]">pagas</span>
+        </div>
       </div>
-      <ul className="space-y-2">
+      <ul className="min-w-[112px] space-y-2.5">
         {rows.map((r) => (
           <li key={r.name} className="flex items-center gap-2">
             <span
@@ -795,18 +847,17 @@ export function PaidShareMeter({
               style={{ background: r.color }}
             />
             <span className="text-[10.5px] font-300 text-[var(--text-secondary)]">{r.name}</span>
-            <span className="numeral ml-auto text-[12px] text-[var(--text-primary)]">
+            <span className="numeral ml-auto text-[13px] text-[var(--text-primary)]">
               {r.value}
             </span>
           </li>
         ))}
+        {monthPagas != null && (
+          <li className="border-t border-[var(--border)] pt-2 text-[10px] font-300 text-[var(--text-tertiary)]">
+            no mês corrente: <span className="numeral text-[11px]">{monthPagas}</span> pagas
+          </li>
+        )}
       </ul>
-      {monthPagas != null && (
-        <p className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-          no mês corrente: <span className="font-600 text-[var(--text-secondary)]">{monthPagas}</span>{" "}
-          pagas
-        </p>
-      )}
     </div>
   );
 }
