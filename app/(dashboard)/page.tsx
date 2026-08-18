@@ -1563,18 +1563,10 @@ export default async function MetricsPage() {
         <MetricsTable title="Ação imediata — verificar todo dia" rows={daily} />
         <MetricsTable title="Saúde do produto — verificar toda semana" rows={weeklyRows} />
 
-        <p className="flex items-center justify-between gap-4 border-t border-[var(--border)] pt-4 text-[11px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          <span>
-            Linhas <span className="font-600 text-[var(--text-secondary)]">sem dado</span> ainda não
-            têm instrumentação no backend — a meta e a ação ficam aqui porque o checklist vale
-            mesmo medido à mão.
-          </span>
-          <Link
-            href="/visao-geral"
-            className="inline-flex shrink-0 items-center gap-1 font-700 text-[9px] uppercase tracking-[0.16em] text-[var(--primary)] transition-opacity hover:opacity-70"
-          >
-            Visão operacional <ArrowUpRight size={11} />
-          </Link>
+        <p className="border-t border-[var(--border)] pt-4 text-[11px] font-300 leading-relaxed text-[var(--text-tertiary)]">
+          Linhas <span className="font-600 text-[var(--text-secondary)]">sem dado</span> ainda não
+          têm instrumentação no backend — a meta e a ação ficam aqui porque o checklist vale
+          mesmo medido à mão.
         </p>
       </div>
     </div>

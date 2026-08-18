@@ -6,7 +6,6 @@ import {
   Clock,
   CheckCircle2,
   Gauge,
-  LayoutDashboard,
   Mail,
   XCircle,
   CreditCard,
@@ -28,12 +27,10 @@ import { cn } from "@/lib/utils";
 import type { OpsSummary } from "@/lib/ops";
 import { ThemeToggle } from "./theme-toggle";
 
-// The two home screens: the product's north-star metrics, and the operational
-// overview it displaced from "/". No folio numbers — these are not panels.
-const home = [
-  { label: "Dashboard",   href: "/",            icon: Gauge },
-  { label: "Visão Geral", href: "/visao-geral", icon: LayoutDashboard },
-];
+// One home screen: the product's north-star metrics. The operational overview
+// still answers by URL (/visao-geral), but the monitoring panels below already
+// carry its counts — two "gerais" side by side only split attention.
+const home = [{ label: "Dashboard", href: "/", icon: Gauge }];
 
 const nav = [
   { id: "01", label: "Aguardando Jogo",      href: "/partidas-aguardando",    icon: Clock },
