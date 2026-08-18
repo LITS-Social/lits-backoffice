@@ -15,7 +15,6 @@ import { Player } from "../_components/cells";
 const panels = [
   { id: "06", label: "Problemas de Pagamento", href: "/pagamentos", icon: CreditCard, hint: "Pix preso, sem confirmação", urgent: true },
   { id: "09", label: "Denúncias", href: "/denuncias", icon: Flag, hint: "posts aguardando moderação", urgent: true },
-  { id: "07", label: "Quadras Indisponíveis", href: "/quadras-indisponiveis", icon: AlertTriangle, hint: "bloqueadas ou em manutenção", urgent: true },
   { id: "03", label: "Convites em Aberto", href: "/convites", icon: Mail, hint: "aguardando o convidado aceitar" },
   { id: "01", label: "Aguardando Jogo", href: "/partidas-aguardando", icon: Clock, hint: "confirmadas, ainda por acontecer" },
   { id: "05", label: "Cancelamentos", href: "/cancelamentos", icon: XCircle, hint: "reservas canceladas recentemente" },

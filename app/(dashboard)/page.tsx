@@ -1392,7 +1392,7 @@ export default async function MetricsPage() {
               target: bpTarget(bpMensal, "totalAtivos")?.value ?? null,
               targetMonth: bpTarget(bpMensal, "totalAtivos")?.monthLabel ?? "—",
               context: monthly
-                ? `jogaram ≥1 partida no mês-calendário${
+                ? `${monthly.currentMonthLegs} participações em ${monthly.currentMonthMatches} partidas já jogadas${
                     monthly.prevMonthActives > 0
                       ? ` · mês passado: ${monthly.prevMonthActives}`
                       : ""

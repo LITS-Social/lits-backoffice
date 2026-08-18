@@ -338,6 +338,11 @@ export type ProductMetrics = {
         conta (2,0 no total, 1,0 nas pagas). */
     currentMonthLegs: number;
     currentMonthPaidLegs: number;
+    /** Partidas do mês. Com as pernas ao lado, o número de ativos deixa de ser
+        um dado a acreditar: pernas ÷ partidas diz na hora se as partidas têm
+        os dois jogadores registrados (2,0) ou se a maioria é reserva sem
+        convidado (1,0) — que é o que faz "ativos" parecer baixo demais. */
+    currentMonthMatches: number;
     churn: { rate: number; left: number; base: number; month: string; baseMonth: string } | null;
   } | null;
 };
@@ -738,6 +743,7 @@ export const getProductMetrics = cache(async (): Promise<ProductMetrics> => {
       currentMonthLegs: matches.legs.filter((l) => inCurrentMonth(l.startsAtMs)).length,
       currentMonthPaidLegs: (matches.paidLegs ?? []).filter((l) => inCurrentMonth(l.startsAtMs))
         .length,
+      currentMonthMatches: (matches.startsAtMs ?? []).filter(inCurrentMonth).length,
       churn,
     };
   }
