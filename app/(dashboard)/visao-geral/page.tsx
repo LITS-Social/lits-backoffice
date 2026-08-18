@@ -353,10 +353,8 @@ export default async function DashboardPage() {
         </div>
 
         <p className="border-t border-[var(--border)] pt-4 text-[11px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Os painéis <span className="font-600 text-[var(--text-secondary)]">02 Finalizadas</span> e{" "}
-          <span className="font-600 text-[var(--text-secondary)]">04 Sem Recomendação</span> não
-          aparecem aqui: o backend ainda não captura placar de partida nem telemetria de
-          zero-candidato, então não há o que contar.
+          O painel <span className="font-600 text-[var(--text-secondary)]">02 Finalizadas</span> não
+          aparece aqui: o backend ainda não captura placar de partida, então não há o que contar.
         </p>
       </div>
     </div>
