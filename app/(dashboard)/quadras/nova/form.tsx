@@ -16,14 +16,19 @@ import {
   type GeocodeCandidate,
 } from "../[id]/editar/actions";
 
-/** As três janelas do funcionamento da academia, colhidas no passo 1. */
+/** As três janelas do funcionamento da academia, colhidas no passo 1.
+    null = FECHADO naquele grupo de dias — e fechado é o padrão. A grade do
+    app sintetiza horário à venda a partir destas janelas, então nascer com
+    6–22 pré-preenchido era nascer VENDENDO 16 horas por dia em academia cujo
+    funcionamento ninguém informou (Fast Tennis Vila Olímpia, Brooklin,
+    Ipiranga e Morumbi nasceram assim). Vazio não vende nada. */
 export type AcademiaHours = {
-  weekStart: number;
-  weekEnd: number;
-  satStart: number;
-  satEnd: number;
-  sunStart: number;
-  sunEnd: number;
+  weekStart: number | null;
+  weekEnd: number | null;
+  satStart: number | null;
+  satEnd: number | null;
+  sunStart: number | null;
+  sunEnd: number | null;
 };
 
 type Surface = "clay" | "hard" | "grass" | "beach" | "carpet";
@@ -218,8 +223,10 @@ function FranchiseStep({
     setCandidates(null);
     setGeoError("");
   }
+  // Tudo null: a academia nasce FECHADA e cada janela é uma decisão de quem
+  // cadastra, não um chute do formulário.
   const [hours, setHours] = useState<AcademiaHours>({
-    weekStart: 6, weekEnd: 22, satStart: 6, satEnd: 22, sunStart: 6, sunEnd: 22,
+    weekStart: null, weekEnd: null, satStart: null, satEnd: null, sunStart: null, sunEnd: null,
   });
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -263,7 +270,13 @@ function FranchiseStep({
         ["Sábado", hours.satStart, hours.satEnd],
         ["Domingo", hours.sunStart, hours.sunEnd],
       ] as const) {
-        if (ks >= ke) {
+        // As duas pontas vazias = fechado, e fechado é válido. UMA ponta só é
+        // janela pela metade — não dá para saber se era para abrir ou não.
+        if ((ks == null) !== (ke == null)) {
+          setError(`Horário de funcionamento (${label}): preencha início E fim, ou deixe os dois vazios (fechado).`);
+          return;
+        }
+        if (ks != null && ke != null && ks >= ke) {
           setError(`Horário de funcionamento (${label}): início deve ser antes do fim.`);
           return;
         }
@@ -554,8 +567,11 @@ function FranchiseStep({
                     type="number"
                     min={0}
                     max={22}
-                    value={hours[ks]}
-                    onChange={(e) => setHours({ ...hours, [ks]: Number(e.target.value) })}
+                    placeholder="fechado"
+                    value={hours[ks] ?? ""}
+                    onChange={(e) =>
+                      setHours({ ...hours, [ks]: e.target.value === "" ? null : Number(e.target.value) })
+                    }
                     className={fieldClass}
                   />
                   <input
@@ -563,16 +579,20 @@ function FranchiseStep({
                     type="number"
                     min={1}
                     max={23}
-                    value={hours[ke]}
-                    onChange={(e) => setHours({ ...hours, [ke]: Number(e.target.value) })}
+                    placeholder="fechado"
+                    value={hours[ke] ?? ""}
+                    onChange={(e) =>
+                      setHours({ ...hours, [ke]: e.target.value === "" ? null : Number(e.target.value) })
+                    }
                     className={fieldClass}
                   />
                 </div>
               ))}
             </div>
             <p className="mt-1 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-              Hora início · última hora de começo de jogo. Vira o horário padrão da academia — a
-              grade das quadras segue estas janelas.
+              Hora início · última hora de começo de jogo. Em branco = <span className="font-600">fechado</span>:
+              a academia nasce sem nenhum horário à venda no app, e você abre as janelas quando
+              tiver o funcionamento em mãos.
             </p>
           </div>
         </div>
@@ -616,6 +636,9 @@ function CourtStep({
   const [availabilityMode, setAvailabilityMode] = useState<"auto" | "manual">("auto");
   const [daysForward, setDaysForward] = useState(30);
   const [startHour, setStartHour] = useState(academiaHours?.weekStart ?? 6);
+  // (fica 6–22 como sugestão de GRADE aqui no passo 2; a grade só nasce se o
+  // operador mandar gerá-la — diferente das janelas do passo 1, que valem
+  // sozinhas no app.)
   const [endHour, setEndHour] = useState(academiaHours?.weekEnd ?? 22);
   const [price, setPrice] = useState("");
   const [freeCourt, setFreeCourt] = useState(false);
@@ -662,12 +685,14 @@ function CourtStep({
         endHour,
         daysForward,
         priceCents,
-        saturday: academiaHours
-          ? { startHour: academiaHours.satStart, endHour: academiaHours.satEnd }
-          : undefined,
-        sunday: academiaHours
-          ? { startHour: academiaHours.sunStart, endHour: academiaHours.sunEnd }
-          : undefined,
+        saturday:
+          academiaHours && academiaHours.satStart != null && academiaHours.satEnd != null
+            ? { startHour: academiaHours.satStart, endHour: academiaHours.satEnd }
+            : undefined,
+        sunday:
+          academiaHours && academiaHours.sunStart != null && academiaHours.sunEnd != null
+            ? { startHour: academiaHours.sunStart, endHour: academiaHours.sunEnd }
+            : undefined,
       });
       if (!grid.ok) {
         setError(
