@@ -94,6 +94,10 @@ export type MatchesMetrics = {
   paidEvents: { t: number; cents: number }[] | null;
   /** Reservas jogadas por mecânica (match_type). Null quando parcial. */
   playedByMode: { invite: number; quick: number; quickScored: number } | null;
+  /** Quando cada quick match aconteceu — a série que dá o "dia a dia" ao card
+      do Jogo Rápido. Só existe quando a varredura cobriu tudo: uma série sobre
+      parte das partidas desenharia dias que não existiram. */
+  quickStartsAtMs: number[] | null;
   /** Os quick matches mais recentes já jogados — a vitrine do card do funil.
       Vem da MESMA página ordenada por recência, então vale mesmo truncada:
       recência não precisa da lista inteira. */
@@ -471,7 +475,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, paidEvents: null, playedByMode: null, recentQuick: [], gmv: null, legs: null, paidLegs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, paidEvents: null, playedByMode: null, quickStartsAtMs: null, recentQuick: [], gmv: null, legs: null, paidLegs: null };
   }
 
   const matches = data.matches;
@@ -547,6 +551,11 @@ async function fetchMatches(): Promise<MatchesMetrics> {
         priceCents: m.price_cents ?? 0,
         startsAtMs: new Date(m.starts_at).getTime(),
       })),
+    quickStartsAtMs: complete
+      ? matches
+          .filter((m) => (m.match_type ?? "").includes("quick"))
+          .map((m) => new Date(m.starts_at).getTime())
+      : null,
     playedByMode: complete
       ? {
           quick: matches.filter((m) => (m.match_type ?? "").includes("quick")).length,

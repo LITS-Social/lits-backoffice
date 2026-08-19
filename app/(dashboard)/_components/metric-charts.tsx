@@ -772,6 +772,182 @@ export function BpPaceGrid({ items }: { items: BpPaceItem[] }) {
    Era um meter de barra; virou donut com o share como número no centro. As
    cores e contagens da legenda continuam as mesmas da série diária. */
 
+/**
+ * O progresso de UM degrau do funil, dia a dia.
+ *
+ * Os funis mostram totais desde o início, e total não tem direção: 41 aceites
+ * podem ser 41 na semana passada e zero desde então. Esta faixa devolve a
+ * direção sem sair do card.
+ *
+ * A honestidade que ela precisa carregar: só os degraus DATÁVEIS entram. Os
+ * agregados do topo (códigos criados, jogos abertos) chegam do BFF como
+ * número, sem carimbo de tempo — inventar uma curva para eles seria desenhar
+ * dias que ninguém mediu. Por isso o rótulo diz exatamente qual degrau está
+ * no gráfico, e não "o funil".
+ */
+export function DayProgress({
+  ms,
+  label,
+  dias = 14,
+}: {
+  /** Os instantes do evento. `null` = não dá para datar; a faixa some. */
+  ms: number[] | null;
+  /** Qual degrau está sendo contado. Precisa ser específico. */
+  label: string;
+  dias?: number;
+}) {
+  const mounted = useMounted();
+  if (!mounted) return <div className="h-[64px]" aria-hidden />;
+  if (!ms) return null;
+
+  // Dias-calendário de São Paulo, do mais antigo ao mais recente. O fuso é o do
+  // negócio: em UTC, tudo depois das 21h cairia no dia seguinte.
+  const key = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const curto = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+  });
+
+  const contagem = new Map<string, number>();
+  for (const t of ms) contagem.set(key.format(new Date(t)), (contagem.get(key.format(new Date(t))) ?? 0) + 1);
+
+  const hoje = new Date();
+  const barras = Array.from({ length: dias }, (_, i) => {
+    const d = new Date(hoje);
+    d.setDate(d.getDate() - (dias - 1 - i));
+    const k = key.format(d);
+    return { k, rotulo: curto.format(d), valor: contagem.get(k) ?? 0 };
+  });
+  const max = Math.max(...barras.map((b) => b.valor), 1);
+  const total = barras.reduce((s, b) => s + b.valor, 0);
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="label-colus text-[8px] text-[var(--text-tertiary)]">{label}</p>
+        <p className="text-[10px] font-300 text-[var(--text-tertiary)]">
+          <span className="numeral text-[12px] text-[var(--text-secondary)]">{total}</span> em{" "}
+          {dias} dias
+        </p>
+      </div>
+      {/* Altura fixa e barras de largura igual: a leitura é a SILHUETA, não o
+          valor exato de cada dia — para o valor exato existe o title. */}
+      <div className="mt-2 flex h-[38px] items-end gap-[3px]">
+        {barras.map((b) => (
+          <span
+            key={b.k}
+            title={`${b.rotulo}: ${b.valor}`}
+            className="flex-1 rounded-[2px] transition-colors"
+            style={{
+              // Um dia zerado ainda ocupa um fio: a lacuna precisa ser visível
+              // como ausência, não como buraco no gráfico.
+              height: b.valor === 0 ? "2px" : `${Math.max((b.valor / max) * 100, 8)}%`,
+              background: b.valor === 0 ? "var(--border)" : "var(--primary)",
+              opacity: b.valor === 0 ? 1 : 0.35 + 0.65 * (b.valor / max),
+            }}
+          />
+        ))}
+      </div>
+      <div className="mt-1.5 flex justify-between text-[8.5px] font-300 text-[var(--text-tertiary)]">
+        <span>{barras[0]?.rotulo}</span>
+        <span>{barras[barras.length - 1]?.rotulo}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Duas fatias nomeadas, com o percentual da PRIMEIRA no buraco do donut.
+ *
+ * Mesmo desenho do PaidShareMeter — gráfico centrado, legenda embaixo — porque
+ * duas pizzas com gramáticas diferentes na mesma tela custam mais para ler do
+ * que as duas somadas. A diferença é só o vocabulário, que vem por parâmetro.
+ */
+export function TwoSlicePie({
+  a,
+  b,
+  vazio = "Nada registrado ainda.",
+}: {
+  a: { label: string; value: number };
+  b: { label: string; value: number };
+  vazio?: string;
+}) {
+  const total = a.value + b.value;
+  if (total === 0) {
+    return (
+      <div className="flex h-[220px] items-center justify-center text-[11.5px] font-300 text-[var(--text-tertiary)]">
+        {vazio}
+      </div>
+    );
+  }
+  const share = a.value / total;
+  const rows = [
+    { name: a.label, value: a.value, color: "var(--chart-cat-a)" },
+    { name: b.label, value: b.value, color: "var(--chart-cat-b)" },
+  ];
+  return (
+    <div className="flex h-[248px] w-full flex-col items-center justify-center gap-4">
+      <div className="relative h-[176px] w-[176px] shrink-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={rows}
+              dataKey="value"
+              nameKey="name"
+              innerRadius={60}
+              outerRadius={85}
+              paddingAngle={2}
+              strokeWidth={0}
+              isAnimationActive={false}
+            >
+              {rows.map((r) => (
+                <Cell key={r.name} fill={r.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) =>
+                active && payload?.length ? (
+                  <CardTooltip
+                    label={String(payload[0].name)}
+                    lines={[`${payload[0].value} de ${total} partidas`]}
+                  />
+                ) : null
+              }
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="numeral text-[34px] leading-none text-[var(--text-primary)]">
+            {Math.round(share * 100)}%
+          </span>
+          <span className="mt-1 max-w-[92px] text-center text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
+            {a.label.toLowerCase()}
+          </span>
+        </div>
+      </div>
+      <ul className="flex items-center justify-center gap-7">
+        {rows.map((r) => (
+          <li key={r.name} className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="h-2 w-2 shrink-0 rounded-[2px] border border-[var(--border)]"
+              style={{ background: r.color }}
+            />
+            <span className="text-[11px] font-300 text-[var(--text-secondary)]">{r.name}</span>
+            <span className="numeral text-[14px] text-[var(--text-primary)]">{r.value}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function PaidShareMeter({ pagas, gratis }: { pagas: number; gratis: number }) {
   const total = pagas + gratis;
   if (total === 0) {

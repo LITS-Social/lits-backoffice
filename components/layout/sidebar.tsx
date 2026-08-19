@@ -170,18 +170,6 @@ export function Sidebar({
                 <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r-full bg-[var(--primary)]" />
               )}
 
-              {/* Panel number — tracked Nikkei, the editorial folio mark. */}
-              <span
-                className={cn(
-                  "label-colus w-4 shrink-0 text-[9px] leading-none tracking-normal",
-                  active
-                    ? "text-[var(--primary)]"
-                    : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
-                )}
-              >
-                {item.id}
-              </span>
-
               <Icon
                 size={13}
                 strokeWidth={1.75}

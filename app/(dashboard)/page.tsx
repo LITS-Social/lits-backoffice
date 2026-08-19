@@ -13,6 +13,8 @@ import { pushRiSnapshot } from "@/lib/ri-sync";
 import { buildBpPace } from "@/lib/bp-pace";
 import { cn } from "@/lib/utils";
 import {
+  DayProgress,
+  TwoSlicePie,
   BpPaceGrid,
   ChartCard,
   ChartUnavailable,
@@ -90,12 +92,10 @@ function FunnelBar({
  */
 function FunnelSection({
   funnel,
-  paid,
   playedByMode,
   inviteAcceptance7d,
 }: {
   funnel: FunnelData;
-  paid: { total: number; last7: number; prev7: number; last30: number } | null;
   playedByMode: { invite: number; quick: number; quickScored: number } | null;
   inviteAcceptance7d: { sent: number; accepted: number } | null;
 }) {
@@ -113,11 +113,8 @@ function FunnelSection({
 
   const invites = funnel.invites_sent ?? 0;
   const qms = funnel.quick_matches_opened ?? 0;
-  const tentativas = invites + qms;
   const accepted = funnel.invites_accepted ?? null;
   const filled = funnel.quick_matches_filled ?? null;
-  const pagas = paid?.total ?? null;
-  const attach = pagas != null && funnel.played > 0 ? pagas / funnel.played : null;
   const catA = "var(--chart-cat-a)";
   const catB = "var(--chart-cat-b)";
   const col = (
@@ -178,28 +175,25 @@ function FunnelSection({
             : undefined
         )}
         {col("Quick match", catB, qms, filled, playedByMode?.quick ?? null)}
-        <div className="flex flex-col items-start justify-center gap-1 border-t border-[var(--border)] pt-4 sm:col-span-2 lg:col-span-1 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-          <span className="label-colus text-[8.5px] text-[var(--text-tertiary)]">
-            Conversão agregada
-          </span>
-          <span className="numeral text-[36px] leading-none text-[var(--primary)]">
-            {pct(funnel.rate)}
-          </span>
-          <span className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-            {funnel.played} realizadas ÷ {tentativas} tentativas
-          </span>
-          {attach != null && (
-            <>
-              <span className="label-colus mt-3 text-[8.5px] text-[var(--text-tertiary)]">
-                Attach rate
-              </span>
-              <span className="numeral text-[22px] leading-none text-[var(--text-primary)]">
-                {pct(attach)}
-              </span>
-              <span className="text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
-                {pagas} pagas de {funnel.played} realizadas
-              </span>
-            </>
+        {/* A repartição dos modos: das partidas que aconteceram, quantas
+            nasceram de jogo rápido e quantas de convite direto. Substituiu a
+            coluna de conversão agregada e attach rate — dois percentuais que
+            já viviam, com mais contexto, no placar do BP e no funil de cima. */}
+        <div className="border-t border-[var(--border)] pt-4 sm:col-span-2 lg:col-span-1 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <p className="label-colus mb-1 text-[8.5px] text-[var(--text-tertiary)]">
+            Origem das partidas
+          </p>
+          {playedByMode ? (
+            <TwoSlicePie
+              a={{ label: "Jogo rápido", value: playedByMode.quick }}
+              b={{ label: "Convite", value: playedByMode.invite }}
+              vazio="Nenhuma partida realizada ainda."
+            />
+          ) : (
+            <p className="mt-4 text-[10.5px] font-300 leading-snug text-[var(--text-tertiary)]">
+              Repartição omitida: a página carregada não cobre o total, e uma fatia sobre parte
+              das partidas teria o tamanho errado.
+            </p>
           )}
         </div>
       </div>
@@ -735,12 +729,15 @@ function MgmCard({
   mgm,
   inviteIntent,
   avatars,
+  mgmCreatedAtMs,
 }: {
   mgm: NorthMetrics["mgm"];
   /** Cliques em compartilhar (Amplitude Invite Sent) — o topo do funil. */
   inviteIntent: { uniques: number; totals: number } | null;
   /** user_id → avatar_url, resolvido pelo dossiê dos nossos usuários. */
   avatars: Record<string, string>;
+  /** Quando cada aceite aconteceu — a série do dia a dia. */
+  mgmCreatedAtMs: number[] | null;
 }) {
   const shell =
     "grain rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6";
@@ -798,6 +795,15 @@ function MgmCard({
       </p>
 
       {/* ── Top convidadores, embaixo do funil — o card fica alto, não largo ── */}
+      {/* O dia a dia do degrau que TEM data. "Aceitaram" carrega carimbo de
+          tempo; "geraram código" chega como agregado e ficaria de fora — por
+          isso o rótulo nomeia o degrau, não o funil. */}
+      {mgmCreatedAtMs && mgmCreatedAtMs.length > 0 && (
+        <div className="mt-5 border-t border-[var(--border)] pt-4">
+          <DayProgress ms={mgmCreatedAtMs} label="Aceites por dia" />
+        </div>
+      )}
+
       <div className="mt-5 border-t border-[var(--border)] pt-4">
         <div className="flex items-baseline justify-between gap-4">
           <p className="label-colus text-[8.5px] text-[var(--text-tertiary)]">Top convidadores</p>
@@ -849,9 +855,12 @@ function QuickMatchFunnelCard({
   quickScored,
   recent,
   avatars,
+  quickStartsAtMs,
 }: {
   funnel: NorthMetrics["matchFunnel"];
   quickScored: number | null;
+  /** Quando cada quick match aconteceu — a série do dia a dia. */
+  quickStartsAtMs: number[] | null;
   /** Os quick matches mais recentes já jogados — quem, onde, quanto. */
   recent: {
     hostId: string;
@@ -899,6 +908,15 @@ function QuickMatchFunnelCard({
       </div>
 
       <FunnelStages stages={stages} />
+
+      {/* O dia a dia do degrau datável. "Jogos abertos" e "confirmados" chegam
+          do BFF como agregados sem carimbo de tempo; o que dá para datar é a
+          partida que aconteceu — e é isso que o rótulo diz. */}
+      {quickStartsAtMs && quickStartsAtMs.length > 0 && (
+        <div className="mt-5 border-t border-[var(--border)] pt-4">
+          <DayProgress ms={quickStartsAtMs} label="Jogos rápidos por dia" />
+        </div>
+      )}
 
       {/* ── Os últimos concretizados: quem jogou, onde, quanto ─────────────
           Espelha o "Top convidadores" do card irmão — funil em cima, a lista
@@ -1472,12 +1490,18 @@ export default async function MetricsPage() {
         {/* MGM e Jogo Rápido lado a lado, no mesmo formato de funil: cada
             card meio-largo e alto, não uma faixa retangular com vazio. */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <MgmCard mgm={north.mgm} inviteIntent={inviteIntent} avatars={mgmAvatars} />
+          <MgmCard
+            mgm={north.mgm}
+            inviteIntent={inviteIntent}
+            avatars={mgmAvatars}
+            mgmCreatedAtMs={mgmCreatedAtMs}
+          />
           <QuickMatchFunnelCard
             funnel={north.matchFunnel}
             quickScored={matches.playedByMode?.quickScored ?? null}
             recent={matches.recentQuick}
             avatars={mgmAvatars}
+            quickStartsAtMs={matches.quickStartsAtMs}
           />
         </div>
 
@@ -1534,7 +1558,6 @@ export default async function MetricsPage() {
         {/* ── Funil de partidas — as métricas interligadas numa visualização só ── */}
         <FunnelSection
           funnel={north.matchFunnel}
-          paid={matches.paid}
           playedByMode={matches.playedByMode}
           inviteAcceptance7d={north.inviteAcceptance}
         />
