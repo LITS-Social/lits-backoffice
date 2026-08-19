@@ -123,7 +123,7 @@ export function Sidebar({
                 size={13}
                 strokeWidth={1.75}
                 className={cn(
-                  "ml-[26px] shrink-0 transition-colors",
+                  "shrink-0 transition-colors",
                   active
                     ? "text-[var(--primary)]"
                     : "text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]"
@@ -218,15 +218,11 @@ export function Sidebar({
             </Link>
           );
         })}
-      </nav>
 
-      {/* ── Gestão ─────────────────────────────────────────────────────── */}
-      <div className="mx-5 h-px bg-[var(--border)]" />
-      <nav className="px-3 py-4">
-        <p className="label-colus mb-3 px-2 text-[9px] text-[var(--text-tertiary)]">
-          Gestão
-        </p>
-
+        {/* Academias fecha a lista. Tinha seção própria chamada "Gestão", com
+            divisor e cabeçalho, para duas linhas — uma separação que custava
+            mais atenção do que economizava, já que a pergunta "onde vejo as
+            academias?" é da mesma natureza das outras. */}
         {[
           { href: "/academias",    label: "Academias",     Icon: LayoutGrid, exact: false },
           { href: "/quadras/nova", label: "Nova Academia", Icon: PlusCircle, exact: false },
@@ -298,7 +294,6 @@ function SecondaryNavItem({
       {active && (
         <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r-full bg-[var(--primary)]" />
       )}
-      <span className="label-colus w-4 shrink-0 text-[9px] leading-none tracking-normal text-transparent" />
       <Icon
         size={13}
         strokeWidth={1.75}

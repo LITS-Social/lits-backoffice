@@ -42,10 +42,17 @@ export default async function ConvitesPage() {
       <StatRail
         stats={[
           { label: "Em aberto", value: total },
+          // As duas mecânicas lado a lado, somando o total: mostrar só o jogo
+          // rápido escondia que o resto é a outra metade, com ação oposta.
+          {
+            label: "Convite",
+            value: total - quickMatches,
+            hint: "esperando a resposta de UMA pessoa — cobra-se",
+          },
           {
             label: "Jogo rápido",
             value: quickMatches,
-            hint: "no mural, esperando alguém entrar — não há convidado",
+            hint: "no mural, sem convidado — precisa achar alguém",
           },
           {
             label: "Expirando",

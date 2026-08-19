@@ -1,12 +1,12 @@
 "use client";
 
-import { MapPin } from "lucide-react";
+import { Mail, MapPin, Zap } from "lucide-react";
 import { DataTable, type DataTableColumn, type DataTableFilterGroup } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { DetailGrid } from "@/components/ui/detail-grid";
 import { PaymentLegs, Price } from "@/components/ui/payment-legs";
 import type { components } from "@/lib/api/openapi";
-import { Contact, MatchType, Player, When, matchTypeLabel, rail } from "../_components/cells";
+import { Contact, Player, When, matchTypeLabel, rail } from "../_components/cells";
 import { CountdownTimer, URGENT_MS } from "./countdown-timer";
 
 type OpenInviteItem = components["schemas"]["OpenInviteItem"];
@@ -53,6 +53,41 @@ const filters: DataTableFilterGroup<OpenInviteItem>[] = [
 ];
 
 /**
+ * A mecânica da linha, dita UMA vez e com nome.
+ *
+ * Antes ela estava espalhada em três vocabulários e em nenhuma coluna chamada
+ * "Tipo": um selo laranja "Mural aberto" dentro da coluna do CONVIDADO (que a
+ * cor fazia ler como alerta, quando não há nada de errado), um chip
+ * "Rápida/Casual" embaixo do nome da quadra (onde se lê como atributo da
+ * QUADRA, não da partida), e os filtros no topo dizendo "Convite / Jogo
+ * rápido". Três nomes para a mesma divisão.
+ *
+ * As duas mecânicas pedem ações OPOSTAS — no convite você cobra a resposta de
+ * uma pessoa; no jogo rápido você precisa achar alguém, porque não há
+ * convidado — então a divisão merece uma coluna própria, e não um adjetivo
+ * pendurado noutra.
+ *
+ * As cores são as mesmas duas da pizza "origem das partidas" do dashboard: o
+ * jogo rápido é a mesma fatia nos dois lugares.
+ */
+function Mecanica({ quick }: { quick: boolean }) {
+  const Icone = quick ? Zap : Mail;
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        aria-hidden
+        className="h-4 w-[3px] shrink-0 rounded-full"
+        style={{ background: quick ? "var(--chart-cat-a)" : "var(--chart-cat-b)" }}
+      />
+      <Icone size={11} className="shrink-0 text-[var(--text-tertiary)]" />
+      <span className="whitespace-nowrap text-[11.5px] font-500 text-[var(--text-secondary)]">
+        {quick ? "Jogo rápido" : "Convite"}
+      </span>
+    </span>
+  );
+}
+
+/**
  * The countdown leads. This panel exists to answer one question — "quem eu
  * preciso cutucar agora?" — and the answer is whichever row is at the top.
  * The guest, the person he actually messages, sits immediately beside it.
@@ -80,15 +115,27 @@ const columns: DataTableColumn<OpenInviteItem>[] = [
     render: (i) => <CountdownTimer expiresAt={i.expires_at} />,
   },
   {
+    id: "kind",
+    header: "Tipo",
+    width: "132px",
+    // Ordena com os jogos rápidos juntos: são as linhas que precisam de
+    // divulgação, não de cobrança, e ver o bloco inteiro é a leitura útil.
+    sortAccessor: (i) => (i.kind === "quick_match" ? "0 jogo rápido" : "1 convite"),
+    render: (i) => <Mecanica quick={i.kind === "quick_match"} />,
+  },
+  {
     id: "guest",
     header: "Convidado",
     sortAccessor: (i) => i.guest.name,
-    // Jogo rápido não TEM convidado — está no mural esperando qualquer um. Cair
-    // no render de Player deixaria a célula vazia, que se lê como dado faltando
-    // em vez de "aberto pra quem quiser".
+    // Jogo rápido não TEM convidado — está no mural esperando qualquer um.
+    // Célula vazia se leria como dado faltando; um selo LARANJA se lia como
+    // alerta. Não há nada de errado com um mural aberto, então o texto é
+    // quieto e diz o que a linha espera: alguém entrar.
     render: (i) =>
       i.kind === "quick_match" ? (
-        <Badge variant="warning">Mural aberto</Badge>
+        <span className="text-[11.5px] font-300 text-[var(--text-tertiary)]">
+          no mural — qualquer um
+        </span>
       ) : (
         <Player name={i.guest.name} id={i.guest.user_id} strong />
       ),
@@ -109,13 +156,6 @@ const columns: DataTableColumn<OpenInviteItem>[] = [
           <MapPin size={11} className="shrink-0 text-[var(--text-tertiary)]" />
           <span className="truncate">{i.court_label}</span>
         </span>
-        {/*
-          Reads "Casual" on every row here by design: this panel is filtered to
-          bookings in awaiting_guest_accept, a state the app only produces for
-          casual matches. The chip stays anyway so the column is honest the day a
-          non-casual invite can reach it.
-        */}
-        <MatchType value={i.match_type} />
       </div>
     ),
   },
