@@ -15,6 +15,7 @@ import {
   Users2,
   Images,
   Megaphone,
+  Target,
   ShieldAlert,
   ScrollText,
   ClipboardList,
@@ -42,6 +43,7 @@ const nav = [
   { id: "14", label: "Públicos",              href: "/publicos",               icon: Users2 },
   { id: "15", label: "Lista de Espera",       href: "/lista-espera",           icon: ClipboardList },
   { id: "16", label: "Professores",           href: "/professores",            icon: GraduationCap },
+  { id: "17", label: "Aquisição",             href: "/aquisicao",              icon: Target },
 ];
 
 // Red is the money-and-moderation colour. Only these panels get to use it:

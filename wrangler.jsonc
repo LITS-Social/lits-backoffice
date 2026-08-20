@@ -43,6 +43,18 @@
     "binding": "ASSETS"
   },
 
+  // ── CAC / Facebook Ads ───────────────────────────────────────────────────
+  // Guarda o mapeamento adset → segmento (usuários/professores/academias) que o
+  // operador confirma no painel #17. KV e não Postgres porque é config de
+  // painel, não dado de produto: ~dezenas de chaves, escritas raras, e o
+  // backoffice não tem banco próprio.
+  "kv_namespaces": [
+    {
+      "binding": "CAC_KV",
+      "id": "49cf1d84083243c3bd4a2c172e97b903"
+    }
+  ],
+
   "observability": {
     "enabled": true
   },
