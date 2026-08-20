@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PanelError } from "../_components/notes";
 import { listCourtsAction, type CourtListItem } from "../quadras/actions";
 import { listFranchisesAction } from "../quadras/nova/actions";
+import { ClubAnalyticsBoard } from "./club-analytics";
 import { AcademiasTable } from "./academias-table";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +85,14 @@ export default async function AcademiasPage() {
         }
       />
       <div className="space-y-5 px-4 sm:px-8 py-6">
+        {/* O dashboard de liquidez — parceiras LITS apenas, uma por vez. */}
+        <ClubAnalyticsBoard
+          partners={(franchises ?? [])
+            .filter((f) => f.kind === "partner")
+            .map((f) => ({ id: f.id, name: f.name }))
+            .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))}
+        />
+
         <AcademiasTable academias={academias} />
 
         {franchisesError ? (

@@ -189,6 +189,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/club-analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Liquidez de UM clube: funil de quick match, tempos, cancelamento em faixas, visibilidade, mapa de calor hora×dia, jogadores em 8 km e ocupação da grade
+         * @description Tudo numa resposta só porque o dashboard consome o conjunto. Só quick matches COM quadra de clube entram (jogo em quadra particular não mede liquidez de clube). matched_at/cancelled_at vêm do outbox de eventos da reserva. 'Ativo' = reserva viva nos últimos 30 dias. players_8km ausente quando o clube não tem lat/lng.
+         */
+        get: operations["ops-get-club-analytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ops/clubs": {
         parameters: {
             query?: never;
@@ -238,7 +258,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Manually block a court slot (panel #07 write) */
+        /**
+         * Manually block a court slot (panel #07 write)
+         * @description Takes the window off the market as a founder hold. Refused when a live booking still holds any part of it, and refused when the window overlaps a slot owned by a partner-club reservation (court_availability.external_booking_id set): blocking there would truncate the partner's row and put back on sale the hour the club already sold, so the cancellation must come from the partner's own system. The error names the external_booking_id, which panel #07 also shows on the slot.
+         */
         post: operations["ops-block-court-slot"];
         delete?: never;
         options?: never;
@@ -253,7 +276,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List court availability issues (panel #07 Quadras Indisponíveis) */
+        /**
+         * List court availability issues (panel #07 Quadras Indisponíveis)
+         * @description Slots that are off the market (blocked / maintenance) with the bookings that collide with them. A slot carrying external_booking_id belongs to a partner-club reservation and is NOT editable here — manual=true alone cannot tell it from a founder hold, since both are written with source_sync_id NULL.
+         */
         get: operations["ops-list-court-issues"];
         put?: never;
         post?: never;
@@ -364,8 +390,8 @@ export interface paths {
          */
         post: operations["ops-add-court-slots"];
         /**
-         * Delete a court's entire availability grid (booked slots survive)
-         * @description Removes every available and blocked slot of the court — past and future — so staff can start over after a bad import or layout change. Slots with a real booking are NEVER deleted; the response reports how many were kept. Returns slots_deleted + booked_kept. 404 if the court does not exist.
+         * Delete a court's entire availability grid (booked and partner-owned slots survive)
+         * @description Removes every available and blocked slot of the court — past and future — so staff can start over after a bad import or layout change. Slots with a real booking are NEVER deleted, and neither are slots owned by a partner-club reservation (court_availability.external_booking_id set): only the partner's own system can release those. The response reports both survivor counts separately. Returns slots_deleted + booked_kept + partner_kept. 404 if the court does not exist.
          */
         delete: operations["ops-delete-court-slots"];
         options?: never;
@@ -388,7 +414,7 @@ export interface paths {
         head?: never;
         /**
          * Edit a single availability slot (block/unblock, reason, price)
-         * @description slot_start is the RFC3339 instant identifying the slot (URL-encoded). Partial update: only provided fields change; an empty block_reason clears it. 404 if the slot does not exist.
+         * @description slot_start is the RFC3339 instant identifying the slot (URL-encoded). Partial update: only provided fields change; an empty block_reason clears it. 404 if the slot does not exist or carries a LITS booking. 409 when the slot belongs to a partner-club reservation (court_availability.external_booking_id set) — editing it here would reopen for sale an hour the club already sold, so the cancellation must come from the partner's own system; the message carries the external_booking_id.
          */
         patch: operations["ops-update-court-slot"];
         trace?: never;
@@ -473,6 +499,30 @@ export interface paths {
          * @description Partial update: only the provided fields change (COALESCE keeps the rest). kind (partner | public | listing) changes how the app builds the grid at READ time — no slot rows touched. Geo: lat (-90..90) and lng (-180..180) must be sent together; clear_geo=true nulls both (mutually exclusive with lat/lng). street_address: unset = unchanged, empty string clears. Venues without geo are excluded from the app's distance ranking. Returns the full updated franchise, including default_price_cents, lat, lng, has_geo and street_address. 404 if the franchise does not exist.
          */
         patch: operations["ops-update-franchise"];
+        trace?: never;
+    };
+    "/v1/ops/franchises/{id}/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the server-owned pricing policy for a franchise
+         * @description Returns timezone, the mobile has_discount flag, rules by all/indoor/outdoor scope, weekly half-open minute bands and explicit date overrides. A franchise with no policy returns 200 with rules=[] and defaults; 404 only when the franchise itself does not exist.
+         */
+        get: operations["ops-get-franchise-pricing"];
+        /**
+         * Replace a franchise pricing policy and materialize future slots
+         * @description Atomically replaces every scope for the franchise, then resolves and stamps the new full-court price on future non-booked slots. A court no longer covered by any rule (including rules=[]) returns to court.default_price_cents, then franchise.default_price_cents, then zero, and its staff_priced_at is cleared so the connector cannot preserve a stale policy price. Partner-owned rows (external_booking_id set) are never changed. Exact indoor/outdoor scope wins over all. Returns slots_repriced. Date overrides are explicit; the server never invents a holiday calendar.
+         */
+        put: operations["ops-put-franchise-pricing"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/ops/franchises/{id}/stats": {
@@ -1431,6 +1481,122 @@ export interface components {
              */
             users: number;
         };
+        ClubAnalyticsBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ClubAnalyticsBody.json
+             */
+            readonly $schema?: string;
+            cancel: components["schemas"]["ClubCancel"];
+            franchise_id: string;
+            funnel: components["schemas"]["ClubFunnel"];
+            heatmap: components["schemas"]["ClubHeatCell"][] | null;
+            /** Format: double */
+            median_fill_min?: number;
+            name: string;
+            occupancy: components["schemas"]["ClubOccupancy"];
+            players_8km?: components["schemas"]["ClubPlayersRow"][] | null;
+            /** Format: int64 */
+            players_sem_geo: number;
+            visibility: components["schemas"]["ClubVisibilitySlice"][] | null;
+        };
+        ClubCancel: {
+            /**
+             * Format: double
+             * @description mediana criação→cancelamento
+             */
+            median_min?: number;
+            /** Format: int64 */
+            min_1_to_15: number;
+            /** Format: int64 */
+            over_15min: number;
+            /**
+             * Format: double
+             * @description cancelled ÷ opened
+             */
+            rate?: number;
+            /** Format: int64 */
+            unbanded?: number;
+            /** Format: int64 */
+            under_1min: number;
+        };
+        ClubFunnel: {
+            /** Format: int64 */
+            cancelled: number;
+            /** Format: int64 */
+            expired: number;
+            /**
+             * Format: double
+             * @description matched ÷ opened; ausente com opened=0
+             */
+            fill_rate?: number;
+            /** Format: int64 */
+            matched: number;
+            /**
+             * Format: int64
+             * @description Ainda abertos agora
+             */
+            open: number;
+            /**
+             * Format: int64
+             * @description Quick matches abertos neste clube, desde o início
+             */
+            opened: number;
+        };
+        ClubHeatCell: {
+            /** Format: int64 */
+            dow: number;
+            /** Format: int64 */
+            filled: number;
+            /**
+             * Format: int64
+             * @description Hora do SLOT (o preditor), não da criação
+             */
+            hour: number;
+            /** Format: int64 */
+            opened: number;
+        };
+        ClubOccupancy: {
+            /** Format: int64 */
+            open_slots_28d: number;
+            /** Format: int64 */
+            quick_opens_28d: number;
+            /** Format: double */
+            rate_28d?: number;
+            /** Format: double */
+            slots_per_quick?: number;
+            /** Format: int64 */
+            slots_week: number;
+            /** Format: int64 */
+            slots_week_left: number;
+        };
+        ClubPlayersRow: {
+            /**
+             * Format: int64
+             * @description Participaram de reserva viva nos últimos 30 dias
+             */
+            active_30d: number;
+            /** @description A|B|C|D|PRO|sem_nivel */
+            category: string;
+            /**
+             * Format: int64
+             * @description Com geo declarada num raio de 8 km
+             */
+            total: number;
+        };
+        ClubVisibilitySlice: {
+            /** Format: double */
+            fill_rate?: number;
+            /** Format: int64 */
+            matched: number;
+            /** Format: double */
+            median_fill_min?: number;
+            /** Format: int64 */
+            opened: number;
+            /** @description connections | public */
+            visibility: string;
+        };
         Completion: {
             /**
              * Format: int64
@@ -1582,6 +1748,9 @@ export interface components {
             block_reason?: string;
             court_id: string;
             court_name: string;
+            /** @description Reservation id in the partner club's own system; present only for partner-owned slots, which staff cannot edit or block here — the cancellation must come from the partner's system */
+            external_booking_id?: string;
+            /** @description True when no sync pushed this block (a founder hold OR a partner-club reservation) — read external_booking_id to tell which */
             manual: boolean;
             /** Format: date-time */
             slot_end: string;
@@ -1904,6 +2073,11 @@ export interface components {
              * @description Booked slots left untouched — real reservations are never deleted
              */
             booked_kept: number;
+            /**
+             * Format: int64
+             * @description Slots left untouched because they belong to a partner-club reservation (court_availability.external_booking_id filled in) — only the partner's own system can release them. Disjoint from booked_kept.
+             */
+            partner_kept: number;
             /**
              * Format: int64
              * @description Number of slots removed (available + blocked, past and future)
@@ -2291,6 +2465,87 @@ export interface components {
             /** @description Venue street address (shown on app cards), or null */
             street_address: string | null;
         };
+        FranchisePricingBand: {
+            /**
+             * Format: int64
+             * @description Minuto local final, exclusivo (10:00 = 600).
+             */
+            end_minute: number;
+            /**
+             * Format: int64
+             * @description Preço full-court em centavos; taxas ficam fora.
+             */
+            price_cents: number;
+            /**
+             * Format: int64
+             * @description Minuto local inicial, inclusivo (06:00 = 360).
+             */
+            start_minute: number;
+            /** @description Dias locais: 0=domingo ... 6=sábado. Pelo menos um é obrigatório. */
+            weekdays: number[] | null;
+        };
+        FranchisePricingDateBand: {
+            /** Format: int64 */
+            end_minute: number;
+            /** Format: int64 */
+            price_cents: number;
+            /** Format: int64 */
+            start_minute: number;
+        };
+        FranchisePricingDateOverride: {
+            /** @description Faixas específicas da data; intervalos half-open e sem sobreposição. */
+            bands: components["schemas"]["FranchisePricingDateBand"][] | null;
+            /**
+             * Format: int64
+             * @description Base específica da data. Obrigatória quando inherit_weekday não é usado.
+             */
+            base_price_cents?: number;
+            /**
+             * Format: date
+             * @description Data local explícita (YYYY-MM-DD).
+             */
+            date: string;
+            /**
+             * Format: int64
+             * @description Usa as faixas de outro dia da semana. Mutuamente exclusivo com base_price_cents/bands.
+             */
+            inherit_weekday?: number;
+        };
+        FranchisePricingPolicyBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FranchisePricingPolicyBody.json
+             */
+            readonly $schema?: string;
+            franchise_id: string;
+            /** @description Controla o selo de desconto exposto em GET /v1/clubs. */
+            has_discount: boolean;
+            /** @description Zero a três regras, uma por scope. */
+            rules: components["schemas"]["FranchisePricingRule"][] | null;
+            /**
+             * Format: int64
+             * @description Somente no PUT: slots futuros elegíveis materializados; scopes removidos voltam ao fallback court/franchise e liberam posse da staff.
+             */
+            slots_repriced?: number;
+            timezone: string;
+        };
+        FranchisePricingRule: {
+            /** @description Faixas semanais normalizadas. */
+            bands: components["schemas"]["FranchisePricingBand"][] | null;
+            /**
+             * Format: int64
+             * @description Fallback da regra fora das faixas.
+             */
+            base_price_cents: number;
+            /** @description Exceções por data explícita; nenhum calendário é inferido. */
+            date_overrides: components["schemas"]["FranchisePricingDateOverride"][] | null;
+            /**
+             * @description Escopo da quadra; indoor/outdoor ganha de all quando ambos existem.
+             * @enum {string}
+             */
+            scope: "all" | "indoor" | "outdoor";
+        };
         FranchiseStatsBody: {
             /**
              * Format: uri
@@ -2655,7 +2910,7 @@ export interface components {
             bookings_daily: components["schemas"]["DailyCount"][] | null;
             /**
              * Format: int64
-             * @description Gross merchandise value in cents: SUM(total_cents) over confirmed+played+live bookings only
+             * @description Gross merchandise value in cents over confirmed+played+live bookings only, minus every waived (billing-exempt) leg — money that actually transacted
              */
             gmv_cents: number;
             /**
@@ -3461,6 +3716,19 @@ export interface components {
              */
             wo_today: number | null;
         };
+        PutFranchisePricingBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PutFranchisePricingBody.json
+             */
+            readonly $schema?: string;
+            has_discount: boolean;
+            /** @description Substituição completa das regras atuais; [] remove a tabela. */
+            rules: components["schemas"]["FranchisePricingRule"][] | null;
+            /** @description Timezone IANA usada para dias/faixas (ex.: America/Sao_Paulo). */
+            timezone: string;
+        };
         ReactivateUserResponseBody: {
             /**
              * Format: uri
@@ -3598,7 +3866,7 @@ export interface components {
             default_set: boolean;
             /**
              * Format: int64
-             * @description Number of future non-booked slots repriced
+             * @description Number of future non-booked slots repriced. Slots owned by a partner-club reservation (court_availability.external_booking_id set) are never repriced and are not counted here.
              */
             slots_updated: number;
         };
@@ -4375,6 +4643,38 @@ export interface operations {
             };
         };
     };
+    "ops-get-club-analytics": {
+        parameters: {
+            query: {
+                /** @description UUID da academia (franchises.id) */
+                franchise_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClubAnalyticsBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "ops-search-clubs": {
         parameters: {
             query?: {
@@ -5032,6 +5332,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FranchiseDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-get-franchise-pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Franchise UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FranchisePricingPolicyBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "ops-put-franchise-pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Franchise UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PutFranchisePricingBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FranchisePricingPolicyBody"];
                 };
             };
             /** @description Error */
