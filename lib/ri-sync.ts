@@ -41,6 +41,9 @@ export type AcademiaParaRi = {
   endereco?: string | null;
   quadras?: number | null;
   ativa?: boolean | null;
+  /** partner | public | listing — o RI filtra por parceiras; sem o tipo, as
+      centenas de venues do crawler afogariam a lista de importação */
+  tipo?: string | null;
 };
 
 /**
@@ -54,6 +57,7 @@ export function academiasDasQuadras(
   courts: {
     franchise_id: string;
     franchise_name: string;
+    franchise_kind?: string | null;
     franchise_street_address?: string | null;
     is_active?: boolean | null;
   }[]
@@ -72,6 +76,7 @@ export function academiasDasQuadras(
         endereco: c.franchise_street_address ?? null,
         quadras: 1,
         ativa: c.is_active === true,
+        tipo: c.franchise_kind ?? null,
       });
     }
   }
