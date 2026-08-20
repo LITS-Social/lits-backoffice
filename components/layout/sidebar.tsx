@@ -11,7 +11,6 @@ import {
   Star,
   Flag,
   LayoutGrid,
-  PlusCircle,
   Users,
   Users2,
   Images,
@@ -225,7 +224,6 @@ export function Sidebar({
             academias?" é da mesma natureza das outras. */}
         {[
           { href: "/academias",    label: "Academias",     Icon: LayoutGrid, exact: false },
-          { href: "/quadras/nova", label: "Nova Academia", Icon: PlusCircle, exact: false },
         ].map((item) => (
           <SecondaryNavItem key={item.href} {...item} pathname={pathname} />
         ))}
