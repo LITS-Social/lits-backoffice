@@ -9,7 +9,8 @@ import {
   getBp,
   metaPernasPagasPorAtivo,
 } from "@/lib/bp";
-import { pushRiSnapshot } from "@/lib/ri-sync";
+import { academiasDasQuadras, pushRiSnapshot } from "@/lib/ri-sync";
+import { listCourtsAction } from "./quadras/actions";
 import { buildBpPace } from "@/lib/bp-pace";
 import { cn } from "@/lib/utils";
 import {
@@ -1131,10 +1132,18 @@ export default async function MetricsPage() {
   const metaPartidasTotais =
     bpAgo.partidasTotaisMes ?? bpAgoLocal.partidasTotaisMes ?? META_FASE.partidas;
   const metaPartidasPagas = bpAgo.partidasPagasMes ?? bpAgoLocal.partidasPagasMes ?? null;
-  pushRiSnapshot({
-    users, matches, scorePosts, north, completion, partnerRating,
-    activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs, inviteIntent,
-  });
+  /* O RI importa as academias em vez de pedir que alguém redigite nome e
+     endereço. A lista sai das quadras (uma academia = as quadras da mesma
+     franquia); se a leitura falhar, o snapshot vai sem ela e o RI segue
+     aceitando cadastro à mão. */
+  const { courts: quadrasParaRi } = await listCourtsAction().catch(() => ({ courts: [] }));
+  pushRiSnapshot(
+    {
+      users, matches, scorePosts, north, completion, partnerRating,
+      activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs, inviteIntent,
+    },
+    academiasDasQuadras(quadrasParaRi)
+  );
 
   const broken = [
     users.failed && "Usuários",
