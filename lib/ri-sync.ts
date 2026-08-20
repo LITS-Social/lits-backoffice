@@ -44,6 +44,18 @@ export type AcademiaParaRi = {
   /** partner | public | listing — o RI filtra por parceiras; sem o tipo, as
       centenas de venues do crawler afogariam a lista de importação */
   tipo?: string | null;
+  /** preço padrão do slot em centavos (da franquia; senão o menor das quadras) */
+  precoPadraoCents?: number | null;
+  /** horário de funcionamento: [abre, último slot] por período; null = não definido */
+  horarios?: {
+    semana?: [number, number] | null;
+    sabado?: [number, number] | null;
+    domingo?: [number, number] | null;
+  } | null;
+  /** pisos distintos das quadras ("clay", "hard"…) */
+  pisos?: string[] | null;
+  /** quantas quadras são cobertas */
+  cobertas?: number | null;
 };
 
 /**
@@ -60,27 +72,55 @@ export function academiasDasQuadras(
     franchise_kind?: string | null;
     franchise_street_address?: string | null;
     is_active?: boolean | null;
+    price_cents?: number | null;
+    franchise_default_price_cents?: number | null;
+    franchise_hours_week_start?: number | null;
+    franchise_hours_week_end?: number | null;
+    franchise_hours_sat_start?: number | null;
+    franchise_hours_sat_end?: number | null;
+    franchise_hours_sun_start?: number | null;
+    franchise_hours_sun_end?: number | null;
+    surface?: string | null;
+    indoor?: boolean | null;
   }[]
 ): AcademiaParaRi[] {
-  const porFranquia = new Map<string, AcademiaParaRi>();
+  const faixa = (a?: number | null, b?: number | null): [number, number] | null =>
+    a != null && b != null ? [a, b] : null;
+  const porFranquia = new Map<string, AcademiaParaRi & { _pisos: Set<string> }>();
   for (const c of courts) {
     if (!c.franchise_id) continue;
-    const atual = porFranquia.get(c.franchise_id);
-    if (atual) {
-      atual.quadras = (atual.quadras ?? 0) + 1;
-      atual.ativa = atual.ativa || c.is_active === true;
-    } else {
-      porFranquia.set(c.franchise_id, {
+    let atual = porFranquia.get(c.franchise_id);
+    if (!atual) {
+      atual = {
         id: c.franchise_id,
         nome: c.franchise_name,
         endereco: c.franchise_street_address ?? null,
-        quadras: 1,
-        ativa: c.is_active === true,
+        quadras: 0,
+        ativa: false,
         tipo: c.franchise_kind ?? null,
-      });
+        precoPadraoCents: c.franchise_default_price_cents ?? null,
+        horarios: {
+          semana: faixa(c.franchise_hours_week_start, c.franchise_hours_week_end),
+          sabado: faixa(c.franchise_hours_sat_start, c.franchise_hours_sat_end),
+          domingo: faixa(c.franchise_hours_sun_start, c.franchise_hours_sun_end),
+        },
+        cobertas: 0,
+        _pisos: new Set<string>(),
+      };
+      porFranquia.set(c.franchise_id, atual);
     }
+    atual.quadras = (atual.quadras ?? 0) + 1;
+    atual.ativa = atual.ativa || c.is_active === true;
+    if (c.indoor) atual.cobertas = (atual.cobertas ?? 0) + 1;
+    if (c.surface) atual._pisos.add(c.surface);
+    // sem preço da franquia, o menor preço de quadra representa a casa
+    if (atual.precoPadraoCents == null && c.price_cents != null) atual.precoPadraoCents = c.price_cents;
+    else if (c.price_cents != null && atual.precoPadraoCents != null && c.franchise_default_price_cents == null)
+      atual.precoPadraoCents = Math.min(atual.precoPadraoCents, c.price_cents);
   }
-  return [...porFranquia.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  return [...porFranquia.values()]
+    .map(({ _pisos, ...a }) => ({ ...a, pisos: _pisos.size ? [..._pisos].sort() : null }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
 export function buildRiSnapshot(m: ProductMetrics, academias?: AcademiaParaRi[]) {
