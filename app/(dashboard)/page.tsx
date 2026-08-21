@@ -51,6 +51,18 @@ type FunnelData = {
   rate: number;
 } | null;
 
+/** A queda entre dois degraus: "↓ 76%" alinhado à coluna da barra. */
+function Queda({ de, para }: { de: number; para: number }) {
+  if (de <= 0) return <span className="h-3" aria-hidden />;
+  const pct = Math.round((1 - para / de) * 100);
+  return (
+    <div className="grid grid-cols-[92px_minmax(0,1fr)_40px] gap-3">
+      <span />
+      <span className="pl-1 text-[10px] font-500 text-[var(--text-tertiary)]">↓ {pct}%</span>
+    </div>
+  );
+}
+
 function FunnelBar({
   label,
   value,
@@ -72,13 +84,13 @@ function FunnelBar({
       <span className="text-[10.5px] font-500 leading-tight text-[var(--text-secondary)]">
         {label}
       </span>
-      <div className="h-3 w-full overflow-hidden rounded-[4px] bg-[var(--surface-raised)]">
+      <div className="h-4 w-full overflow-hidden rounded-[4px] bg-[var(--surface-raised)]">
         <div
           className="h-full rounded-[3px] transition-[width]"
           style={{ width: `${width}%`, background: color, opacity: muted ? 0.45 : 1 }}
         />
       </div>
-      <span className="numeral whitespace-nowrap text-right text-[14px] text-[var(--text-primary)]">
+      <span className="numeral whitespace-nowrap text-right text-[15px] text-[var(--text-primary)]">
         {value}
       </span>
     </div>
@@ -126,7 +138,7 @@ function FunnelSection({
     played: number | null,
     extra?: string
   ) => (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)]/40 p-4">
+    <div className="flex h-full flex-col rounded-lg border border-[var(--border)] bg-[var(--bg)]/40 p-4">
       <p className="mb-3.5 flex items-center gap-2">
         <span aria-hidden className="h-2.5 w-2.5 rounded-[3px]" style={{ background: color }} />
         <span className="label-colus text-[9px] text-[var(--text-secondary)]">{title}</span>
@@ -137,13 +149,22 @@ function FunnelSection({
           <span className="label-colus text-[7px] text-[var(--text-tertiary)]">conversão</span>
         </span>
       </p>
-      <div className="space-y-2.5">
+      {/* As barras ocupam a altura da coluna (a vizinha é a pizza, mais alta),
+          e o espaço entre elas carrega a QUEDA de um degrau para o outro — é
+          a leitura de funil, e antes ficava implícita. */}
+      <div className="flex flex-1 flex-col justify-evenly gap-1 py-1">
         <FunnelBar label="Tentativas" value={opened} base={opened} color={color} />
         {confirmed != null && (
-          <FunnelBar label="Viraram jogo" value={confirmed} base={opened} color={color} />
+          <>
+            <Queda de={opened} para={confirmed} />
+            <FunnelBar label="Viraram jogo" value={confirmed} base={opened} color={color} />
+          </>
         )}
         {played != null && (
-          <FunnelBar label="Realizadas" value={played} base={opened} color={color} muted={false} />
+          <>
+            <Queda de={confirmed ?? opened} para={played} />
+            <FunnelBar label="Realizadas" value={played} base={opened} color={color} muted={false} />
+          </>
         )}
       </div>
       {(confirmed == null || extra) && (

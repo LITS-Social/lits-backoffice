@@ -7,6 +7,7 @@ import {
   periodBoundsMs,
   resolvePeriod,
   spMonthKey,
+  spToday,
 } from "@/lib/meta-ads";
 import { getProductMetrics } from "@/lib/metrics";
 import { fetchProfessores } from "@/lib/professores";
@@ -96,7 +97,7 @@ export default async function AquisicaoPage({
         eyebrow="#17"
         title="Aquisição"
         description="CAC do Facebook Ads no período selecionado: gasto por segmento ÷ novos do período. Categorize cada adset abaixo — sem categoria, o gasto fica no balde visível e fora de todo CAC."
-        action={<PeriodPicker p={{ ...period, current }} />}
+        action={<PeriodPicker p={{ ...period, current, today: spToday() }} />}
       />
 
       <StatRail
