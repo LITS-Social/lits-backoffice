@@ -91,6 +91,49 @@ export async function saveSegment(adsetId: string, segment: Segment | null): Pro
   return true;
 }
 
+/* ── O denominador de academias ─────────────────────────────────────────
+   Contrato B2B não nasce de formulário, e o diretório de franquias não expõe
+   data de criação — a única fonte honesta do "quantas academias fechamos este
+   mês" é quem fechou. Guardado por mês-calendário de SP ("2026-08" → 3), para
+   o histórico não se perder quando o mês vira. */
+const ACADEMIAS_KEY = "academias-fechadas:v1";
+
+export function spMonthKey(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).format(new Date());
+}
+
+export async function loadAcademiasFechadas(month: string): Promise<number | null> {
+  const store = await kv();
+  if (!store) return null;
+  try {
+    const raw = await store.get(ACADEMIAS_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+    return typeof map[month] === "number" ? map[month] : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveAcademiasFechadas(month: string, n: number | null): Promise<boolean> {
+  const store = await kv();
+  if (!store) return false;
+  let map: Record<string, number> = {};
+  try {
+    const raw = await store.get(ACADEMIAS_KEY);
+    map = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+  } catch {
+    map = {};
+  }
+  if (n === null) delete map[month];
+  else map[month] = n;
+  await store.put(ACADEMIAS_KEY, JSON.stringify(map));
+  return true;
+}
+
 type InsightRow = {
   adset_id?: string;
   adset_name?: string;

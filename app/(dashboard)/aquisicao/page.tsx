@@ -1,12 +1,13 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { StatRail } from "../_components/stat-rail";
 import { PanelNote } from "../_components/notes";
-import { fetchMetaAds } from "@/lib/meta-ads";
+import { fetchMetaAds, loadAcademiasFechadas, spMonthKey } from "@/lib/meta-ads";
 import { getProductMetrics } from "@/lib/metrics";
 import { fetchProfessores } from "@/lib/professores";
 import { formatCurrency } from "@/lib/utils";
 import { SEGMENT_LABEL, type Segment } from "./segments";
 import { AdsetTable } from "./adset-table";
+import { AcademiasDenominador } from "./academias-denominador";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,9 @@ export const dynamic = "force-dynamic";
  *   usuários     novos cadastros no mês MENOS aceites de MGM no mês — CAC
  *                pago aproximado; sem atribuição, orgânico ainda infla.
  *   professores  cadastros do formulário da landing no mês (D1).
- *   academias    SEM denominador — contrato B2B não nasce de formulário. O
- *                gasto aparece; a divisão, não. Nunca inventar.
+ *   academias    denominador MANUAL, por mês — contrato B2B não nasce de
+ *                formulário, e a única fonte honesta é quem fechou. Sem o
+ *                número, a célula mostra só o gasto; nunca inventa.
  */
 
 const MES = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", month: "long" });
@@ -39,10 +41,13 @@ function spMonthStartMs(): number {
 }
 
 export default async function AquisicaoPage() {
-  const [ads, metrics, profRes] = await Promise.all([
+  const [ads, metrics, profRes, academiasFechadas] = await Promise.all([
     fetchMetaAds(),
     getProductMetrics(),
     fetchProfessores().catch(() => null),
+    // O denominador de academias é MANUAL e por mês: contrato B2B não nasce
+    // de formulário, e a única fonte honesta é quem fechou.
+    loadAcademiasFechadas(spMonthKey()),
   ]);
 
   const monthStart = spMonthStartMs();
@@ -75,6 +80,7 @@ export default async function AquisicaoPage() {
 
   const cacUsuarios = cac(gasto.usuarios, usuariosPagaveis);
   const cacProfessores = cac(gasto.professores, professoresMes);
+  const cacAcademias = cac(gasto.academias, academiasFechadas);
   const mesNome = MES.format(new Date());
 
   return (
@@ -122,9 +128,18 @@ export default async function AquisicaoPage() {
                 : "cadastros da landing indisponíveis",
           },
           {
-            label: `${SEGMENT_LABEL.academias} (gasto)`,
-            value: ads.ok ? formatCurrency(gasto.academias) : "—",
-            hint: "sem denominador — contrato B2B não nasce de formulário; só o gasto",
+            label: cacAcademias ? "CAC academias" : `${SEGMENT_LABEL.academias} (gasto)`,
+            value: ads.ok ? (cacAcademias ?? formatCurrency(gasto.academias)) : "—",
+            tone: cacAcademias ? "calm" : "neutral",
+            // O denominador é digitado aqui mesmo, na célula: o número só existe
+            // na cabeça de quem fechou o contrato, e a fricção para mantê-lo em
+            // dia tem que ser zero.
+            hint: ads.ok ? (
+              <span>
+                {cacAcademias ? `${formatCurrency(gasto.academias)} ÷ ` : ""}
+                <AcademiasDenominador atual={academiasFechadas} mesNome={mesNome} />
+              </span>
+            ) : undefined,
           },
         ]}
       />
