@@ -46,6 +46,9 @@ export type AcademiaParaRi = {
   tipo?: string | null;
   /** preço padrão do slot em centavos (da franquia; senão o menor das quadras) */
   precoPadraoCents?: number | null;
+  /** faixa de preço entre as quadras (menor e maior price_cents) */
+  precoMinCents?: number | null;
+  precoMaxCents?: number | null;
   /** horário de funcionamento: [abre, último slot] por período; null = não definido */
   horarios?: {
     semana?: [number, number] | null;
@@ -113,6 +116,8 @@ export function academiasDasQuadras(
           };
         })(),
         cobertas: 0,
+        precoMinCents: null,
+        precoMaxCents: null,
         _pisos: new Set<string>(),
       };
       porFranquia.set(c.franchise_id, atual);
@@ -121,6 +126,10 @@ export function academiasDasQuadras(
     atual.ativa = atual.ativa || c.is_active === true;
     if (c.indoor) atual.cobertas = (atual.cobertas ?? 0) + 1;
     if (c.surface) atual._pisos.add(c.surface);
+    if (c.price_cents != null) {
+      atual.precoMinCents = atual.precoMinCents == null ? c.price_cents : Math.min(atual.precoMinCents, c.price_cents);
+      atual.precoMaxCents = atual.precoMaxCents == null ? c.price_cents : Math.max(atual.precoMaxCents, c.price_cents);
+    }
     // sem preço da franquia, o menor preço de quadra representa a casa
     if (atual.precoPadraoCents == null && c.price_cents != null) atual.precoPadraoCents = c.price_cents;
     else if (c.price_cents != null && atual.precoPadraoCents != null && c.franchise_default_price_cents == null)
