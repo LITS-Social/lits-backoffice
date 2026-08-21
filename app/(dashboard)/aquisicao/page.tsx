@@ -83,6 +83,13 @@ export default async function AquisicaoPage() {
   const cacAcademias = cac(gasto.academias, academiasFechadas);
   const mesNome = MES.format(new Date());
 
+  // O consolidado: TODO o investimento do mês (inclusive o sem categoria — o
+  // dinheiro saiu, o que não se sabe é para quem) ÷ todos os novos usuários
+  // pagáveis do mês. É o "quanto custou cada pessoa nova" que o board pergunta,
+  // sem a quebra por segmento. Desde 1º do mês, SP.
+  const investidoMes = gasto.usuarios + gasto.professores + gasto.academias + gasto.sem;
+  const cacConsolidado = cac(investidoMes, usuariosPagaveis);
+
   return (
     <div>
       <PageHeader
@@ -95,10 +102,17 @@ export default async function AquisicaoPage() {
         stats={[
           {
             label: "Investido no mês",
-            value: ads.ok
-              ? formatCurrency(gasto.usuarios + gasto.professores + gasto.academias + gasto.sem)
-              : "—",
-            hint: ads.ok ? `conta ${ads.account}, todos os adsets` : "Meta não configurada",
+            value: ads.ok ? formatCurrency(investidoMes) : "—",
+            hint: ads.ok ? `desde 1º de ${mesNome} · todos os adsets` : "Meta não configurada",
+          },
+          {
+            label: "CAC consolidado",
+            value: cacConsolidado ?? "—",
+            tone: "calm",
+            hint:
+              ads.ok && usuariosPagaveis != null
+                ? `${formatCurrency(investidoMes)} ÷ ${usuariosPagaveis} novos — tudo que saiu, inclusive sem categoria, por cada pessoa nova`
+                : "precisa do gasto e dos novos do mês",
           },
           {
             label: "Sem categoria",
