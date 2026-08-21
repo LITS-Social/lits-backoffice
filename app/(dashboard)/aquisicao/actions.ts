@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { saveAcademiasFechadas, saveSegment, spMonthKey, type Segment } from "@/lib/meta-ads";
+import { normalizeMonth, saveAcademiasFechadas, saveSegment, type Segment } from "@/lib/meta-ads";
 
 const VALID: Segment[] = ["usuarios", "professores", "academias"];
 
@@ -32,13 +32,14 @@ export async function setSegmentAction(
 /** Grava quantas academias fecharam contrato no mês corrente — o denominador
     do CAC de academias, que só quem fechou sabe. null limpa. */
 export async function setAcademiasFechadasAction(
+  month: string,
   n: number | null
 ): Promise<{ ok: boolean; error?: string }> {
   if (n !== null && (!Number.isInteger(n) || n < 0 || n > 10_000)) {
     return { ok: false, error: "Número inválido." };
   }
   try {
-    const saved = await saveAcademiasFechadas(spMonthKey(), n);
+    const saved = await saveAcademiasFechadas(normalizeMonth(month), n);
     if (!saved) return { ok: false, error: "O cofre (KV) não está disponível neste ambiente." };
     revalidatePath("/aquisicao");
     return { ok: true };

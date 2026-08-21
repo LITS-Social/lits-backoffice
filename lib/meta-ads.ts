@@ -33,20 +33,29 @@ export type MetaAdsResult =
   | { ok: true; adsets: AdsetSpend[]; account: string }
   | { ok: false; error: string; setup: boolean };
 
-/** O que o painel considera "hoje" — mês-calendário de São Paulo, como o BP. */
-function spMonthRange(): { since: string; until: string } {
-  const ym = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-  }).format(new Date());
+/**
+ * A janela de UM mês-calendário de São Paulo ("2026-08"), fechada em hoje
+ * quando o mês é o corrente — a Meta não aceita `until` no futuro. Para um
+ * mês passado, o mês inteiro.
+ */
+export function spMonthRange(month: string): { since: string; until: string } {
+  const [y, m] = month.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate(); // dia 0 do mês seguinte = último deste
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-  return { since: `${ym}-01`, until: today };
+  const until = `${month}-${String(last).padStart(2, "0")}`;
+  return { since: `${month}-01`, until: until < today ? until : today };
+}
+
+/** "YYYY-MM" válido e não no futuro; senão, o mês corrente. */
+export function normalizeMonth(raw: string | undefined): string {
+  const cur = spMonthKey();
+  if (!raw || !/^\d{4}-(0[1-9]|1[0-2])$/.test(raw) || raw > cur) return cur;
+  return raw;
 }
 
 /** Sugestão pelo nome — SUGESTÃO, nunca verdade. Vocabulário PT dos anúncios. */
@@ -183,16 +192,7 @@ async function fetchWindow(
   return out;
 }
 
-function daysAgoSP(days: number): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(Date.now() - days * 86_400_000));
-}
-
-export async function fetchMetaAds(): Promise<MetaAdsResult> {
+export async function fetchMetaAds(month: string): Promise<MetaAdsResult> {
   const token = process.env.META_ADS_TOKEN;
   const account = process.env.META_AD_ACCOUNT_ID;
   if (!token || !account) {
@@ -205,27 +205,19 @@ export async function fetchMetaAds(): Promise<MetaAdsResult> {
   }
 
   try {
-    const [month, last28, map] = await Promise.all([
-      fetchWindow(account, token, spMonthRange()),
-      fetchWindow(account, token, { since: daysAgoSP(28), until: daysAgoSP(0) }),
+    const [rows, map] = await Promise.all([
+      fetchWindow(account, token, spMonthRange(month)),
       loadSegmentMap(),
     ]);
 
-    const ids = new Set([...month.keys(), ...last28.keys()]);
-    const adsets: AdsetSpend[] = [...ids].map((id) => {
-      const m = month.get(id);
-      const l = last28.get(id);
-      const name = m?.name ?? l?.name ?? id;
-      return {
-        adsetId: id,
-        adsetName: name,
-        campaignName: m?.campaign ?? l?.campaign ?? "",
-        monthCents: m?.cents ?? 0,
-        last28Cents: l?.cents ?? 0,
-        segment: map[id] ?? null,
-        suggested: suggestSegment(`${m?.campaign ?? ""} ${name}`),
-      };
-    });
+    const adsets: AdsetSpend[] = [...rows.entries()].map(([id, m]) => ({
+      adsetId: id,
+      adsetName: m.name,
+      campaignName: m.campaign,
+      monthCents: m.cents,
+      segment: map[id] ?? null,
+      suggested: suggestSegment(`${m.campaign} ${m.name}`),
+    }));
     adsets.sort((a, b) => b.monthCents - a.monthCents);
     return { ok: true, adsets, account };
   } catch (e) {

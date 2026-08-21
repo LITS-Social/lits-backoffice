@@ -15,10 +15,8 @@ export type AdsetSpend = {
   adsetId: string;
   adsetName: string;
   campaignName: string;
-  /** Gasto do mês-calendário corrente de São Paulo, em centavos de BRL. */
+  /** Gasto no mês-calendário de São Paulo selecionado, em centavos de BRL. */
   monthCents: number;
-  /** Gasto dos últimos 28 dias — a janela que a Meta ainda reescreve. */
-  last28Cents: number;
   /** Segmento confirmado no painel; null = ainda sem categoria. */
   segment: Segment | null;
   /** Sugestão derivada do nome, só para pré-selecionar o dropdown. */

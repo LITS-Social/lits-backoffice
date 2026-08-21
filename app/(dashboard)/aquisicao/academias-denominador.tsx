@@ -11,7 +11,7 @@ import { setAcademiasFechadasAction } from "./actions";
  * ser mantido em dia. Gravado por mês no cofre; quando o mês vira, a célula
  * volta a pedir o número novo.
  */
-export function AcademiasDenominador({ atual, mesNome }: { atual: number | null; mesNome: string }) {
+export function AcademiasDenominador({ atual, month }: { atual: number | null; month: string }) {
   const [valor, setValor] = useState(atual == null ? "" : String(atual));
   const [editando, setEditando] = useState(atual == null);
   const [erro, setErro] = useState<string | null>(null);
@@ -24,7 +24,7 @@ export function AcademiasDenominador({ atual, mesNome }: { atual: number | null;
       return;
     }
     startTransition(async () => {
-      const res = await setAcademiasFechadasAction(n);
+      const res = await setAcademiasFechadasAction(month, n);
       if (!res.ok) setErro(res.error ?? "não gravou");
       else {
         setErro(null);
@@ -36,7 +36,7 @@ export function AcademiasDenominador({ atual, mesNome }: { atual: number | null;
   if (!editando) {
     return (
       <span>
-        {atual} fechada{atual === 1 ? "" : "s"} em {mesNome}{" "}
+        {atual} fechada{atual === 1 ? "" : "s"} no mês{" "}
         <button
           type="button"
           onClick={() => setEditando(true)}
@@ -50,7 +50,7 @@ export function AcademiasDenominador({ atual, mesNome }: { atual: number | null;
 
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <span>fechadas em {mesNome}:</span>
+      <span>fechadas no mês:</span>
       <input
         inputMode="numeric"
         value={valor}

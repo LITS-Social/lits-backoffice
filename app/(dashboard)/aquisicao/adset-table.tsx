@@ -66,7 +66,7 @@ export function AdsetTable({ adsets }: { adsets: AdsetSpend[] }) {
                 {formatCurrency(a.monthCents)}
               </span>
               <span className="block text-[9.5px] font-300 text-[var(--text-tertiary)]">
-                no mês · {formatCurrency(a.last28Cents)} em 28d
+                no mês selecionado
               </span>
             </span>
 
