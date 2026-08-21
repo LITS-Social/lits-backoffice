@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Check, Mail, MessageCircle, RefreshCw } from "lucide-react";
+import { Check, KeyRound, Mail, MessageCircle, RefreshCw } from "lucide-react";
 import {
   DataTable,
   type DataTableColumn,
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { DetailGrid, type DetailField } from "@/components/ui/detail-grid";
 import { Timestamp } from "@/components/ui/timestamp";
 import type { ProfessorRow } from "@/lib/professores";
-import { markProfessorCalledAction } from "./actions";
+import { liberarPrimeiroAcessoAction, markProfessorCalledAction } from "./actions";
 import { syncProfessorAction } from "./sync-actions";
 
 const DAY = 24 * 60 * 60;
@@ -98,6 +98,33 @@ export function ProfessoresTable({ rows }: { rows: ProfessorRow[] }) {
     },
     [stateOf]
   );
+
+  const liberar = useCallback((r: ProfessorRow) => {
+    setSyncing((cur) => new Set(cur).add(r.id));
+    setSync((cur) => {
+      const { [r.id]: _fora, ...resto } = cur;
+      return resto;
+    });
+
+    liberarPrimeiroAcessoAction(r.id).then((res) => {
+      setSyncing((cur) => {
+        const s = new Set(cur);
+        s.delete(r.id);
+        return s;
+      });
+      setSync((cur) => ({
+        ...cur,
+        [r.id]: res.ok
+          ? {
+              ok: true,
+              texto: res.ate
+                ? `pode entrar com o e-mail até ${new Date(res.ate * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+                : "primeiro acesso liberado",
+            }
+          : { ok: false, texto: res.error },
+      }));
+    });
+  }, []);
 
   const publicar = useCallback((r: ProfessorRow) => {
     setSyncing((cur) => new Set(cur).add(r.id));
@@ -278,7 +305,7 @@ export function ProfessoresTable({ rows }: { rows: ProfessorRow[] }) {
       {
         id: "painel",
         header: "Painel dele",
-        width: "230px",
+        width: "330px",
         sortAccessor: (r) => (sync[r.id]?.ok ? 1 : 0),
         render: (r) => {
           const busy = syncing.has(r.id);
@@ -294,6 +321,16 @@ export function ProfessoresTable({ rows }: { rows: ProfessorRow[] }) {
               >
                 <RefreshCw size={11} className={busy ? "animate-spin" : undefined} />
                 {busy ? "Publicando…" : "Publicar"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => liberar(r)}
+                title="Deixa esse professor entrar só com o e-mail, por 48h, para criar a senha dele. Use depois de falar com ele."
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1 text-[11px] font-500 text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)] disabled:opacity-50"
+              >
+                <KeyRound size={11} />
+                Liberar acesso
               </button>
               {st && (
                 <span
@@ -312,7 +349,7 @@ export function ProfessoresTable({ rows }: { rows: ProfessorRow[] }) {
         },
       },
     ],
-    [stateOf, pending, toggle, sync, syncing, publicar]
+    [stateOf, pending, toggle, sync, syncing, publicar, liberar]
   );
 
   return (

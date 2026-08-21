@@ -106,6 +106,59 @@ export async function fetchProfessores(opts?: {
 }
 
 /** Marca (ou desmarca) um professor como já chamado, atribuído a `staffEmail`. */
+export type LiberarResult =
+  | { ok: true; ate: number }
+  | { ok: false; error: string };
+
+/**
+ * Abre a janela de primeiro acesso: por algumas horas, o e-mail daquele
+ * professor sozinho entra no painel — e só até ele criar a senha lá dentro.
+ *
+ * Substitui a senha provisória por WhatsApp, que fica no histórico da
+ * conversa e quase nunca é trocada. O e-mail sozinho não abre nada por conta
+ * própria: a Function exige esta liberação, a janela viva e a conta ainda sem
+ * senha, as três juntas (o raciocínio está em `migrations/0014` da landing).
+ *
+ * Quem liberou fica gravado, e por isso a identidade é obrigatória aqui — sem
+ * ela, "quem abriu o painel do fulano?" fica sem resposta.
+ */
+export async function liberarPrimeiroAcesso(
+  id: number,
+  staffEmail: string | null
+): Promise<LiberarResult> {
+  const headers = landingAuthHeaders(staffEmail);
+  if (!headers) return { ok: false, error: TOKEN_MISSING };
+  if (!staffEmail) {
+    return {
+      ok: false,
+      error: "Não foi possível identificar quem está liberando — recarregue a página e entre de novo.",
+    };
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(new URL("/api/admin/professor-liberar", landingBaseUrl()), {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, error: "não deu para falar com a landing agora." };
+  }
+
+  if (!res.ok) {
+    return { ok: false, error: await errorFrom(res, "a landing recusou a liberação") };
+  }
+  try {
+    const body = (await res.json()) as { primeiro_acesso_ate?: unknown };
+    const ate = typeof body.primeiro_acesso_ate === "number" ? body.primeiro_acesso_ate : 0;
+    return { ok: true, ate };
+  } catch {
+    return { ok: true, ate: 0 };
+  }
+}
+
 export async function markProfessorCalled(
   id: number,
   called: boolean,
