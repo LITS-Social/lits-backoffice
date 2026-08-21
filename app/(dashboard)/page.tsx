@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowUpRight, TrendingDown, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { getProductMetrics, type NorthMetrics, type PlatformSplit } from "@/lib/metrics";
+import { fetchMetaAds, resolvePeriod } from "@/lib/meta-ads";
 import {
   BP_MENSAL,
   BP_PREMISSAS,
@@ -1103,6 +1104,21 @@ export default async function MetricsPage() {
     users, matches, scorePosts, north, completion, partnerRating,
     activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs, inviteIntent,
   } = await getProductMetrics();
+
+  // CAC consolidado do mês — o mesmo número da aba Aquisição: TODO o gasto do
+  // Facebook Ads no mês-calendário de SP ÷ novos usuários pagáveis (cadastros −
+  // aceites de MGM). Falha sozinho: sem Meta configurada ou fora do ar, a
+  // célula mostra "—" e o resto do Dinheiro segue.
+  const ads = await fetchMetaAds(resolvePeriod({})).catch(() => null);
+  const cacAds = (() => {
+    if (!ads || !ads.ok || !activationMonth) return null;
+    const monthStart = new Date(`${resolvePeriod({}).since}T00:00:00-03:00`).getTime();
+    const mgmMes = mgmCreatedAtMs ? mgmCreatedAtMs.filter((t) => t >= monthStart).length : 0;
+    const novos = Math.max(activationMonth.novos - mgmMes, 0);
+    const investido = ads.adsets.reduce((sum, a) => sum + a.monthCents, 0);
+    if (novos === 0) return { investido, novos, cents: null as number | null };
+    return { investido, novos, cents: Math.round(investido / novos) };
+  })();
   // BP vivo (portal de RI, fallback local) + push do snapshot real para o RI
   // — fire-and-forget: o investidor vê "Real vs Plano" com o mesmo agregado
   // deste render, sem PII.
@@ -1393,13 +1409,19 @@ export default async function MetricsPage() {
     },
   ];
 
+  // A planilha-checklist (ação imediata / saúde do produto) saiu da tela por
+  // enquanto, a pedido do founder. As linhas continuam calculadas e o
+  // MetricsTable continua no arquivo para voltar com um mount; o `void` só
+  // cala o lint de "não usado" sem apagar o trabalho.
+  void daily;
+  void weeklyRows;
+  void MetricsTable;
+
   return (
     <div>
-      <PageHeader
-        eyebrow="Métricas"
-        title="Norte do Produto"
-        description="Onde estamos contra o BP. O que o backend ainda não mede fica marcado como sem dado — nunca como zero."
-      />
+      {/* O slot onde o ChartsGrid porta o filtro de período (De/Até) — canto
+          superior direito, acima do primeiro separador. */}
+      <PageHeader eyebrow="Métricas" title="Dashboard" action={<div id="dashboard-range-slot" />} />
 
       <div className="space-y-6 px-4 sm:px-8 py-6">
         {broken.length > 0 && (
@@ -1539,7 +1561,7 @@ export default async function MetricsPage() {
         {/* ── Dinheiro ─────────────────────────────────────────────────────────── */}
         <div>
           <p className="eyebrow mb-3">Dinheiro</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Kpi
               label="GMV"
               value={matches.gmv ? fmtBRL(matches.gmv.totalCents) : "—"}
@@ -1580,6 +1602,19 @@ export default async function MetricsPage() {
                 matches.gmv && matches.paid && matches.paid.total > 0
                   ? `GMV ÷ ${matches.paid.total} partidas pagas, desde o início`
                   : "sem partidas pagas ainda"
+              }
+            />
+            <Kpi
+              label="CAC ads"
+              value={cacAds?.cents != null ? fmtBRL(cacAds.cents) : "—"}
+              context={
+                !ads || !ads.ok
+                  ? "Meta Ads não conectada — ver a aba Aquisição"
+                  : cacAds
+                    ? cacAds.cents != null
+                      ? `${fmtBRL(cacAds.investido)} no mês ÷ ${cacAds.novos} novos (cadastros − MGM) · consolidado, sem atribuição`
+                      : `${fmtBRL(cacAds.investido)} no mês, ainda sem novos para dividir`
+                    : "sem a contagem de novos do mês"
               }
             />
           </div>
@@ -1771,15 +1806,6 @@ export default async function MetricsPage() {
         {/* ── De onde a base abre o app — leitura de apoio, por isso no fim ───── */}
         <PlatformCard split={north.platforms} />
 
-        {/* ── A planilha, viva ─────────────────────────────────────────────────── */}
-        <MetricsTable title="Ação imediata — verificar todo dia" rows={daily} />
-        <MetricsTable title="Saúde do produto — verificar toda semana" rows={weeklyRows} />
-
-        <p className="border-t border-[var(--border)] pt-4 text-[11px] font-300 leading-relaxed text-[var(--text-tertiary)]">
-          Linhas <span className="font-600 text-[var(--text-secondary)]">sem dado</span> ainda não
-          têm instrumentação no backend — a meta e a ação ficam aqui porque o checklist vale
-          mesmo medido à mão.
-        </p>
       </div>
     </div>
   );

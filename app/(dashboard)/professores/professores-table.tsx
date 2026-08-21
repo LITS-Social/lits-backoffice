@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Check, Mail, MessageCircle } from "lucide-react";
+import { Check, Mail, MessageCircle, RefreshCw } from "lucide-react";
 import {
   DataTable,
   type DataTableColumn,
@@ -12,6 +12,7 @@ import { DetailGrid, type DetailField } from "@/components/ui/detail-grid";
 import { Timestamp } from "@/components/ui/timestamp";
 import type { ProfessorRow } from "@/lib/professores";
 import { markProfessorCalledAction } from "./actions";
+import { syncProfessorAction } from "./sync-actions";
 
 const DAY = 24 * 60 * 60;
 
@@ -49,6 +50,9 @@ function prettyPhone(digits: string): string {
 /** Estado de chamada de uma linha, depois de aplicar o que já mudou nesta sessão. */
 type CallState = { calledAt: number | null; calledBy: string | null };
 
+/** Resultado da última publicação do painel, por professor. */
+type SyncState = { ok: boolean; texto: string };
+
 export function ProfessoresTable({ rows }: { rows: ProfessorRow[] }) {
   // Sobreposição do que foi marcado/desmarcado aqui, por id — guarda a
   // resposta REAL da API (called_at/called_by como o banco gravou), não um
@@ -58,6 +62,10 @@ export function ProfessoresTable({ rows }: { rows: ProfessorRow[] }) {
   // respondeu não pode reabilitar o botão de A.
   const [pending, setPending] = useState<Set<number>>(new Set());
   const [error, setError] = useState("");
+  // O sync tem estado próprio: publicar o painel do professor A não pode
+  // apagar o resultado que o operador acabou de ler sobre o professor B.
+  const [sync, setSync] = useState<Record<number, SyncState>>({});
+  const [syncing, setSyncing] = useState<Set<number>>(new Set());
 
   const stateOf = useMemo(
     () =>
@@ -90,6 +98,33 @@ export function ProfessoresTable({ rows }: { rows: ProfessorRow[] }) {
     },
     [stateOf]
   );
+
+  const publicar = useCallback((r: ProfessorRow) => {
+    setSyncing((cur) => new Set(cur).add(r.id));
+    setSync((cur) => {
+      const { [r.id]: _fora, ...resto } = cur;
+      return resto;
+    });
+
+    syncProfessorAction(r.email).then((res) => {
+      setSyncing((cur) => {
+        const s = new Set(cur);
+        s.delete(r.id);
+        return s;
+      });
+      setSync((cur) => ({
+        ...cur,
+        [r.id]: res.ok
+          ? {
+              ok: true,
+              texto: res.aviso
+                ? res.aviso
+                : `${res.alunos} aluno${res.alunos === 1 ? "" : "s"} · ${res.partidas} partida${res.partidas === 1 ? "" : "s"}`,
+            }
+          : { ok: false, texto: res.error },
+      }));
+    });
+  }, []);
 
   const filters = useMemo<DataTableFilterGroup<ProfessorRow>[]>(() => {
     // O relógio é lido DENTRO do predicado, não no corpo do memo: a janela é a
@@ -240,8 +275,44 @@ export function ProfessoresTable({ rows }: { rows: ProfessorRow[] }) {
           );
         },
       },
+      {
+        id: "painel",
+        header: "Painel dele",
+        width: "230px",
+        sortAccessor: (r) => (sync[r.id]?.ok ? 1 : 0),
+        render: (r) => {
+          const busy = syncing.has(r.id);
+          const st = sync[r.id];
+          return (
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => publicar(r)}
+                title="Lê os alunos indicados no produto e publica o painel que esse professor abre na landing"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1 text-[11px] font-500 text-[var(--text-tertiary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)] disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={busy ? "animate-spin" : undefined} />
+                {busy ? "Publicando…" : "Publicar"}
+              </button>
+              {st && (
+                <span
+                  className={
+                    st.ok
+                      ? "min-w-0 truncate text-[10.5px] text-[var(--text-tertiary)]"
+                      : "min-w-0 truncate text-[10.5px] text-[var(--color-error)]"
+                  }
+                  title={st.texto}
+                >
+                  {st.texto}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
     ],
-    [stateOf, pending, toggle]
+    [stateOf, pending, toggle, sync, syncing, publicar]
   );
 
   return (

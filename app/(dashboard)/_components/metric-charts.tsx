@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
+
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   Bar,
   CartesianGrid,
@@ -466,10 +468,18 @@ export function ChartsGrid({
 
   const hasAnySeries = growthPoints != null || mixPoints != null;
 
-  return (
-    <div className="space-y-3">
-      {hasAnySeries && (
-        <div className="flex flex-wrap items-end justify-start gap-3">
+  // O filtro de período mora no CABEÇALHO da página (canto superior direito,
+  // acima do primeiro separador), não aqui embaixo — mas o estado continua
+  // neste componente, que é quem filtra. Portal no slot que a página renderiza;
+  // sem slot (outra página usando o grid), cai no lugar de sempre.
+  const [rangeSlot, setRangeSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => setRangeSlot(document.getElementById("dashboard-range-slot")), 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  const rangeControls = hasAnySeries ? (
+        <div className="flex flex-wrap items-end justify-end gap-3">
           {invalidRange && (
             <p className="self-center text-[11px] font-300 text-[var(--color-clay)]">
               Data final antes da inicial — intervalo ignorado.
@@ -512,7 +522,11 @@ export function ChartsGrid({
             </button>
           )}
         </div>
-      )}
+  ) : null;
+
+  return (
+    <div className="space-y-3">
+      {rangeSlot ? createPortal(rangeControls, rangeSlot) : rangeControls}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <ChartCard eyebrow="Crescimento da base" className="lg:col-span-2">
