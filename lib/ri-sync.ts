@@ -49,6 +49,9 @@ export type AcademiaParaRi = {
   /** faixa de preço entre as quadras (menor e maior price_cents) */
   precoMinCents?: number | null;
   precoMaxCents?: number | null;
+  /** quanto a LITS já gerou ao clube: GMV pago nas quadras dele, desde o início */
+  gmvGeradoCents?: number | null;
+  partidasPagas?: number | null;
   /** horário de funcionamento: [abre, último slot] por período; null = não definido */
   horarios?: {
     semana?: [number, number] | null;
@@ -70,6 +73,7 @@ export type AcademiaParaRi = {
  */
 export function academiasDasQuadras(
   courts: {
+    id?: string;
     franchise_id: string;
     franchise_name: string;
     franchise_kind?: string | null;
@@ -85,7 +89,8 @@ export function academiasDasQuadras(
     franchise_hours_sun_end?: number | null;
     surface?: string | null;
     indoor?: boolean | null;
-  }[]
+  }[],
+  gmvPorQuadra?: Record<string, { cents: number; partidas: number }> | null
 ): AcademiaParaRi[] {
   /* Mesma regra da tela de academia (academia.tsx): sem horário definido na
      franquia, a grade é montada com 6h–22h, e sábado/domingo herdam a
@@ -118,6 +123,8 @@ export function academiasDasQuadras(
         cobertas: 0,
         precoMinCents: null,
         precoMaxCents: null,
+        gmvGeradoCents: gmvPorQuadra ? 0 : null,
+        partidasPagas: gmvPorQuadra ? 0 : null,
         _pisos: new Set<string>(),
       };
       porFranquia.set(c.franchise_id, atual);
@@ -126,6 +133,11 @@ export function academiasDasQuadras(
     atual.ativa = atual.ativa || c.is_active === true;
     if (c.indoor) atual.cobertas = (atual.cobertas ?? 0) + 1;
     if (c.surface) atual._pisos.add(c.surface);
+    const g = c.id && gmvPorQuadra ? gmvPorQuadra[c.id] : undefined;
+    if (g) {
+      atual.gmvGeradoCents = (atual.gmvGeradoCents ?? 0) + g.cents;
+      atual.partidasPagas = (atual.partidasPagas ?? 0) + g.partidas;
+    }
     if (c.price_cents != null) {
       atual.precoMinCents = atual.precoMinCents == null ? c.price_cents : Math.min(atual.precoMinCents, c.price_cents);
       atual.precoMaxCents = atual.precoMaxCents == null ? c.price_cents : Math.max(atual.precoMaxCents, c.price_cents);

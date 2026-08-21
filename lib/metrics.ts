@@ -92,6 +92,9 @@ export type MatchesMetrics = {
   /** As pagas com instante E valor — série diária de GMV/receita (trajetória
       vs BP). Null quando a página é parcial. */
   paidEvents: { t: number; cents: number }[] | null;
+    /** GMV pago por quadra (court_id → centavos e nº de partidas) — o RI
+        agrega por academia para mostrar quanto a LITS já gerou ao clube */
+    gmvPorQuadra: Record<string, { cents: number; partidas: number }> | null;
   /** Reservas jogadas por mecânica (match_type). Null quando parcial. */
   playedByMode: { invite: number; quick: number; quickScored: number } | null;
   /** Quando cada quick match aconteceu — a série que dá o "dia a dia" ao card
@@ -475,7 +478,7 @@ async function fetchMatches(): Promise<MatchesMetrics> {
     params: { query: { limit: MATCHES_LIMIT, offset: 0 } },
   });
   if (error || data.matches == null) {
-    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, paidEvents: null, playedByMode: null, quickStartsAtMs: null, recentQuick: [], gmv: null, legs: null, paidLegs: null };
+    return { failed: true, total: 0, last7: 0, prev7: 0, last30: null, paid: null, startsAtMs: null, paidStartsAtMs: null, paidEvents: null, gmvPorQuadra: null, playedByMode: null, quickStartsAtMs: null, recentQuick: [], gmv: null, legs: null, paidLegs: null };
   }
 
   const matches = data.matches;
@@ -537,6 +540,15 @@ async function fetchMatches(): Promise<MatchesMetrics> {
       : null,
     paidEvents: complete
       ? paidRows.map((m) => ({ t: new Date(m.starts_at).getTime(), cents: m.price_cents ?? 0 }))
+      : null,
+    gmvPorQuadra: complete
+      ? paidRows.reduce<Record<string, { cents: number; partidas: number }>>((acc, m) => {
+          const id = (m as { court_id?: string | null }).court_id;
+          if (!id) return acc;
+          const cur = acc[id] ?? { cents: 0, partidas: 0 };
+          acc[id] = { cents: cur.cents + (m.price_cents ?? 0), partidas: cur.partidas + 1 };
+          return acc;
+        }, {})
       : null,
     recentQuick: matches
       .filter((m) => (m.match_type ?? "").includes("quick"))

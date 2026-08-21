@@ -1129,7 +1129,7 @@ export default async function MetricsPage() {
       users, matches, scorePosts, north, completion, partnerRating,
       activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs, inviteIntent,
     },
-    academiasDasQuadras(quadrasParaRi)
+    academiasDasQuadras(quadrasParaRi, matches.gmvPorQuadra)
   );
 
   const broken = [
