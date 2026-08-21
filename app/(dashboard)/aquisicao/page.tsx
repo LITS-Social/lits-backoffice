@@ -4,7 +4,8 @@ import { PanelNote } from "../_components/notes";
 import {
   fetchMetaAds,
   loadAcademiasFechadas,
-  normalizeMonth,
+  periodBoundsMs,
+  resolvePeriod,
   spMonthKey,
 } from "@/lib/meta-ads";
 import { getProductMetrics } from "@/lib/metrics";
@@ -13,55 +14,48 @@ import { formatCurrency } from "@/lib/utils";
 import { SEGMENT_LABEL, type Segment } from "./segments";
 import { AdsetTable } from "./adset-table";
 import { AcademiasDenominador } from "./academias-denominador";
-import { MonthPicker } from "./month-picker";
+import { PeriodPicker } from "./period-picker";
 
 export const dynamic = "force-dynamic";
 
 /**
  * #17 Aquisição — CAC do Facebook Ads, Fase 1.
  *
- * Um mês-calendário de São Paulo por vez, escolhido no seletor (?mes=YYYY-MM;
- * sem o parâmetro, o corrente). TUDO é recalculado para o mês: o gasto da
- * Meta, os cadastros, os aceites de MGM, os professores e o denominador de
- * academias.
+ * Um PERÍODO por vez — mês-calendário (?mes), últimos N dias (?dias) ou
+ * intervalo (?de&ate), todos de São Paulo; sem nada, o mês corrente. TUDO é
+ * recalculado para a janela: o gasto da Meta, os cadastros, os aceites de
+ * MGM, os professores. O denominador de academias é mensal por natureza e só
+ * entra no modo mês.
  *
  * O que esta fase É: gasto por adset categorizado à mão, dividido pelos novos
- * do mês. O que ela NÃO é: atribuição — o denominador inclui quem veio
+ * do período. O que ela NÃO é: atribuição — o denominador inclui quem veio
  * orgânico (o MGM é descontado). Os números dizem isso na cara.
  *
  * Denominadores por segmento, e a honestidade de cada um:
- *   usuários     cadastros do mês MENOS aceites de MGM do mês.
- *   professores  cadastros do formulário da landing no mês (D1).
+ *   usuários     cadastros no período MENOS aceites de MGM no período.
+ *   professores  cadastros do formulário da landing no período (D1).
  *   academias    MANUAL, por mês — contrato B2B não nasce de formulário.
- *                Sem o número, a célula mostra só o gasto; nunca inventa.
+ *                Sem o número (ou fora do modo mês), só o gasto; nunca inventa.
  */
-
-/** [início, fim) do mês-calendário de SP, em ms. */
-function monthBoundsMs(month: string): { start: number; end: number } {
-  const [y, m] = month.split("-").map(Number);
-  const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}`;
-  return {
-    start: new Date(`${month}-01T00:00:00-03:00`).getTime(),
-    end: new Date(`${next}-01T00:00:00-03:00`).getTime(),
-  };
-}
 
 export default async function AquisicaoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string }>;
+  searchParams: Promise<{ mes?: string; dias?: string; de?: string; ate?: string }>;
 }) {
-  const { mes } = await searchParams;
+  const params = await searchParams;
   const current = spMonthKey();
-  const month = normalizeMonth(mes);
-  const { start, end } = monthBoundsMs(month);
+  const period = resolvePeriod(params);
+  const { start, end } = periodBoundsMs(period);
   const noMes = (ms: number) => ms >= start && ms < end;
+  // O denominador de academias só faz sentido no mês: fora dele, null.
+  const month = period.mode === "month" ? (period.month ?? current) : null;
 
   const [ads, metrics, profRes, academiasFechadas] = await Promise.all([
-    fetchMetaAds(month),
+    fetchMetaAds(period),
     getProductMetrics(),
     fetchProfessores().catch(() => null),
-    loadAcademiasFechadas(month),
+    month ? loadAcademiasFechadas(month) : Promise.resolve(null),
   ]);
 
   // ── Denominadores, todos recortados no mês escolhido ────────────────────
@@ -101,8 +95,8 @@ export default async function AquisicaoPage({
       <PageHeader
         eyebrow="#17"
         title="Aquisição"
-        description="CAC do Facebook Ads no mês selecionado: gasto por segmento ÷ novos do mês. Categorize cada adset abaixo — sem categoria, o gasto fica no balde visível e fora de todo CAC."
-        action={<MonthPicker month={month} current={current} />}
+        description="CAC do Facebook Ads no período selecionado: gasto por segmento ÷ novos do período. Categorize cada adset abaixo — sem categoria, o gasto fica no balde visível e fora de todo CAC."
+        action={<PeriodPicker p={{ ...period, current }} />}
       />
 
       <StatRail
@@ -110,7 +104,7 @@ export default async function AquisicaoPage({
           {
             label: "Investido",
             value: ads.ok ? formatCurrency(investidoMes) : "—",
-            hint: ads.ok ? "mês inteiro · todos os adsets" : "Meta não configurada",
+            hint: ads.ok ? "período inteiro · todos os adsets" : "Meta não configurada",
           },
           {
             label: "CAC consolidado",
@@ -119,7 +113,7 @@ export default async function AquisicaoPage({
             hint:
               ads.ok && usuariosPagaveis != null
                 ? `${formatCurrency(investidoMes)} ÷ ${usuariosPagaveis} novos — tudo que saiu, inclusive sem categoria, por cada pessoa nova`
-                : "precisa do gasto e dos novos do mês",
+                : "precisa do gasto e dos novos do período",
           },
           {
             label: "Sem categoria",
@@ -137,7 +131,7 @@ export default async function AquisicaoPage({
             hint:
               usuariosPagaveis != null
                 ? `${formatCurrency(gasto.usuarios)} ÷ ${usuariosPagaveis} novos (${novosMes} cadastros − ${mgmMes} via MGM)`
-                : "sem a contagem de novos do mês",
+                : "sem a contagem de novos do período",
           },
           {
             label: "CAC professores",
@@ -145,19 +139,21 @@ export default async function AquisicaoPage({
             tone: "calm",
             hint:
               professoresMes != null
-                ? `${formatCurrency(gasto.professores)} ÷ ${professoresMes} cadastros no mês`
+                ? `${formatCurrency(gasto.professores)} ÷ ${professoresMes} cadastros no período`
                 : "cadastros da landing indisponíveis",
           },
           {
             label: cacAcademias ? "CAC academias" : `${SEGMENT_LABEL.academias} (gasto)`,
             value: ads.ok ? (cacAcademias ?? formatCurrency(gasto.academias)) : "—",
             tone: cacAcademias ? "calm" : "neutral",
-            hint: ads.ok ? (
+            hint: !ads.ok ? undefined : month ? (
               <span>
                 {cacAcademias ? `${formatCurrency(gasto.academias)} ÷ ` : ""}
                 <AcademiasDenominador atual={academiasFechadas} month={month} />
               </span>
-            ) : undefined,
+            ) : (
+              "contrato fechado é contado por mês — escolha um mês para ver o CAC"
+            ),
           },
         ]}
       />
@@ -167,7 +163,7 @@ export default async function AquisicaoPage({
           <PanelNote>{ads.error}</PanelNote>
         ) : ads.adsets.length === 0 ? (
           <p className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-8 text-center text-[12.5px] font-300 text-[var(--text-tertiary)]">
-            Nenhum adset com gasto neste mês — conta conectada, sem tráfego pago no período.
+            Nenhum adset com gasto neste período — conta conectada, sem tráfego pago rodando.
           </p>
         ) : (
           <>

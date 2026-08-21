@@ -33,29 +33,86 @@ export type MetaAdsResult =
   | { ok: true; adsets: AdsetSpend[]; account: string }
   | { ok: false; error: string; setup: boolean };
 
-/**
- * A janela de UM mês-calendário de São Paulo ("2026-08"), fechada em hoje
- * quando o mês é o corrente — a Meta não aceita `until` no futuro. Para um
- * mês passado, o mês inteiro.
- */
-export function spMonthRange(month: string): { since: string; until: string } {
-  const [y, m] = month.split("-").map(Number);
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate(); // dia 0 do mês seguinte = último deste
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const until = `${month}-${String(last).padStart(2, "0")}`;
-  return { since: `${month}-01`, until: until < today ? until : today };
+/* ── O período ─────────────────────────────────────────────────────────────
+   Três jeitos de dizer "quando", todos resolvidos para UMA janela de dias de
+   São Paulo [since, until] inclusiva, fechada em hoje (a Meta não aceita
+   futuro):
+     mês       ?mes=YYYY-MM          o mês-calendário inteiro
+     dias      ?dias=N               os últimos N dias, hoje incluso
+     intervalo ?de=YYYY-MM-DD&ate=…  o que o operador marcou
+   Prioridade: intervalo > dias > mês; nada válido = mês corrente. */
+
+export type Period = {
+  since: string;
+  until: string;
+  mode: "month" | "days" | "custom";
+  /** Só no modo mês — é a chave do denominador de academias. */
+  month?: string;
+  days?: number;
+};
+
+const SP_DATE = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+export function spToday(): string {
+  return SP_DATE.format(new Date());
 }
+
+function spDaysAgo(n: number): string {
+  return SP_DATE.format(new Date(Date.now() - n * 86_400_000));
+}
+
+const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 /** "YYYY-MM" válido e não no futuro; senão, o mês corrente. */
 export function normalizeMonth(raw: string | undefined): string {
   const cur = spMonthKey();
   if (!raw || !/^\d{4}-(0[1-9]|1[0-2])$/.test(raw) || raw > cur) return cur;
   return raw;
+}
+
+export function resolvePeriod(params: {
+  mes?: string;
+  dias?: string;
+  de?: string;
+  ate?: string;
+}): Period {
+  const today = spToday();
+
+  if (params.de && DATE_RE.test(params.de)) {
+    const since = params.de > today ? today : params.de;
+    let until = params.ate && DATE_RE.test(params.ate) ? params.ate : today;
+    if (until > today) until = today;
+    if (until < since) until = since;
+    return { since, until, mode: "custom" };
+  }
+
+  const n = Number(params.dias);
+  if (Number.isInteger(n) && n >= 1 && n <= 366) {
+    return { since: spDaysAgo(n - 1), until: today, mode: "days", days: n };
+  }
+
+  const month = normalizeMonth(params.mes);
+  const [y, m] = month.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate(); // dia 0 do mês seguinte
+  const until = `${month}-${String(last).padStart(2, "0")}`;
+  return {
+    since: `${month}-01`,
+    until: until < today ? until : today,
+    mode: "month",
+    month,
+  };
+}
+
+/** [início, fim) do período em ms — dias de São Paulo, fim exclusivo. */
+export function periodBoundsMs(p: Period): { start: number; end: number } {
+  const start = new Date(`${p.since}T00:00:00-03:00`).getTime();
+  const end = new Date(`${p.until}T00:00:00-03:00`).getTime() + 86_400_000;
+  return { start, end };
 }
 
 /** Sugestão pelo nome — SUGESTÃO, nunca verdade. Vocabulário PT dos anúncios. */
@@ -192,7 +249,7 @@ async function fetchWindow(
   return out;
 }
 
-export async function fetchMetaAds(month: string): Promise<MetaAdsResult> {
+export async function fetchMetaAds(period: Period): Promise<MetaAdsResult> {
   const token = process.env.META_ADS_TOKEN;
   const account = process.env.META_AD_ACCOUNT_ID;
   if (!token || !account) {
@@ -206,7 +263,7 @@ export async function fetchMetaAds(month: string): Promise<MetaAdsResult> {
 
   try {
     const [rows, map] = await Promise.all([
-      fetchWindow(account, token, spMonthRange(month)),
+      fetchWindow(account, token, { since: period.since, until: period.until }),
       loadSegmentMap(),
     ]);
 
