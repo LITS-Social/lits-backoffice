@@ -43,11 +43,39 @@ export type SyncProfessorResult =
   | { ok: true; alunos: number; partidas: number; aviso?: string }
   | { ok: false; error: string };
 
-/** Uma página de usuários cobre o beta inteiro com folga. */
-const USERS_LIMIT = 2000;
+/**
+ * `/v1/ops/users` devolve no máximo 200 por página e pagina por cursor
+ * (`maximum:"200"` no handler do BFF). Pedir mais não trunca: a requisição é
+ * REJEITADA inteira — foi o que derrubou a primeira versão disto, que pedia
+ * 2000 e via a lista chegar vazia.
+ */
+const USERS_PAGE = 200;
+/** Teto de páginas, como em `lib/metrics.ts`: 2000 usuários cobrem o beta. */
+const USERS_MAX_PAGES = 10;
 /** O painel mostra os últimos meses; o teto é o mesmo do painel #02. */
 const MATCHES_LIMIT = 1000;
+/** Também limitado a 200 no handler. */
 const REFERRALS_LIMIT = 200;
+
+/** Varre a lista de usuários pelo cursor. Erro aqui é erro, não lista vazia. */
+async function lerUsuarios(
+  api: Awaited<ReturnType<typeof getApi>>
+): Promise<{ ok: true; rows: UserLike[] } | { ok: false; error: string }> {
+  const rows: UserLike[] = [];
+  let cursor: string | undefined;
+  for (let pagina = 0; pagina < USERS_MAX_PAGES; pagina++) {
+    const { data, error } = await api.GET("/v1/ops/users", {
+      params: { query: { limit: USERS_PAGE, ...(cursor ? { cursor } : {}) } },
+    });
+    if (error || !data?.users) {
+      return { ok: false, error: "não deu para ler os usuários do produto agora." };
+    }
+    rows.push(...(data.users as UserLike[]));
+    if (!data.has_more || !data.next_cursor) break;
+    cursor = data.next_cursor;
+  }
+  return { ok: true, rows };
+}
 
 export async function syncProfessorAction(
   professorEmail: string,
@@ -58,11 +86,11 @@ export async function syncProfessorAction(
 
   const api = await getApi();
 
-  // Uma leitura só de usuários serve a três coisas: achar o professor,
-  // enriquecer os alunos (categoria, foto, contato) e nomear o adversário de
-  // cada partida.
-  const [usersRes, referralsRes, matchesRes] = await Promise.all([
-    api.GET("/v1/ops/users", { params: { query: { limit: USERS_LIMIT } } }).catch(() => null),
+  // A leitura de usuários serve a três coisas: achar o professor, enriquecer
+  // os alunos (categoria, foto, contato) e nomear o adversário de cada
+  // partida. Vem paginada porque o BFF corta em 200 por página.
+  const [usuariosRes, referralsRes, matchesRes] = await Promise.all([
+    lerUsuarios(api),
     api
       .GET("/v1/ops/mgm-referrals", { params: { query: { limit: REFERRALS_LIMIT, offset: 0 } } })
       .catch(() => null),
@@ -71,10 +99,8 @@ export async function syncProfessorAction(
       .catch(() => null),
   ]);
 
-  const usuariosLista = (usersRes?.data?.users ?? []) as UserLike[];
-  if (!usuariosLista.length) {
-    return { ok: false, error: "não deu para ler os usuários do produto agora." };
-  }
+  if (!usuariosRes.ok) return usuariosRes;
+  const usuariosLista = usuariosRes.rows;
 
   const usuarios = new Map<string, UserLike>();
   for (const u of usuariosLista) if (u.id) usuarios.set(u.id, u);
@@ -82,9 +108,19 @@ export async function syncProfessorAction(
   // O vínculo: `mgm_user_id` gravado manda; e-mail é só o primeiro encontro.
   let mgmUserId = String(mgmUserIdConhecido ?? "").trim().toLowerCase();
   if (!mgmUserId) {
-    const achado = usuariosLista.find(
-      (u) => String(u.email ?? "").trim().toLowerCase() === email
-    );
+    let achado = usuariosLista.find((u) => String(u.email ?? "").trim().toLowerCase() === email);
+    // Fora das páginas varridas ainda resta a busca direta — `q` é ILIKE em
+    // nome/username/e-mail/telefone no próprio banco, então acha quem estiver
+    // além do teto de páginas.
+    if (!achado) {
+      const busca = await api
+        .GET("/v1/ops/users", { params: { query: { q: email, limit: 20 } } })
+        .catch(() => null);
+      achado = ((busca?.data?.users ?? []) as UserLike[]).find(
+        (u) => String(u.email ?? "").trim().toLowerCase() === email
+      );
+      if (achado?.id) usuarios.set(achado.id, achado);
+    }
     if (!achado?.id) {
       return {
         ok: false,
