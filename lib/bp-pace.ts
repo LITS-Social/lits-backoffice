@@ -101,12 +101,15 @@ function checkpoints(
 function monthCheckpoints(
   mensal: Record<string, BpMonth>,
   ym: string,
-  pick: (m: BpMonth) => number | undefined
+  pick: (m: BpMonth) => number | undefined,
+  /** Começo da rampa: o início da janela (o mês, ou julho na janela de
+      lançamento). A meta do mês corrente é o alvo no fim dele. */
+  fromMs: number
 ): Checkpoint[] {
   const v = mensal[ym] === undefined ? undefined : pick(mensal[ym]);
   if (v === undefined) return [];
   return [
-    { atMs: monthStartMs(ym), cum: 0 },
+    { atMs: fromMs, cum: 0 },
     { atMs: monthEndMs(ym), cum: v },
   ];
 }
@@ -201,9 +204,11 @@ export function buildBpPace(m: ProductMetrics, mensal: Record<string, BpMonth>):
   const today = todayStartMs(now);
   const { users, matches } = m;
 
-  // Janela: o MÊS CORRENTE, do dia 1 ao último dia. O acumulado real entra no
-  // dia 1 já carregando tudo que veio antes — a pergunta da seção é "este mês
-  // está no ritmo?", não a história desde o lançamento.
+  // Janela. Enquanto estamos nos meses de lançamento (até agosto/26), a
+  // janela vai do PRIMEIRO mês do BP (julho) ao fim do mês corrente — julho é
+  // parte da história que o founder quer ver no mesmo quadro. De setembro em
+  // diante, só o mês corrente: a pergunta passa a ser "este mês está no
+  // ritmo?", e o acumulado real entra no dia 1 carregando o que veio antes.
   const keys = Object.keys(mensal).sort();
   if (keys.length === 0) return [];
   const curYm = new Intl.DateTimeFormat("en-CA", {
@@ -211,7 +216,8 @@ export function buildBpPace(m: ProductMetrics, mensal: Record<string, BpMonth>):
     year: "numeric",
     month: "2-digit",
   }).format(new Date(now));
-  const startMs = monthStartMs(curYm);
+  const LAUNCH_WINDOW_UNTIL = "2026-08";
+  const startMs = curYm <= LAUNCH_WINDOW_UNTIL ? monthStartMs(keys[0]) : monthStartMs(curYm);
   const endMs = monthEndMs(curYm) - DAY_MS; // último dia do mês corrente
 
   const items: PaceItem[] = [];
@@ -248,9 +254,11 @@ export function buildBpPace(m: ProductMetrics, mensal: Record<string, BpMonth>):
     users.dateless,
     checkpoints(mensal, (x) => x.baseAcumulada, false)
   );
-  // Ativos do mês: a métrica-mãe do modelo. O evento é a PRIMEIRA perna de
-  // cada pessoa dentro do mês — daí em diante ela já está contada, e a soma
-  // acumulada dá o número de pessoas distintas que jogaram até ali.
+  // Ativos: a métrica-mãe do modelo. O evento é a PRIMEIRA perna de cada
+  // pessoa dentro da JANELA — daí em diante ela já está contada, e a soma
+  // acumulada dá o número de pessoas distintas que jogaram até ali. (Na
+  // janela de lançamento isso é "distintos desde julho"; de setembro em
+  // diante, "distintos no mês".)
   if (matches.legs) {
     const firstInMonth = new Map<string, number>();
     for (const leg of matches.legs) {
@@ -264,7 +272,7 @@ export function buildBpPace(m: ProductMetrics, mensal: Record<string, BpMonth>):
       "count",
       [...firstInMonth.values()].map((t) => ({ t, v: 1 })),
       0,
-      monthCheckpoints(mensal, curYm, (x) => x.totalAtivos)
+      monthCheckpoints(mensal, curYm, (x) => x.totalAtivos, startMs)
     );
   }
   push(

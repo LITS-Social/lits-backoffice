@@ -52,52 +52,6 @@ type FunnelData = {
   rate: number;
 } | null;
 
-/** A queda entre dois degraus: "↓ 76%" alinhado à coluna da barra. */
-function Queda({ de, para }: { de: number; para: number }) {
-  if (de <= 0) return <span className="h-3" aria-hidden />;
-  const pct = Math.round((1 - para / de) * 100);
-  return (
-    <div className="grid grid-cols-[92px_minmax(0,1fr)_40px] gap-3">
-      <span />
-      <span className="pl-1 text-[10px] font-500 text-[var(--text-tertiary)]">↓ {pct}%</span>
-    </div>
-  );
-}
-
-function FunnelBar({
-  label,
-  value,
-  base,
-  color,
-  muted,
-}: {
-  label: string;
-  value: number;
-  /** Base do funil DESTA mecânica (as próprias tentativas = 100%) — a forma
-      da queda entre etapas é a história; a magnitude vive no número. */
-  base: number;
-  color: string;
-  muted?: boolean;
-}) {
-  const width = base > 0 ? Math.max((value / base) * 100, value > 0 ? 2.5 : 0) : 0;
-  return (
-    <div className="grid grid-cols-[92px_minmax(0,1fr)_40px] items-center gap-3">
-      <span className="text-[10.5px] font-500 leading-tight text-[var(--text-secondary)]">
-        {label}
-      </span>
-      <div className="h-4 w-full overflow-hidden rounded-[4px] bg-[var(--surface-raised)]">
-        <div
-          className="h-full rounded-[3px] transition-[width]"
-          style={{ width: `${width}%`, background: color, opacity: muted ? 0.45 : 1 }}
-        />
-      </div>
-      <span className="numeral whitespace-nowrap text-right text-[15px] text-[var(--text-primary)]">
-        {value}
-      </span>
-    </div>
-  );
-}
-
 /**
  * Convite e quick match são mecânicas com desempenho radicalmente diferente —
  * somá-las num número só esconde a resposta. Cada coluna carrega seu próprio
@@ -150,23 +104,17 @@ function FunnelSection({
           <span className="label-colus text-[7px] text-[var(--text-tertiary)]">conversão</span>
         </span>
       </p>
-      {/* As barras ocupam a altura da coluna (a vizinha é a pizza, mais alta),
-          e o espaço entre elas carrega a QUEDA de um degrau para o outro — é
-          a leitura de funil, e antes ficava implícita. */}
-      <div className="flex flex-1 flex-col justify-evenly gap-1 py-1">
-        <FunnelBar label="Tentativas" value={opened} base={opened} color={color} />
-        {confirmed != null && (
-          <>
-            <Queda de={opened} para={confirmed} />
-            <FunnelBar label="Viraram jogo" value={confirmed} base={opened} color={color} />
-          </>
-        )}
-        {played != null && (
-          <>
-            <Queda de={confirmed ?? opened} para={played} />
-            <FunnelBar label="Realizadas" value={played} base={opened} color={color} muted={false} />
-          </>
-        )}
+      {/* O mesmo funil dos cards de MGM e Jogo Rápido — degraus centrados que
+          afunilam, com a conversão entre eles — no lugar das barras de
+          progresso. Uma gramática só para "funil" na página inteira. */}
+      <div className="flex flex-1 flex-col justify-center">
+        <FunnelStages
+          stages={[
+            { label: "Tentativas", value: opened },
+            ...(confirmed != null ? [{ label: "Viraram jogo", value: confirmed }] : []),
+            ...(played != null ? [{ label: "Realizadas", value: played }] : []),
+          ]}
+        />
       </div>
       {(confirmed == null || extra) && (
         <p className="mt-3 border-t border-[var(--border)] pt-2.5 text-[10px] font-300 leading-snug text-[var(--text-tertiary)]">
@@ -1105,17 +1053,19 @@ export default async function MetricsPage() {
     activationMonth, monthly, playerStats, cohorts, mgmCreatedAtMs, inviteIntent,
   } = await getProductMetrics();
 
-  // CAC consolidado do mês — o mesmo número da aba Aquisição: TODO o gasto do
-  // Facebook Ads no mês-calendário de SP ÷ novos usuários pagáveis (cadastros −
-  // aceites de MGM). Falha sozinho: sem Meta configurada ou fora do ar, a
-  // célula mostra "—" e o resto do Dinheiro segue.
+  // CAC de USUÁRIOS do mês — o mesmo número da aba Aquisição: só o gasto dos
+  // adsets categorizados como "usuários" no mês-calendário de SP ÷ novos
+  // usuários pagáveis (cadastros − aceites de MGM). Falha sozinho: sem Meta
+  // configurada ou fora do ar, a célula mostra "—" e o resto do Dinheiro segue.
   const ads = await fetchMetaAds(resolvePeriod({})).catch(() => null);
   const cacAds = (() => {
     if (!ads || !ads.ok || !activationMonth) return null;
     const monthStart = new Date(`${resolvePeriod({}).since}T00:00:00-03:00`).getTime();
     const mgmMes = mgmCreatedAtMs ? mgmCreatedAtMs.filter((t) => t >= monthStart).length : 0;
     const novos = Math.max(activationMonth.novos - mgmMes, 0);
-    const investido = ads.adsets.reduce((sum, a) => sum + a.monthCents, 0);
+    const investido = ads.adsets
+      .filter((a) => a.segment === "usuarios")
+      .reduce((sum, a) => sum + a.monthCents, 0);
     if (novos === 0) return { investido, novos, cents: null as number | null };
     return { investido, novos, cents: Math.round(investido / novos) };
   })();
@@ -1605,14 +1555,14 @@ export default async function MetricsPage() {
               }
             />
             <Kpi
-              label="CAC ads"
+              label="CAC ads (usuários)"
               value={cacAds?.cents != null ? fmtBRL(cacAds.cents) : "—"}
               context={
                 !ads || !ads.ok
                   ? "Meta Ads não conectada — ver a aba Aquisição"
                   : cacAds
                     ? cacAds.cents != null
-                      ? `${fmtBRL(cacAds.investido)} no mês ÷ ${cacAds.novos} novos (cadastros − MGM) · consolidado, sem atribuição`
+                      ? `${fmtBRL(cacAds.investido)} em adsets de usuários no mês ÷ ${cacAds.novos} novos (cadastros − MGM) · sem atribuição`
                       : `${fmtBRL(cacAds.investido)} no mês, ainda sem novos para dividir`
                     : "sem a contagem de novos do mês"
               }
