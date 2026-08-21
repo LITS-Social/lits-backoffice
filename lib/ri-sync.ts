@@ -52,6 +52,9 @@ export type AcademiaParaRi = {
   /** quanto a LITS já gerou ao clube: GMV pago nas quadras dele, desde o início */
   gmvGeradoCents?: number | null;
   partidasPagas?: number | null;
+  /** capacidade semanal: slots de uma hora por semana somando TODAS as quadras
+      (abertura → último slot, seg–sex + sáb + dom) — ocupados ou não */
+  slotsSemana?: number | null;
   /** horário de funcionamento: [abre, último slot] por período; null = não definido */
   horarios?: {
     semana?: [number, number] | null;
@@ -125,12 +128,21 @@ export function academiasDasQuadras(
         precoMaxCents: null,
         gmvGeradoCents: gmvPorQuadra ? 0 : null,
         partidasPagas: gmvPorQuadra ? 0 : null,
+        slotsSemana: 0,
         _pisos: new Set<string>(),
       };
       porFranquia.set(c.franchise_id, atual);
     }
     atual.quadras = (atual.quadras ?? 0) + 1;
     atual.ativa = atual.ativa || c.is_active === true;
+    /* slots/semana desta quadra: (último slot − abertura + 1) por dia, com a
+       mesma regra de horário da tela de academia (6h–22h por padrão, fim de
+       semana herda a semana). Só quadras ativas contam capacidade. */
+    if (c.is_active !== false && atual.horarios) {
+      const h = atual.horarios;
+      const porDia = (f?: [number, number] | null) => (f ? Math.max(0, f[1] - f[0] + 1) : 0);
+      atual.slotsSemana = (atual.slotsSemana ?? 0) + porDia(h.semana) * 5 + porDia(h.sabado) + porDia(h.domingo);
+    }
     if (c.indoor) atual.cobertas = (atual.cobertas ?? 0) + 1;
     if (c.surface) atual._pisos.add(c.surface);
     const g = c.id && gmvPorQuadra ? gmvPorQuadra[c.id] : undefined;
