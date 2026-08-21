@@ -473,8 +473,12 @@ export function ChartsGrid({
   // neste componente, que é quem filtra. Portal no slot que a página renderiza;
   // sem slot (outra página usando o grid), cai no lugar de sempre.
   const [rangeSlot, setRangeSlot] = useState<HTMLElement | null>(null);
+  const [mountedForSlot, setMountedForSlot] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setRangeSlot(document.getElementById("dashboard-range-slot")), 0);
+    const t = setTimeout(() => {
+      setRangeSlot(document.getElementById("dashboard-range-slot"));
+      setMountedForSlot(true);
+    }, 0);
     return () => clearTimeout(t);
   }, []);
 
@@ -526,7 +530,9 @@ export function ChartsGrid({
 
   return (
     <div className="space-y-3">
-      {rangeSlot ? createPortal(rangeControls, rangeSlot) : rangeControls}
+      {/* Antes do mount nada é desenhado aqui: senão o filtro pisca embaixo e
+          salta para o cabeçalho um frame depois. */}
+      {rangeSlot ? createPortal(rangeControls, rangeSlot) : mountedForSlot ? rangeControls : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <ChartCard eyebrow="Crescimento da base" className="lg:col-span-2">
