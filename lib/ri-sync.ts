@@ -84,8 +84,13 @@ export function academiasDasQuadras(
     indoor?: boolean | null;
   }[]
 ): AcademiaParaRi[] {
-  const faixa = (a?: number | null, b?: number | null): [number, number] | null =>
-    a != null && b != null ? [a, b] : null;
+  /* Mesma regra da tela de academia (academia.tsx): sem horário definido na
+     franquia, a grade é montada com 6h–22h, e sábado/domingo herdam a
+     semana. O RI espelha o que o produto MOSTRA, não o campo cru — um null
+     aqui virava "—" no perfil enquanto o backoffice exibia 6h–22h. */
+  const faixa = (
+    a?: number | null, b?: number | null, fallback: [number, number] = [6, 22]
+  ): [number, number] => (a != null && b != null ? [a, b] : fallback);
   const porFranquia = new Map<string, AcademiaParaRi & { _pisos: Set<string> }>();
   for (const c of courts) {
     if (!c.franchise_id) continue;
@@ -99,11 +104,14 @@ export function academiasDasQuadras(
         ativa: false,
         tipo: c.franchise_kind ?? null,
         precoPadraoCents: c.franchise_default_price_cents ?? null,
-        horarios: {
-          semana: faixa(c.franchise_hours_week_start, c.franchise_hours_week_end),
-          sabado: faixa(c.franchise_hours_sat_start, c.franchise_hours_sat_end),
-          domingo: faixa(c.franchise_hours_sun_start, c.franchise_hours_sun_end),
-        },
+        horarios: (() => {
+          const semana = faixa(c.franchise_hours_week_start, c.franchise_hours_week_end);
+          return {
+            semana,
+            sabado: faixa(c.franchise_hours_sat_start, c.franchise_hours_sat_end, semana),
+            domingo: faixa(c.franchise_hours_sun_start, c.franchise_hours_sun_end, semana),
+          };
+        })(),
         cobertas: 0,
         _pisos: new Set<string>(),
       };
