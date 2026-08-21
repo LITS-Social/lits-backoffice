@@ -1,6 +1,7 @@
 "use client";
 
 import { Mail, MapPin, Zap } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { DataTable, type DataTableColumn, type DataTableFilterGroup } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { DetailGrid } from "@/components/ui/detail-grid";
@@ -21,6 +22,16 @@ const filters: DataTableFilterGroup<OpenInviteItem>[] = [
     options: [
       { value: "invite", label: "Convite", predicate: (i) => i.kind !== "quick_match" },
       { value: "quick", label: "Jogo rápido", predicate: (i) => i.kind === "quick_match" },
+      {
+        value: "quick_public",
+        label: "Rápido · aberto",
+        predicate: (i) => i.kind === "quick_match" && i.visibility === "public",
+      },
+      {
+        value: "quick_connections",
+        label: "Rápido · só conexões",
+        predicate: (i) => i.kind === "quick_match" && i.visibility === "connections",
+      },
     ],
   },
   {
@@ -70,8 +81,17 @@ const filters: DataTableFilterGroup<OpenInviteItem>[] = [
  * As cores são as mesmas duas da pizza "origem das partidas" do dashboard: o
  * jogo rápido é a mesma fatia nos dois lugares.
  */
-function Mecanica({ quick }: { quick: boolean }) {
+/** "public" | "connections" → o que o operador lê. Vazio = linha anterior à
+    feature, que nunca escolheu; não afirmar "público" sobre ela. */
+function visibilidadeLabel(v?: string): string | null {
+  if (v === "public") return "aberto a todos";
+  if (v === "connections") return "só conexões";
+  return null;
+}
+
+function Mecanica({ quick, visibility }: { quick: boolean; visibility?: string }) {
   const Icone = quick ? Zap : Mail;
+  const vis = quick ? visibilidadeLabel(visibility) : null;
   return (
     <span className="flex items-center gap-1.5">
       <span
@@ -80,8 +100,23 @@ function Mecanica({ quick }: { quick: boolean }) {
         style={{ background: quick ? "var(--chart-cat-a)" : "var(--chart-cat-b)" }}
       />
       <Icone size={11} className="shrink-0 text-[var(--text-tertiary)]" />
-      <span className="whitespace-nowrap text-[11.5px] font-500 text-[var(--text-secondary)]">
-        {quick ? "Jogo rápido" : "Convite"}
+      <span className="min-w-0">
+        <span className="block whitespace-nowrap text-[11.5px] font-500 text-[var(--text-secondary)]">
+          {quick ? "Jogo rápido" : "Convite"}
+        </span>
+        {/* Privado × aberto muda a ação de ops: jogo de conexões que expira
+            vazio não é falta de gente no clube, é falta de gente na REDE do
+            host — cobrar divulgação dele, não do mural. */}
+        {vis && (
+          <span
+            className={cn(
+              "block whitespace-nowrap text-[9.5px] font-300",
+              visibility === "connections" ? "text-[var(--color-clay)]" : "text-[var(--text-tertiary)]"
+            )}
+          >
+            {vis}
+          </span>
+        )}
       </span>
     </span>
   );
@@ -121,7 +156,7 @@ const columns: DataTableColumn<OpenInviteItem>[] = [
     // Ordena com os jogos rápidos juntos: são as linhas que precisam de
     // divulgação, não de cobrança, e ver o bloco inteiro é a leitura útil.
     sortAccessor: (i) => (i.kind === "quick_match" ? "0 jogo rápido" : "1 convite"),
-    render: (i) => <Mecanica quick={i.kind === "quick_match"} />,
+    render: (i) => <Mecanica quick={i.kind === "quick_match"} visibility={i.visibility} />,
   },
   {
     id: "guest",
@@ -134,7 +169,7 @@ const columns: DataTableColumn<OpenInviteItem>[] = [
     render: (i) =>
       i.kind === "quick_match" ? (
         <span className="text-[11.5px] font-300 text-[var(--text-tertiary)]">
-          no mural — qualquer um
+          {i.visibility === "connections" ? "no mural — só conexões do host" : "no mural — qualquer um"}
         </span>
       ) : (
         <Player name={i.guest.name} id={i.guest.user_id} strong />
@@ -256,6 +291,9 @@ export function OpenInvitesTable({ invites }: { invites: OpenInviteItem[] }) {
             { label: "Contato do host", value: <Contact user={i.host} /> },
             { label: "Quadra", value: i.court_label },
             { label: "Tipo de partida", value: matchTypeLabel(i.match_type) },
+            ...(i.kind === "quick_match"
+              ? [{ label: "Visibilidade", value: visibilidadeLabel(i.visibility) ?? "— (anterior à escolha)" }]
+              : []),
             { label: "Início da partida", value: new Date(i.starts_at).toLocaleString("pt-BR") },
             { label: "Criado em", value: new Date(i.created_at).toLocaleString("pt-BR") },
             {

@@ -3117,6 +3117,8 @@ export interface components {
              * @description Slot start time (RFC3339)
              */
             starts_at: string;
+            /** @description quick_match: public | connections; vazio no convite direto */
+            visibility?: string;
         };
         OpenInvitesResponseBody: {
             /**
